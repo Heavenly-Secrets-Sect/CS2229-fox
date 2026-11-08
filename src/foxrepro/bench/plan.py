@@ -1179,6 +1179,20 @@ def ingest_runs(
             # is right, and that path is untouched below.
             if all_incoming and not incoming:
                 _, clash = _compatible_records(existing, all_incoming)
+                # The variant too. Two records can agree on every provenance
+                # field -- same host, same seed, same split -- and still be
+                # different METHODS: the Fox-fusion hybrid and real VCD both
+                # recorded method="vcd" when they ran, and only
+                # method_extra.variant tells them apart. Without this the
+                # hybrid displaced the real VCD a third time.
+                va = {(r.get("method_extra") or {}).get("variant")
+                      for r in existing}
+                vb = {(r.get("method_extra") or {}).get("variant")
+                      for r in all_incoming}
+                if va != vb:
+                    clash = list(clash) + [
+                        f"method_extra.variant ({sorted(map(str, va))} vs "
+                        f"{sorted(map(str, vb))})"]
                 if clash:
                     report["rejected"] = int(report.get("rejected", 0)) + 1
                     report["files"].append(  # type: ignore[union-attr]

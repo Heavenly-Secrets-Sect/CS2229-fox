@@ -366,6 +366,8 @@ def opera_generate(
     )
     # Only beam 0 is live at step 0: every beam row holds the same prompt, so
     # without this the first step would return the same token five times.
+    # Created on the parameter device for now; the first step moves it onto
+    # the logits' device, which under a shard is not the same one.
     beam_scores = torch.full((num_beams,), -1e9, dtype=torch.float32,
                              device=device)
     beam_scores[0] = 0.0
@@ -441,6 +443,17 @@ def opera_generate(
                 # mutates in place, so without this crop the five candidate
                 # passes would corrupt the search's own cache.
                 cache.crop(cache_len)
+                # Back to the logits' device before anything combines them.
+                # Under device_map="auto" the capture happens inside the LAST
+                # decoder layer, which is on the last shard (cuda:1), while
+                # accelerate's hook moves the model's OUTPUT back to the
+                # device the inputs came from (cuda:0). The stash bypasses
+                # that hook, so the two meet on different devices --
+                # "Expected all tensors to be on the same device, but found
+                # at least two devices, cuda:0 and cuda:1". One GPU cannot
+                # reproduce it, so this is written to be correct by
+                # construction rather than guarded by a test.
+                row = row.to(z.device)
                 # Row-normalise AFTER the max over heads, as the release does
                 # (attn_last / attn_last.sum(-1)); a max over heads does not
                 # sum to 1, so the order is observable.
@@ -480,7 +493,8 @@ def opera_generate(
                 vec = z.clone()
                 vec.scatter_(-1, cand_tokens, cand_scores)
             scores = F.log_softmax(vec, dim=-1)
-            scores = scores + beam_scores[:, None].expand_as(scores)
+            scores = scores + beam_scores.to(scores.device)[:, None].expand_as(
+                scores)
 
             vocab = int(scores.shape[-1])
             flat = scores.reshape(1, num_beams * vocab)
@@ -499,11 +513,14 @@ def opera_generate(
             beam_tokens = beam_out["next_beam_tokens"]
             beam_idx = beam_out["next_beam_indices"]
 
+            idx = beam_idx.to(ids.device)
             ids = torch.cat(
-                [ids[beam_idx, :], beam_tokens.unsqueeze(-1)], dim=-1)
+                [ids[idx, :], beam_tokens.to(ids.device).unsqueeze(-1)],
+                dim=-1)
             mask = torch.cat(
-                [mask[beam_idx], mask.new_ones(num_beams, 1)], dim=1)
-            cache.reorder_cache(beam_idx)
+                [mask[idx], mask.new_ones(num_beams, 1)], dim=1)
+            # reorder_cache moves the index onto each layer's own device.
+            cache.reorder_cache(beam_idx.cpu())
 
             if collect_trace:
                 trace.append({

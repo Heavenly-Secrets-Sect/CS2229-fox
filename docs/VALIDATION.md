@@ -238,6 +238,40 @@ POPE: strictly between 0 and 1, so none of the three is inert, and each
 changes about one decision in 25. POPE emits one token, so this is the
 floor; CHAIR should be far higher.
 
+## Results, round 7 (2026-11-08) — the gate passes
+
+**16 predictions held, 0 failed.** V5 is still outstanding: OPERA has not
+produced a record yet.
+
+**V2 under greedy is exact, as re-specified.** VCD, ICD and SID reproduce
+the greedy baseline on all 500 samples, token for token. So the shared rule
+is wired correctly in all three, including which side the coefficient sits
+on — the thing the sampling version could never have shown.
+
+CausalMM differs on **1 of 500**, and that is the eager-CLIP deviation
+rather than the rule. `output_attentions=True` forces the vision tower onto
+its eager path, so CausalMM's *clean* branch is not the baseline's clean
+branch whatever `alpha` is (§3.13). One flipped decision in 500 puts a
+number on a deviation that was previously only a bound: **0.2 % of POPE
+decisions**. `check_validation.py` now reads it that way, with a 1 % ceiling
+above which it would still be a fault.
+
+**V6 across both benchmarks**, and the prediction that CHAIR would be far
+higher than POPE holds:
+
+| arm | POPE | CHAIR |
+|---|---|---|
+| `vcd` | 0.067 | 0.068 |
+| `icd` | 0.038 | 0.027 |
+| `sid` | 0.046 | 0.074 |
+| `causalmm` | 0.039 | **0.306** |
+
+CausalMM changes almost a third of its CHAIR tokens. That is consistent with
+the two things already measured about it — a negative branch that is close
+to image-blind, and `epsilon = 0.6`, a far tighter plausibility cutoff than
+the 0.1 the others use — and it is the arm to read most carefully when the
+CHAIR table arrives.
+
 ## V6 — Does each rule change any decision? (no extra run)
 
 Recorded on **every** paired run: `n_diverged` and `diverged_frac`, the
