@@ -1424,3 +1424,63 @@ class TestIngestRefusesAMismatchedFile(unittest.TestCase):
         self.assertEqual(rep["rejected"], 0)
         lines = (self.dest / name).read_text().splitlines()
         self.assertEqual(len(lines), 6)
+
+
+class TestInFlightJobsAreLeftOut(unittest.TestCase):
+    """The planner reads the disk, so it cannot see another live session.
+
+    A job running on Kaggle right now is still zero records here, so a fresh
+    freeze schedules it again. That happened twice and cost 8.5 GPU-h each
+    time: once six OPERA jobs were re-planned while r8 session 1 was running
+    them, and once a whole session's worth of finished work was redone.
+
+    `--in-flight` leaves them out of THIS freeze without marking them done,
+    so if that session dies they come straight back on the next one --
+    nothing about the archive changed.
+    """
+
+    IDS = ("table7:fox:pope:adversarial:greedy:a0",
+           "table7:fox:pope:adversarial:greedy:a3")
+
+    def setUp(self) -> None:
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        self.out = Path(td.name) / "p.json"
+
+    def freeze(self, **kw):
+        from foxrepro.bench.plan import freeze_plan
+
+        freeze_plan(None, 10.0, self.out, round_tag="t", skip_done=False, **kw)
+        return json.loads(self.out.read_text())
+
+    def test_they_are_absent_from_every_session(self) -> None:
+        base = self.freeze()
+        base_ids = {j for s in base["sessions"] for j in s["jobs"]}
+        for i in self.IDS:
+            self.assertIn(i, base_ids, "fixture job id is stale")
+
+        got = self.freeze(in_flight=self.IDS)
+        ids = {j for s in got["sessions"] for j in s["jobs"]}
+        self.assertEqual(set(self.IDS) & ids, set())
+        self.assertEqual(len(ids), len(base_ids) - len(self.IDS))
+
+    def test_the_exclusion_is_recorded(self) -> None:
+        """So a later reader can tell "not scheduled" from "done"."""
+        got = self.freeze(in_flight=self.IDS)
+        self.assertEqual(got["in_flight_excluded"], sorted(self.IDS))
+
+    def test_they_come_back_when_not_excluded(self) -> None:
+        """Excluded, not marked done: a dead session loses nothing."""
+        got = self.freeze()
+        ids = {j for s in got["sessions"] for j in s["jobs"]}
+        for i in self.IDS:
+            self.assertIn(i, ids)
+
+    def test_a_typo_raises_rather_than_scheduling_twice(self) -> None:
+        """Silently ignoring an unknown id is the failure mode to avoid."""
+        from foxrepro.bench.plan import freeze_plan
+
+        with self.assertRaises(ValueError) as cm:
+            freeze_plan(None, 10.0, self.out, round_tag="t", skip_done=False,
+                        in_flight=["table7:fox:pope:adversarial:greedy:a9"])
+        self.assertIn("not job ids", str(cm.exception))

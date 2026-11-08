@@ -1499,6 +1499,7 @@ def freeze_plan(
     calibrate: Optional[Path] = None, round_tag: str = "r1",
     pilot: bool = False, order: str = "priority",
     runs_root: Optional[Path] = None, skip_done: bool = True,
+    in_flight: Sequence[str] = (),
 ) -> Dict[str, object]:
     """Partition the plan and write it to disk.
 
@@ -1540,6 +1541,21 @@ def freeze_plan(
             measured[parts[0]] = measured.get(parts[0], 0.0) + minutes * 60.0
 
     jobs = PLAN
+    if in_flight:
+        # Jobs running RIGHT NOW in another session. The planner reads the
+        # disk, and a job in flight on Kaggle is still zero records locally,
+        # so without this it is scheduled again -- which has now happened
+        # twice and is worth 8.5 GPU-h each time. They are excluded rather
+        # than marked done: if that session dies, the next freeze picks them
+        # straight back up, because nothing about the archive changed.
+        known = {j.job_id() for j in PLAN}
+        unknown = sorted(set(in_flight) - known)
+        if unknown:
+            raise ValueError(
+                f"not job ids in this plan: {unknown}. Check them against "
+                f"`plan list` -- a typo here silently schedules the work twice."
+            )
+        jobs = [j for j in jobs if j.job_id() not in set(in_flight)]
     if order == "priority":
         groups = partition_by_priority(
             budget_hours, jobs, runs_root=runs_root, skip_done=skip_done)
@@ -1555,6 +1571,8 @@ def freeze_plan(
         "n_sessions": len(groups),
         "budget_hours": budget_hours,
         "n_calibrated": len(measured),
+        # Recorded so a later reader can tell "not scheduled" from "done".
+        "in_flight_excluded": sorted(in_flight),
         "jobs": {},
         "sessions": [],
     }
@@ -1746,6 +1764,15 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
              "choice only when every job will be run.")
     a.add_argument("--sessions", type=int, default=None,
                    help="required with --order balanced; ignored otherwise")
+    a.add_argument(
+        "--in-flight", action="append", default=None, metavar="IDS|FILE",
+        help="job ids already running in ANOTHER session, comma-separated or "
+             "a file with one per line. They are left out of this freeze. "
+             "The planner reads the disk, and a job in flight elsewhere is "
+             "still zero records here, so without this it gets scheduled "
+             "twice. Excluded, not marked done: if that session dies the "
+             "next freeze picks them back up.",
+    )
     a.add_argument("--include-done", action="store_true",
                    help="keep finished jobs in the session list")
     a.add_argument("--budget-hours", type=float, default=10.0,
@@ -1810,12 +1837,25 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
                          indent=2))
         return 0
     if cmd == "plan":
+        in_flight: List[str] = []
+        for spec in (args.in_flight or []):
+            pth = Path(spec)
+            if pth.is_file():
+                in_flight += [ln.strip() for ln in pth.read_text().splitlines()
+                              if ln.strip() and not ln.startswith("#")]
+            else:
+                in_flight += [x for x in spec.split(",") if x]
         payload = freeze_plan(args.sessions, args.budget_hours, args.out,
                               args.calibrate, args.round, pilot=args.pilot,
                               order=args.order,
-                              skip_done=not args.include_done)
+                              skip_done=not args.include_done,
+                              in_flight=in_flight)
         print(f"# Wrote {args.out}  (round {payload['round']}, "
-              f"{payload['n_calibrated']} calibrated estimates)\n")
+              f"{payload['n_calibrated']} calibrated estimates)")
+        if in_flight:
+            print(f"# {len(in_flight)} job(s) left out as in flight elsewhere; "
+                  f"they return on the next freeze if that session dies.")
+        print()
         print("| session | jobs | est GPU-h |")
         print("|---|---|---|")
         over = []
