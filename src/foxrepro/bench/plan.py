@@ -180,6 +180,13 @@ class Job:
     k: Optional[float] = None
     tau_js: Optional[float] = None
     alpha: Optional[float] = None
+    #: Figure 9's third axis. Already in VARIANT_FIELDS, so the run file
+    #: reflects it; it just had no way of being set from the plan.
+    beta: Optional[float] = None
+    #: Table 15. "2-13" is what the PAPER says the window is; "2-15" is what
+    #: the code does, and is the default, so this is only ever set to the
+    #: paper's value.
+    intervention_layers: Optional[str] = None
     seed: int = 42
     limit: Optional[int] = None
     #: Overrides the per-benchmark default. OPERA is the only user: its own
@@ -222,8 +229,11 @@ class Job:
             bits.append(f"w{self.wrapper_id}")
         if self.prompt_template_id:
             bits.append(self.prompt_template_id)
+        if self.intervention_layers is not None:
+            bits.append(f"L{self.intervention_layers}")
         for nm, v in (("g", self.gamma), ("k", self.k),
-                      ("t", self.tau_js), ("a", self.alpha)):
+                      ("t", self.tau_js), ("a", self.alpha),
+                      ("b", self.beta)):
             if v is not None:
                 bits.append(f"{nm}{v:g}")
         if self.seed != 42:
@@ -284,12 +294,12 @@ class Job:
         """Must match what ``generate.py`` would build, or progress is wrong."""
         variant = {
             "gamma": self.gamma, "k": self.k, "tau_js": self.tau_js,
-            "alpha": self.alpha, "beta": None,
+            "alpha": self.alpha, "beta": self.beta,
             "max_new_tokens": self.n_new_tokens(),
             "prompt_template_id": self.template_id(),
             "model_id": "llava-hf/llava-1.5-7b-hf",
             "decoding": self.decoding, "top_p": 0.9, "temperature": 1.0,
-            "intervention_layers": None,
+            "intervention_layers": self.intervention_layers,
             "logit_dtype": self.logit_dtype, "softmax_dtype": "fp32",
             "mode": self.mode, "system_prompt_id": self.system_prompt_id,
             "wrapper_id": self.wrapper_id,
@@ -322,9 +332,12 @@ class Job:
             parts.append(f"--mode {self.mode}")
             parts.append(f"--logit-dtype {self.logit_dtype}")
         for flag, val in (("--gamma", self.gamma), ("--k", self.k),
-                          ("--tau-js", self.tau_js), ("--alpha", self.alpha)):
+                          ("--tau-js", self.tau_js), ("--alpha", self.alpha),
+                          ("--beta", self.beta)):
             if val is not None:
                 parts.append(f"{flag} {val:g}")
+        if self.intervention_layers is not None:
+            parts.append(f"--intervention-layers {self.intervention_layers}")
         if self.control is not None:
             parts.append(f"--control {self.control}")
         if self.max_new_tokens is not None:
@@ -369,13 +382,20 @@ SEEDS_HEADLINE = SEEDS_FULL
 #:                    how much of the gain is the two-branch fusion alone
 #: ``ulp_control``    the requantisation applied with no shift at all -- if
 #:                    this matches ``fox``, the mechanism is the fp16 cast
+#: ``random_heads``   the released edit on the released NUMBER of heads, but
+#:                    chosen at random. Figure 8, and the one control that
+#:                    tests the paper's actual claim: the causal story is that
+#:                    the diagnosis finds the heads that matter. It gets the
+#:                    same ten seeds as the arms it is compared against,
+#:                    because it has to be read against `fox` and `off` on the
+#:                    same footing.
 #:
 #: The remaining arms (``as_described``, ``noise_control``, ``boost_visual``,
 #: the logit-dtype arms, the gamma sweep) are run under greedy instead, where
 #: argmax is deterministic and one run is the complete answer. For the
 #: mechanism question -- does the shift change the output at all -- that is
 #: both cheaper and a sharper instrument than ten noisy sampling runs.
-POPE_SEEDED_MODES = ("off", "ulp_control")
+POPE_SEEDED_MODES = ("off", "ulp_control", "random_heads")
 
 
 def _build_plan() -> List[Job]:
@@ -550,6 +570,41 @@ def _build_plan() -> List[Job]:
             jobs.append(Job("boost_visual", "fox", bench, split,
                             mode="boost_visual", gamma=4.0, seed=seed,
                             note="amplify visual attention, delta=4, sampling"))
+
+    # ---- Round 9: the ablations the plan never carried --------------------- #
+    # Everything here is in the paper and none of it needed new code beyond
+    # the random-head mode: the knobs were already wired through
+    # VARIANT_FIELDS and simply had no way to be set from a Job.
+
+    # Table 15. The paper says the intervention window is layers 2-13; the
+    # released code uses 2-15, and a leftover author log path agrees with the
+    # code. One of the two produced the 81.93 in Table 1 and the project has
+    # never measured which. Greedy, because the question is "does the window
+    # change the output", and greedy answers it in one run per cell.
+    for bench, split in (("pope", "adversarial"), ("chair", "val2014_500")):
+        jobs.append(Job("table15", "fox", bench, split, decoding="greedy",
+                        intervention_layers="2-13",
+                        note="the window the PAPER states, against the code's 2-15"))
+    # And under sampling on POPE, where the headline number lives.
+    for seed in SEEDS_BREADTH:
+        jobs.append(Job("table15", "fox", "pope", "adversarial", seed=seed,
+                        intervention_layers="2-13",
+                        note="paper's window, sampling"))
+
+    # Table 7 completed. alpha = 2 is the default and alpha = 1 and 4 already
+    # ran; 0 and 3 close the sweep. alpha = 0 is also a sanity check on our
+    # own fusion -- at zero gain the fused logits must be the observational
+    # ones, the same identity the compared methods were checked against.
+    for alpha in (0.0, 3.0):
+        jobs.append(Job("table7", "fox", "pope", "adversarial", alpha=alpha,
+                        decoding="greedy", note=f"alpha={alpha:g}"))
+
+    # Figure 9's third axis. k and tau_JS were swept; beta never was, because
+    # Job had no field for it. 0.1 is the released value.
+    for beta in (0.05, 0.2):
+        jobs.append(Job("fig9", "fox", "pope", "adversarial", beta=beta,
+                        limit=500, decoding="greedy",
+                        note=f"beta={beta:g}, 500 samples"))
 
     # ---- Round 6, gate: do the ported methods work before we trust them? --- #
     # ---- Validation tier: is each ported method doing what its paper says?

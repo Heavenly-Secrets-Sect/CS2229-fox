@@ -72,6 +72,9 @@ def cfg_from_command(cmd: str) -> GenConfig:
         k=float(str(args["k"])) if "k" in args else None,
         tau_js=float(str(args["tau_js"])) if "tau_js" in args else None,
         alpha=float(str(args["alpha"])) if "alpha" in args else None,
+        beta=float(str(args["beta"])) if "beta" in args else None,
+        intervention_layers=(str(args["intervention_layers"])
+                             if args.get("intervention_layers") else None),
     )
 
 
@@ -119,10 +122,27 @@ class TestPlanShape(unittest.TestCase):
         self.assertNotIn(1e5, {j.gamma for j in PLAN})
 
     def test_every_control_mode_is_planned(self) -> None:
+        """Every intervention arm but the two defaults has a control job.
+
+        ``as_implemented`` is the method itself and ``boost_visual`` has its
+        own target, so neither belongs here. If a mode is added to
+        INTERVENTION_MODES and nothing runs it, the arm exists only in the
+        code -- which is how `random_heads`, the control for the paper's
+        central claim, could have been written and never scheduled.
+        """
+        from foxrepro.storage import INTERVENTION_MODES
+
         modes = {j.mode for j in PLAN if j.target == "controls"}
         self.assertEqual(
-            modes, {"off", "as_described", "ulp_control", "noise_control"}
+            modes,
+            {"off", "as_described", "ulp_control", "noise_control",
+             "random_heads"},
         )
+        unplanned = (set(INTERVENTION_MODES)
+                     - modes
+                     - {"as_implemented", "boost_visual"})
+        self.assertEqual(unplanned, set(),
+                         f"intervention modes with no job: {unplanned}")
 
     def test_dual_branch_jobs_cost_more(self) -> None:
         single = Job("t", "sampling", "pope", "random")

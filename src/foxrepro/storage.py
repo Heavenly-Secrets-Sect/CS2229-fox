@@ -129,9 +129,16 @@ SOFTMAX_DTYPES = ("fp32", "native")
 #:                    grid, with no quantization structure. If this also
 #:                    reproduces the gain, the method is noise injection and
 #:                    the head-selection machinery is decorative.
+#: ``random_heads``   the released edit on the released number of heads, but
+#:                    chosen UNIFORMLY AT RANDOM instead of by the diagnosis.
+#:                    The paper's Figure 8. Its whole causal story is that the
+#:                    diagnosis finds the heads that matter; if random heads
+#:                    do as well, the gain belongs to the edit and not to the
+#:                    diagnosis, and the paper's contribution is the part it
+#:                    does not argue for.
 INTERVENTION_MODES = (
     "off", "as_implemented", "as_described", "boost_visual",
-    "ulp_control", "noise_control",
+    "ulp_control", "noise_control", "random_heads",
 )
 
 #: Prompt arms. The strings themselves live in ``bench.methods``, which cannot

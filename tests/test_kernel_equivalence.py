@@ -825,3 +825,92 @@ class TestCausalMMBitEquality(unittest.TestCase):
         c = cf_shuffle_attention(attn, generator=torch.Generator().manual_seed(5))
         self.assertTrue(torch.equal(a, b))
         self.assertFalse(torch.equal(a, c))
+
+
+class TestRandomHeadSelection(unittest.TestCase):
+    """Figure 8's control: the same edit, on heads chosen at random.
+
+    The paper's causal story is that its diagnosis locates the heads that
+    carry the hallucination. That claim is only testable against an arm that
+    edits the same NUMBER of heads chosen without looking at the scores --
+    everything else identical, down to the gamma shift and the fp16 cast.
+    """
+
+    def test_it_keeps_the_released_head_count(self) -> None:
+        from foxrepro.fox.kernel import select_heads
+
+        scores = torch.rand(4, 32, generator=torch.Generator().manual_seed(0))
+        top = select_heads(scores, RELEASED_SELECT_RATIO)
+        rnd = select_heads(scores, RELEASED_SELECT_RATIO, select="random",
+                           generator=torch.Generator().manual_seed(1))
+        self.assertEqual(top.sum(dim=1).tolist(), rnd.sum(dim=1).tolist())
+        self.assertEqual(rnd.sum(dim=1).unique().tolist(), [11])
+
+    def test_it_ignores_the_scores(self) -> None:
+        """Two different score tensors, one seed: the same heads."""
+        from foxrepro.fox.kernel import select_heads
+
+        g = torch.Generator().manual_seed(2)
+        a = select_heads(torch.rand(2, 32), 0.35, select="random",
+                         generator=g)
+        g = torch.Generator().manual_seed(2)
+        b = select_heads(torch.zeros(2, 32), 0.35, select="random",
+                         generator=g)
+        self.assertTrue(torch.equal(a, b))
+
+    def test_it_is_seeded(self) -> None:
+        from foxrepro.fox.kernel import select_heads
+
+        s = torch.rand(2, 32)
+        a = select_heads(s, 0.35, select="random",
+                         generator=torch.Generator().manual_seed(3))
+        b = select_heads(s, 0.35, select="random",
+                         generator=torch.Generator().manual_seed(3))
+        c = select_heads(s, 0.35, select="random",
+                         generator=torch.Generator().manual_seed(4))
+        self.assertTrue(torch.equal(a, b))
+        self.assertFalse(torch.equal(a, c))
+
+    def test_rows_are_drawn_independently(self) -> None:
+        from foxrepro.fox.kernel import select_heads
+
+        r = select_heads(torch.rand(8, 32), 0.35, select="random",
+                         generator=torch.Generator().manual_seed(5))
+        self.assertGreater(len({tuple(row.tolist()) for row in r}), 1)
+
+    def test_the_mode_differs_from_the_released_arm_only_in_selection(self) -> None:
+        """Same edit, same magnitude -- the gamma shift and the fp16 cast.
+
+        If `random_heads` also changed how the edit is applied it would stop
+        being a control on the diagnosis and become a second variable.
+        """
+        from foxrepro.fox.kernel import intervene
+
+        g = torch.Generator().manual_seed(7)
+        base = (torch.randn(1, 32, SEQ, SEQ, generator=g) * 3).half()
+        mask = torch.triu(
+            torch.full((1, 1, SEQ, SEQ), torch.finfo(torch.float32).min),
+            diagonal=1)
+        out_t, _ = intervene(base.clone(), IMG_START, IMG_END,
+                             mode="as_implemented", gamma=RELEASED_PENALTY_VALUE,
+                             ratio=RELEASED_SELECT_RATIO, attention_mask=mask)
+        out_r, _ = intervene(base.clone(), IMG_START, IMG_END,
+                             mode="random_heads", gamma=RELEASED_PENALTY_VALUE,
+                             ratio=RELEASED_SELECT_RATIO, attention_mask=mask,
+                             generator=torch.Generator().manual_seed(9))
+        edited_t = (out_t != base).any(dim=-1)[0, :, -1]
+        edited_r = (out_r != base).any(dim=-1)[0, :, -1]
+        # the same number of heads touched, but not the same heads
+        self.assertEqual(int(edited_t.sum()), int(edited_r.sum()))
+        self.assertFalse(torch.equal(edited_t, edited_r))
+        # and where both touched a head, the written value is the same rule
+        both = edited_t & edited_r
+        if bool(both.any()):
+            self.assertTrue(torch.equal(out_t[0, both, -1, :],
+                                        out_r[0, both, -1, :]))
+
+    def test_an_unknown_selection_rule_raises(self) -> None:
+        from foxrepro.fox.kernel import select_heads
+
+        with self.assertRaises(ValueError):
+            select_heads(torch.rand(1, 8), 0.35, select="best")

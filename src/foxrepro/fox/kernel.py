@@ -171,19 +171,43 @@ def head_scores(
     return m_sys, h_vis
 
 
-def select_heads(scores: torch.Tensor, ratio: float) -> torch.Tensor:
-    """Top-k heads per batch row, as a boolean ``[B, H]`` mask.
+def select_heads(
+    scores: torch.Tensor,
+    ratio: float,
+    *,
+    select: str = "top",
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    """Which heads the intervention edits, as a boolean ``[B, H]`` mask.
 
     ``k = clamp(round(H * ratio), 1, H // 2)``. The upper clamp is in the
     released code and caps any ratio above 0.5 at half the heads: for 32 heads,
     the released ratio 0.35 gives 11, and the paper's 0.45 would give 14.
 
     Vectorised over the batch; the released code loops.
+
+    ``select="random"`` keeps the same ``k`` but ignores ``scores``. That is
+    Figure 8's control and the single most direct question that can be asked
+    of this paper: the whole causal story is that the diagnosis finds the
+    heads that matter, so editing ``k`` heads chosen at random must do less.
+    If it does not, the gain belongs to the edit -- a gamma shift that
+    survives only as an fp16 rounding, by this project's own measurement --
+    and not to the diagnosis.
     """
+    if select not in ("top", "random"):
+        raise ValueError(f"select must be 'top' or 'random', got {select!r}")
     B, H = scores.shape
     k = int(round(H * ratio))
     k = max(1, min(k, H // 2))
-    idx = torch.topk(scores, k=k, dim=-1, largest=True).indices
+    if select == "random":
+        # Independently per row, and redrawn on every call -- the diagnosis it
+        # stands in for is also recomputed at every forward.
+        idx = torch.stack([
+            torch.randperm(H, device=scores.device, generator=generator)[:k]
+            for _ in range(B)
+        ])
+    else:
+        idx = torch.topk(scores, k=k, dim=-1, largest=True).indices
     mask = torch.zeros((B, H), dtype=torch.bool, device=scores.device)
     return mask.scatter_(1, idx, True)
 
@@ -261,7 +285,11 @@ def intervene(
     m_sys, h_vis = stats
     score = (m_sys * h_vis) if use_m_sys else h_vis
 
-    head_mask = select_heads(score, ratio)                       # [B, H] bool
+    head_mask = select_heads(                                    # [B, H] bool
+        score, ratio,
+        select="random" if mode == "random_heads" else "top",
+        generator=generator,
+    )
     B, H, Q, K = attn_logits.shape
     row_sel = (
         torch.arange(B, device=attn_logits.device) if rows is None
@@ -279,9 +307,13 @@ def intervene(
         # The released slice: ALL key positions, the LAST query only.
         target = attn_logits[b, heads, -1:, :]
 
-        if mode == "as_implemented":
+        if mode in ("as_implemented", "random_heads"):
             # fp32 round trip, then back to storage dtype. The shift cancels in
             # the stable fp32 softmax downstream; the cast's rounding does not.
+            #
+            # random_heads takes this branch on purpose: it must differ from
+            # the released arm in the SELECTION and in nothing else, or it
+            # stops being a control on the diagnosis.
             y = (target.to(torch.float32) - gamma).to(store_dtype)
         elif mode == "boost_visual":
             # The experiment the paper argues from but never runs.
