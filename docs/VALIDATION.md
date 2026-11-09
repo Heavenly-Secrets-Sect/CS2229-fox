@@ -272,6 +272,56 @@ to image-blind, and `epsilon = 0.6`, a far tighter plausibility cutoff than
 the 0.1 the others use — and it is the arm to read most carefully when the
 CHAIR table arrives.
 
+## Results, round 8/9 (2026-11-09) — V5 settles, V4 is re-specified
+
+**17 predictions held, 0 failed.** Every arm has now run except V4's greedy
+repeat, added below.
+
+**V5: the over-trust penalty is inert on POPE, as predicted.** All three
+arms land on the same number.
+
+| arm | accuracy | vs plain OPERA |
+|---|---|---|
+| `opera` | 79.10 | — |
+| `opera_no_penalty` | 79.03 | −0.07 |
+| `opera_unrestricted` | 79.13 | +0.03 |
+
+A 0.10-point total spread over 3000 questions. Neither of OPERA's two
+unnamed components does measurable work here, so **OPERA's POPE number is
+beam search**, and the published gain over sampling is a decoding-strategy
+gain that the paper attributes to an attention penalty.
+
+The telemetry recorded on the plain run says why, and said it before the
+controls were compared: the penalty's spread across the five candidates
+averages **0.067** against a logit spread of **9.099** — 136x smaller — and
+over 3000 questions it moved the top candidate at **one single step**
+(`n_steps_penalty_changed_top` mean 0.00033). The prediction was made from a
+correct-geometry stand-in that put the ratio at 300x; the real model gives
+136x, the same conclusion with a weaker margin.
+
+The structural reason stands: the attention row is a softmax over all keys
+and 576 of ~586 are image tokens, so every candidate's image share is ≈1 and
+they differ only in how much the next token attends to the handful of text
+keys. On POPE that next token is `Yes` or `No` after a one-token budget,
+which is the least room any benchmark could give the mechanism.
+
+**V4 was asked under the wrong protocol, the same way V2 was.** Read under
+sampling, `cf_constant` agreed with `shuffle` on 96.6 % of 500 answers and
+`cf_blind` on 95.2 %, which reads as "the shuffle carries signal after all".
+It is not evidence of that. A multinomial draw flips whenever the logits
+move at all, however little, so two arms whose distributions coincide still
+disagree token by token; the accuracies were 78.40 / 77.80 / 78.00, a
+0.6-point spread on n=500 against a ±3.7-point interval — indistinguishable.
+
+So the arm is **re-specified to greedy**, where there is no draw and
+"do these three produce the same text" is answerable. Three jobs, 500
+samples, 0.42 h: `shuffle`, `cf_constant`, `cf_blind`, all greedy. The plain
+arm is re-run because the only greedy `causalmm` on disk is V2's `alpha = 0`
+row, which is the *baseline*, not CausalMM.
+
+**Prediction, unchanged: token-identical under greedy.** `check_validation.py`
+reads the sampling arms as INFO and decides only on the greedy ones.
+
 ## V6 — Does each rule change any decision? (no extra run)
 
 Recorded on **every** paired run: `n_diverged` and `diverged_frac`, the

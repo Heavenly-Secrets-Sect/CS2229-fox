@@ -676,6 +676,25 @@ def _build_plan() -> List[Job]:
                         control=control, limit=500,
                         note=f"is the shuffle load-bearing? {control}"))
 
+    #     GREEDY repeat, and this is the same correction V2 needed. Read
+    #     under sampling the arms above agreed on only 96.6% / 95.2% of the
+    #     500 answers, which looks like "the shuffle carries signal" and is
+    #     not evidence of anything: a multinomial draw flips whenever the
+    #     logits move at all, however little, so a near-identical
+    #     distribution still disagrees token by token. The accuracies were
+    #     78.40 / 77.80 / 78.00 -- a 0.6-point spread on n=500, well inside
+    #     the +-3.7 point interval. Under greedy there is no draw, so
+    #     "do these three produce the same text" becomes answerable.
+    #     PREDICTION: shuffle, constant and blind are token-identical under
+    #     greedy. The plain arm is re-run at the same limit because the only
+    #     greedy causalmm on disk is V2's alpha=0 row, which is the baseline
+    #     rather than causalmm.
+    for control in (None, "cf_constant", "cf_blind"):
+        jobs.append(Job("validation", "causalmm", "pope", "adversarial",
+                        control=control, limit=500, decoding="greedy",
+                        note="is the shuffle load-bearing, with no draw to "
+                             f"hide behind? {control or 'shuffle'}"))
+
     # V5. OPERA is three things at once: a beam search, a hard five-candidate
     #     restriction, and an attention bonus. These two rows separate them --
     #     whatever the restriction alone buys is `opera_no_penalty` minus a

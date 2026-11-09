@@ -1,7 +1,0 @@
-# 6 job OPERA đang chạy ở r8_s1 trên Kaggle
-validation:opera:pope:adversarial:greedy:opera_unrestricted
-validation:opera:pope:adversarial:greedy:opera_no_penalty
-table1_methods:opera:pope:random:greedy
-table1_methods:opera:pope:popular:greedy
-table1_methods:opera:pope:adversarial:greedy
-opera_protocol:opera:pope:adversarial:greedy

@@ -164,46 +164,111 @@ def v2_alpha_zero_collapses(runs: Path) -> List[str]:
 
 
 def v4_is_the_shuffle_load_bearing(runs: Path) -> List[str]:
-    """CausalMM's gain is 1/577 whatever the attention is."""
+    """CausalMM's gain is 1/577 whatever the attention is.
+
+    GREEDY where it exists, and that is a correction with the same cause as
+    V2's. Token identity is not a question sampling can answer: a
+    multinomial draw flips whenever the logits move at all, so two arms
+    whose distributions agree still disagree sample by sample. Read under
+    sampling these arms agreed on 96.6% / 95.2% of 500 answers while their
+    accuracies spanned 0.6 points on n=500 -- inside the noise. Under greedy
+    there is no draw, so a disagreement means the logits really differ.
+    """
     print("\nV4  Is CausalMM's shuffle doing the work, or just its magnitude?")
-    base = find(runs, "causalmm")
-    if base is None:
-        say(SKIP, "plain causalmm not run yet")
-        return []
-    ref = outputs_by_sample(load(base)[0])
     verdicts = []
-    for control in ("cf_constant", "cf_blind"):
-        path = find(runs, "causalmm", control=control)
-        if path is None:
-            say(SKIP, f"{control} not run yet")
+    for decoding in ("greedy", "sampling"):
+        base = find(runs, "causalmm", decoding=decoding)
+        if base is None:
             continue
-        got = outputs_by_sample(load(path)[0])
-        shared = sorted(set(got) & set(ref))
-        if not shared:
-            say(SKIP, f"{control}: no overlapping sample ids")
-            continue
-        same = sum(1 for s in shared if got[s] == ref[s])
-        frac = same / len(shared)
-        verdict = PASS if frac > 0.99 else INFO
-        say(verdict, f"{control}: agrees with shuffle on {same}/{len(shared)} "
-                     f"({frac:.1%})"
-                     + ("  -- the vision counterfactual is not what works; "
-                        "CausalMM is a language-prior contrast"
-                        if frac > 0.99 else
-                        "  -- the shuffle carries signal after all"))
-        verdicts.append(verdict)
+        exact = decoding == "greedy"
+        label = "greedy, token-identity" if exact else \
+                "sampling, DISTRIBUTION only -- a draw flips on any logit change"
+        print(f"      [{label}]")
+        base_records = load(base)[0]
+        ref = outputs_by_sample(base_records)
+        ref_acc = None
+        for control in ("cf_constant", "cf_blind"):
+            path = find(runs, "causalmm", decoding=decoding, control=control)
+            if path is None:
+                say(SKIP, f"{control}: not run under {decoding}")
+                continue
+            records = load(path)[0]
+            got = outputs_by_sample(records)
+            shared = sorted(set(got) & set(ref))
+            if not shared:
+                say(SKIP, f"{control}: no overlapping sample ids")
+                continue
+            if ref_acc is None:
+                ref_acc = pope_accuracy(
+                    [r for r in base_records if r["sample_id"] in set(shared)],
+                    "adversarial")
+                say(INFO, f"shuffle on these {len(shared)}: {ref_acc:.2f}")
+            acc = pope_accuracy(records, "adversarial")
+            same = sum(1 for s in shared if got[s] == ref[s])
+            frac = same / len(shared)
+            text = (f"{control}: agrees with shuffle on {same}/{len(shared)} "
+                    f"({frac:.1%}), accuracy {acc:.2f} ({acc - ref_acc:+.2f})")
+            if not exact:
+                say(INFO, text + "  -- read the accuracy, not the agreement")
+                continue
+            if frac > 0.99:
+                say(PASS, text + "  -- the vision counterfactual is a "
+                                 "description of something the code does not "
+                                 "do; CausalMM is a language-prior contrast")
+                verdicts.append(PASS)
+            else:
+                say(FAIL, text + "  -- with no draw to blame, the residual "
+                                 "image signal is load-bearing after all and "
+                                 "the 1/n_keys argument is incomplete")
+                verdicts.append(FAIL)
     return verdicts
 
 
+def opera_penalty_diagnostics(records):
+    """OPERA records its own penalty telemetry, so a plain run answers the
+    first row of V5's table before any control is compared."""
+    keys = ("penalty_spread_mean", "logit_spread_mean",
+            "n_steps_penalty_changed_top")
+    out = {}
+    for key in keys:
+        vals = [(r.get("method_extra") or {}).get(key) for r in records]
+        vals = [v for v in vals if v is not None]
+        if vals:
+            out[key] = sum(vals) / len(vals)
+    return out
+
+
 def v5_opera_decomposition(runs: Path) -> List[str]:
-    """Which third of OPERA is working?"""
+    """Which third of OPERA is working?
+
+    Pre-registered prediction (docs/VALIDATION.md V5): `opera_no_penalty`
+    lands ON TOP of plain OPERA, i.e. the over-trust penalty is inert on
+    POPE. A FAIL here is this project's PREDICTION being wrong, not a defect
+    in the port -- it would mean the penalty does real work and the
+    correct-geometry stand-in understated it.
+
+    No direction was pre-registered for `opera_unrestricted`, so it stays
+    INFO: the document lists readings for it but never named a favourite.
+    """
     print("\nV5  OPERA: beam search, candidate restriction, or penalty?")
     plain = find(runs, "opera", decoding="greedy")
     if plain is None:
         say(SKIP, "plain opera not run yet")
         return []
-    plain_acc = pope_accuracy(load(plain)[0], "adversarial")
+    plain_records = load(plain)[0]
+    plain_acc = pope_accuracy(plain_records, "adversarial")
     say(INFO, f"opera accuracy {plain_acc:.2f}")
+
+    diag = opera_penalty_diagnostics(plain_records)
+    if diag:
+        parts = [f"{k} {v:.4g}" for k, v in diag.items()]
+        say(INFO, "penalty telemetry: " + ", ".join(parts))
+        changed = diag.get("n_steps_penalty_changed_top")
+        if changed is not None and changed <= 0.0:
+            say(INFO, "the penalty never moved the top candidate at any step, "
+                      "so the accuracy comparison below can only agree")
+
+    verdicts = []
     for control in ("opera_no_penalty", "opera_unrestricted"):
         path = find(runs, "opera", decoding="greedy", control=control)
         if path is None:
@@ -211,12 +276,24 @@ def v5_opera_decomposition(runs: Path) -> List[str]:
             continue
         acc = pope_accuracy(load(path)[0], "adversarial")
         delta = acc - plain_acc
-        note = ""
-        if control == "opera_no_penalty" and abs(delta) < 0.2:
-            note = ("  -- the over-trust penalty is INERT; OPERA's POPE "
-                    "number is beam search with a truncated candidate set")
-        say(INFO, f"{control}: {acc:.2f} ({delta:+.2f}){note}")
-    return []
+        if control == "opera_unrestricted":
+            say(INFO, f"{control}: {acc:.2f} ({delta:+.2f})"
+                      + ("  -- the five-candidate restriction is not what "
+                         "helps" if abs(delta) < 0.2 else
+                         "  -- the restriction is load-bearing"))
+            continue
+        if abs(delta) < 0.2:
+            say(PASS, f"{control}: {acc:.2f} ({delta:+.2f}) -- the over-trust "
+                      f"penalty is INERT on POPE. OPERA's published POPE "
+                      f"number is beam search with a truncated candidate set")
+            verdicts.append(PASS)
+        else:
+            say(FAIL, f"{control}: {acc:.2f} ({delta:+.2f}) -- the penalty "
+                      f"DOES move POPE, so the prediction in VALIDATION.md "
+                      f"V5 was wrong: the stand-in's near-uniform attention "
+                      f"understated it. Not a port defect")
+            verdicts.append(FAIL)
+    return verdicts
 
 
 def v6_divergence(runs: Path) -> List[str]:
