@@ -763,6 +763,16 @@ over-trust penalty is inert on POPE and its published number is beam-5 with a
 truncated candidate set. The diagnostic is in the record so the run answers
 it rather than an argument doing so.
 
+**The real model answered, 2026-11-09, and it is the same answer.** On
+LLaVA-1.5-7B fp16 over POPE-adversarial's 3000 questions the penalty spread
+is **0.067** against a logit spread of **9.099** — 136x smaller rather than
+the stand-in's 300x, so the trained model's attention sinks do narrow the
+gap, and not nearly enough to matter. Over 3000 questions the penalty moved
+the top candidate at **one step**. The accuracies agree to within 0.10
+points across all three arms (79.10 / 79.03 / 79.13; `VALIDATION.md` V5), so
+on POPE **OPERA is beam search**, and the paragraph above is now a
+measurement rather than a prediction.
+
 #### The rollback, audited but not built
 
 CHAIR needs it, and three findings say it should not be ported literally.
