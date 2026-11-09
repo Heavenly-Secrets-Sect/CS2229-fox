@@ -280,6 +280,7 @@ def _resolve_eos(model: Any) -> List[int]:
     return [int(eos)] if isinstance(eos, int) else [int(e) for e in eos]
 
 
+@torch.inference_mode()
 def opera_generate(
     model: Any,
     inputs: Dict[str, torch.Tensor],
@@ -295,6 +296,20 @@ def opera_generate(
     restrict_candidates: bool = True,
 ) -> Dict[str, Any]:
     """Beam search with OPERA's over-trust penalty. No rollback.
+
+    ``inference_mode`` is not an optimisation here, it is what makes the
+    10-token arm run. Without it every one of the six forwards per step --
+    the beam step plus five speculative candidates -- builds an autograd
+    graph that stays alive until the function returns, so the footprint
+    grows with ``max_new_tokens`` rather than staying flat. At
+    ``max_new_tokens=1`` that is one step and it fits, which is why the
+    three POPE arms and the whole decomposition in VALIDATION.md V5 ran;
+    at 10 it OOM'd on the first sample, with 14.54 of GPU 1's 14.56 GiB in
+    use. ``fox_generate`` has carried this decorator from the start, so
+    every other method in the project was already running under it. Grad
+    mode does not change arithmetic, so the 1-token records written before
+    this are unaffected -- it changes what is retained, not what is
+    computed.
 
     Args:
         max_new_tokens: refused above the length at which rollback would
@@ -389,12 +404,19 @@ def opera_generate(
             if step == 0:
                 # ONE row, then fan the cache out to num_beams. At step 0
                 # every beam holds the same prompt, so this is numerically
-                # identical -- and it is not an optimisation, it is what
-                # makes the arm run at all. A 5-row 625-token prefill OOMs
-                # on a T4: device_map="auto" packs the first GPU to ~14.0 of
-                # its 14.56 GiB with weights, and five rows of activations
-                # do not fit in what is left. One row also costs a fifth of
+                # identical. A 5-row 625-token prefill OOMs on a T4:
+                # device_map="auto" packs the first GPU to ~14.0 of its
+                # 14.56 GiB with weights, and five rows of activations do
+                # not fit in what is left. One row also costs a fifth of
                 # the prefill compute, which on POPE is most of the job.
+                #
+                # It was ALSO, at the time, standing in for the real cause:
+                # this function was not under `inference_mode`, so every
+                # forward's graph pinned the KV buffers it had read and the
+                # footprint grew with each step. The one-row prefill bought
+                # enough headroom for 1-token POPE to finish and hid that
+                # for two rounds. Both are kept -- the saving is real -- but
+                # the decorator is the load-bearing one.
                 out = model(input_ids=input_ids, attention_mask=attn_mask,
                             pixel_values=pixel_values, use_cache=True)
                 cache = out.past_key_values

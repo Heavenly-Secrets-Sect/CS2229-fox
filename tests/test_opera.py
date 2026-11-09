@@ -299,6 +299,41 @@ class TestSpeculativeForwardsLeaveNoTrace(_ModelBase):
         self.assertEqual(got["n_forwards_per_step"], 4)
 
 
+class TestEveryForwardRunsUnderInferenceMode(_ModelBase):
+    """Grad mode off is a memory CONTRACT here, not an optimisation.
+
+    Six forwards per step, each building an autograd graph that lives until
+    the call returns, means the footprint grows with ``max_new_tokens``
+    instead of staying flat. At ``max_new_tokens=1`` one step fits on a T4,
+    which is why every POPE arm ran; at 10 the `opera_protocol` job OOM'd on
+    its first sample with 14.54 of GPU 1's 14.56 GiB in use. The guard is
+    cheap to lose in a refactor and the symptom appears only on a two-GPU
+    host at a length no unit test runs, so it is asserted here.
+    """
+
+    def test_not_one_forward_builds_a_graph(self) -> None:
+        flags = []
+        original = A._opera_capture_attn
+
+        def spy(module, query, key, attention_mask, scaling):  # noqa: ANN001
+            flags.append((torch.is_inference_mode_enabled(),
+                          torch.is_grad_enabled()))
+            original(module, query, key, attention_mask, scaling)
+
+        A._opera_capture_attn = spy
+        self.addCleanup(lambda: setattr(A, "_opera_capture_attn", original))
+        # Explicitly grad-enabled on the way in, so a pass cannot come from
+        # the test runner happening to be inside no_grad already.
+        with torch.enable_grad():
+            self.run_opera(max_new_tokens=2)
+        self.assertTrue(flags, "no speculative forward was observed at all")
+        self.assertEqual(
+            set(flags), {(True, False)},
+            "a forward ran with grad still live; opera_generate must stay "
+            "decorated with @torch.inference_mode() or the 10-token arm OOMs"
+        )
+
+
 class TestTheOneRowPrefillFanOut(_ModelBase):
     """Prefilling one row and fanning the cache must equal prefilling five.
 
