@@ -880,3 +880,98 @@ class TestLegacyMethodRelabelling(TestResumeAcrossCommits):
         # let the shared_keys check be the one that refuses it
         self.assertEqual(
             canonical_method("vcd", ["vcd", "vcd-noise-fox-fusion"]), "vcd")
+
+
+class TestEveryVariantFieldReachesTheArmIdentity(unittest.TestCase):
+    """A new variant field must be classified, or the report stops building.
+
+    This is the guard for a failure that happened three times in one week.
+    Adding a field to ``VARIANT_FIELDS`` changes the run-key hash, so the run
+    FILES separate correctly and nothing looks wrong -- but ``RunResult.arm``
+    was a hand-written list, so the new arm kept its method's identity,
+    ``_index`` found two results for one ``(benchmark, split, arm)`` key, and
+    ``report.py`` refused to render ANY table. It happened for ``control``
+    (every validation arm collapsing onto its own method), for
+    ``max_new_tokens`` (OPERA's 1-token and 10-token arms) and for
+    ``intervention_layers`` (Table 15's L2-13 window onto plain ``fox``).
+
+    Each time the symptom appeared only when a real session came back, which
+    is the worst moment to discover it. So: every variant field is either
+    named in the arm or listed as handled elsewhere, with the reason.
+    """
+
+    def test_no_variant_field_is_unclassified(self) -> None:
+        from foxrepro.bench.report import ARM_FIELDS, ARM_FIELDS_ELSEWHERE
+        from foxrepro.storage import OPTIONAL_VARIANT_FIELDS, VARIANT_FIELDS
+
+        declared = set(VARIANT_FIELDS) | set(OPTIONAL_VARIANT_FIELDS)
+        classified = set(ARM_FIELDS) | set(ARM_FIELDS_ELSEWHERE)
+        missing = sorted(declared - classified)
+        self.assertEqual(
+            missing, [],
+            f"these variant fields are in the run key but nowhere in the "
+            f"report's arm identity: {missing}. Two runs differing only in "
+            f"one of them would collapse into one arm and _index would "
+            f"refuse to build any table. Add each to report.ARM_FIELDS with "
+            f"a label and a default, or to ARM_FIELDS_ELSEWHERE with the "
+            f"reason it belongs somewhere else."
+        )
+
+    def test_nothing_is_classified_twice_or_invented(self) -> None:
+        from foxrepro.bench.report import ARM_FIELDS, ARM_FIELDS_ELSEWHERE
+        from foxrepro.storage import OPTIONAL_VARIANT_FIELDS, VARIANT_FIELDS
+
+        both = sorted(set(ARM_FIELDS) & set(ARM_FIELDS_ELSEWHERE))
+        self.assertEqual(both, [], f"classified twice: {both}")
+        declared = set(VARIANT_FIELDS) | set(OPTIONAL_VARIANT_FIELDS)
+        extra = sorted((set(ARM_FIELDS) | set(ARM_FIELDS_ELSEWHERE)) - declared)
+        self.assertEqual(
+            extra, [],
+            f"these are classified but are not variant fields any more: "
+            f"{extra}. A stale entry hides the removal rather than failing."
+        )
+
+    def test_a_field_at_its_default_is_not_named(self) -> None:
+        """`fox` has to stay `fox`, or every table's baseline row renames."""
+        from foxrepro.bench.report import RunResult
+
+        prov = {"method": "fox", "benchmark": "pope", "split": "adversarial",
+                "mode": "as_implemented", "logit_dtype": "native",
+                "softmax_dtype": "fp32", "max_new_tokens": 1,
+                "model_id": "llava-hf/llava-1.5-7b-hf",
+                "top_p": 0.9, "temperature": 1.0, "decoding": "sampling"}
+        r = RunResult(metrics_path=Path("x.metrics.json"),
+                      doc={"provenance": prov, "metrics": {}}, outcomes=[])
+        self.assertEqual(r.arm, "fox")
+
+    def test_each_classified_field_separates_two_otherwise_equal_runs(self) -> None:
+        """The property the report actually needs, checked field by field."""
+        from foxrepro.bench.report import ARM_FIELDS, RunResult
+
+        base = {"method": "fox", "benchmark": "pope", "split": "adversarial",
+                "mode": "as_implemented", "logit_dtype": "native",
+                "softmax_dtype": "fp32", "max_new_tokens": 1,
+                "model_id": "llava-hf/llava-1.5-7b-hf",
+                "top_p": 0.9, "temperature": 1.0, "decoding": "sampling"}
+        other = {"mode": "off", "intervention_layers": "2-13",
+                 "logit_dtype": "fp32", "softmax_dtype": "fp16",
+                 "gamma": 4.0, "k": 0.25, "tau_js": 0.1, "alpha": 3.0,
+                 "beta": 0.2, "control": "negative_only",
+                 "max_new_tokens": 10, "model_id": "other/model",
+                 "top_p": 1.0, "temperature": 0.7}
+        plain = RunResult(metrics_path=Path("x.metrics.json"),
+                          doc={"provenance": base, "metrics": {}},
+                          outcomes=[])
+        for field in ARM_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(field, other, f"no differing value to test "
+                                            f"{field} with")
+                prov = {**base, field: other[field]}
+                got = RunResult(metrics_path=Path("y.metrics.json"),
+                                doc={"provenance": prov, "metrics": {}},
+                                outcomes=[])
+                self.assertNotEqual(
+                    got.arm, plain.arm,
+                    f"a run differing only in {field!r} gets the same arm "
+                    f"identity as the plain one, so the two would collide"
+                )

@@ -108,6 +108,57 @@ POPE_SPLIT_ORDER = ("random", "popular", "adversarial")
 # --------------------------------------------------------------------------- #
 # loading
 # --------------------------------------------------------------------------- #
+class _BenchmarkDefault:
+    """Sentinel: the default is the benchmark's, not a single value."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging only
+        return "<benchmark default>"
+
+
+_BENCHMARK_DEFAULT = _BenchmarkDefault()
+
+
+def _same_value(a: object, b: object) -> bool:
+    """Equality that does not care whether a number arrived as str or float."""
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return float(a) == float(b)
+    return str(a) == str(b)
+
+
+#: ``field -> (label, default)``. A field sitting at its default is not named,
+#: so plain ``fox`` stays ``fox`` and only the arms that differ carry flags.
+#: A ``None`` default means "name it whenever it is set at all".
+#:
+#: Order is the label order, so it is chosen to read like a command line.
+ARM_FIELDS: Dict[str, Tuple[str, object]] = {
+    "mode": ("", "as_implemented"),
+    "intervention_layers": ("L", None),
+    "logit_dtype": ("ld", "native"),
+    "softmax_dtype": ("sm", "fp32"),
+    "gamma": ("g", None),
+    "k": ("k", None),
+    "tau_js": ("tau", None),
+    "alpha": ("alpha", None),
+    "beta": ("beta", None),
+    "control": ("control", None),
+    "max_new_tokens": ("mnt", _BENCHMARK_DEFAULT),
+    "model_id": ("model", "llava-hf/llava-1.5-7b-hf"),
+    "top_p": ("p", 0.9),
+    "temperature": ("T", 1.0),
+}
+
+#: Variant fields deliberately NOT in the arm, and what separates them
+#: instead. Two runs differing only here are not two arms of one comparison;
+#: they are the same arm run under two protocols, and mixing them in one
+#: table is the thing `--prompt-arm faithful` exists to prevent.
+ARM_FIELDS_ELSEWHERE: Dict[str, str] = {
+    "prompt_template_id": "RunResult.prompt_arm, filtered by --prompt-template",
+    "system_prompt_id": "RunResult.prompt_arm, filtered by --system-prompt",
+    "wrapper_id": "RunResult.prompt_arm, filtered by --wrapper",
+    "decoding": "part of the group_by_seed key; tables render one decoding",
+}
+
+
 @dataclass
 class RunResult:
     """One evaluated run: its metrics document plus per-sample outcomes."""
@@ -168,39 +219,33 @@ class RunResult:
         ``method`` alone would collapse all of them into one bucket, so each
         comparison needs the whole arm identity. The label is built to read
         like the flags that produced it.
+
+        Derived from ``ARM_FIELDS`` rather than hand-written, because the
+        hand-written version broke the report three times in one week: a new
+        variant field would land in the run key -- so the FILES were distinct
+        -- while the arm identity still collapsed the arm onto its own
+        method, and ``_index`` refused to build any table at all. It happened
+        for ``control`` (every validation arm onto its method), for
+        ``max_new_tokens`` (OPERA's two lengths) and for
+        ``intervention_layers`` (Table 15's window onto plain fox).
+        ``tests/test_report.py`` now asserts that every field in
+        ``VARIANT_FIELDS`` is either here or in ``ARM_FIELDS_ELSEWHERE``, so
+        the next one fails a test instead of a report.
         """
         bits = [self.method]
-        mode = self.prov.get("mode")
-        if self.method == "fox" and mode and mode != "as_implemented":
-            bits.append(str(mode))
-        ld = self.prov.get("logit_dtype")
-        if ld and ld != "native":
-            bits.append(f"ld={ld}")
-        sd = self.prov.get("softmax_dtype")
-        if sd and sd != "fp32":
-            bits.append(f"sm={sd}")
-        for name, key in (("g", "gamma"), ("k", "k"), ("tau", "tau_js"),
-                          ("alpha", "alpha"), ("beta", "beta")):
-            v = self.prov.get(key)
-            if v is not None:
-                bits.append(f"{name}={float(v):g}")
-        # A control is a validation arm, not a tuning knob, but it is still a
-        # different approach under the same method name -- and without it in
-        # the identity every control collapsed onto its own method and the
-        # report refused to build at all. `causalmm` and
-        # `causalmm control=cf_blind` are two arms.
-        control = self.prov.get("control")
-        if control:
-            bits.append(f"control={control}")
-        # Generation length, when it is not the benchmark's default. For
-        # every method but OPERA this only changes how much text the parser
-        # reads; for a beam search it changes the answer -- 1 token gives
-        # +0.07 over the greedy baseline and 10 gives +2.10 -- so the two
-        # OPERA arms are not one bucket.
-        mnt = self.prov.get("max_new_tokens")
-        default = MAX_NEW_TOKENS_DEFAULT.get(self.benchmark)
-        if mnt is not None and default is not None and int(mnt) != int(default):
-            bits.append(f"mnt={int(mnt)}")
+        for field, (label, default) in ARM_FIELDS.items():
+            value = self.prov.get(field)
+            if value is None:
+                continue
+            if default is _BENCHMARK_DEFAULT:
+                default = MAX_NEW_TOKENS_DEFAULT.get(self.benchmark)
+            if default is not None and _same_value(value, default):
+                continue
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                shown = f"{float(value):g}"
+            else:
+                shown = str(value)
+            bits.append(f"{label}={shown}" if label else shown)
         return " ".join(bits)
 
     @property
