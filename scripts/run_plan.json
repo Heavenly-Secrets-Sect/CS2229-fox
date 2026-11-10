@@ -1,39 +1,33 @@
 {
-  "round": "r11",
+  "round": "r12",
   "order": "priority",
   "n_sessions": 1,
   "budget_hours": 10.0,
   "n_calibrated": 0,
-  "in_flight_excluded": [],
+  "in_flight_excluded": [
+    "validation:causalmm:pope:adversarial:greedy",
+    "validation:causalmm:pope:adversarial:greedy:cf_blind",
+    "validation:causalmm:pope:adversarial:greedy:cf_constant"
+  ],
   "jobs": {
-    "validation:causalmm:pope:adversarial:greedy": {
-      "id": "validation:causalmm:pope:adversarial:greedy",
-      "target": "validation",
-      "note": "is the shuffle load-bearing, with no draw to hide behind? shuffle",
-      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
-      "est_s": 3300.0,
-      "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
-      "n_samples": 3000,
+    "opera_protocol:opera:pope:adversarial:greedy:opera_no_penalty:n1500": {
+      "id": "opera_protocol:opera:pope:adversarial:greedy:opera_no_penalty:n1500",
+      "target": "opera_protocol",
+      "note": "decompose the 10-token gain: opera_no_penalty",
+      "command": "python -m foxrepro.bench.generate --method opera --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control opera_no_penalty --max-new-tokens 10 --limit 1500",
+      "est_s": 9352.8,
+      "run_file": "m-opera__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-109f4ec7.jsonl",
+      "n_samples": 1500,
       "measured": false
     },
-    "validation:causalmm:pope:adversarial:greedy:cf_constant": {
-      "id": "validation:causalmm:pope:adversarial:greedy:cf_constant",
-      "target": "validation",
-      "note": "is the shuffle load-bearing, with no draw to hide behind? cf_constant",
-      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control cf_constant",
-      "est_s": 3300.0,
-      "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-d9edc133.jsonl",
-      "n_samples": 3000,
-      "measured": false
-    },
-    "validation:causalmm:pope:adversarial:greedy:cf_blind": {
-      "id": "validation:causalmm:pope:adversarial:greedy:cf_blind",
-      "target": "validation",
-      "note": "is the shuffle load-bearing, with no draw to hide behind? cf_blind",
-      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control cf_blind",
-      "est_s": 3300.0,
-      "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-0d6afcd8.jsonl",
-      "n_samples": 3000,
+    "opera_protocol:opera:pope:adversarial:greedy:opera_unrestricted:n1500": {
+      "id": "opera_protocol:opera:pope:adversarial:greedy:opera_unrestricted:n1500",
+      "target": "opera_protocol",
+      "note": "decompose the 10-token gain: opera_unrestricted",
+      "command": "python -m foxrepro.bench.generate --method opera --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control opera_unrestricted --max-new-tokens 10 --limit 1500",
+      "est_s": 9352.8,
+      "run_file": "m-opera__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-3992f856.jsonl",
+      "n_samples": 1500,
       "measured": false
     }
   },
@@ -41,11 +35,10 @@
     {
       "session": 1,
       "jobs": [
-        "validation:causalmm:pope:adversarial:greedy",
-        "validation:causalmm:pope:adversarial:greedy:cf_constant",
-        "validation:causalmm:pope:adversarial:greedy:cf_blind"
+        "opera_protocol:opera:pope:adversarial:greedy:opera_no_penalty:n1500",
+        "opera_protocol:opera:pope:adversarial:greedy:opera_unrestricted:n1500"
       ],
-      "est_hours": 2.75
+      "est_hours": 5.2
     }
   ]
 }

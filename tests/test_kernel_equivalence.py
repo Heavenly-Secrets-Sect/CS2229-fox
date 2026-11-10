@@ -486,18 +486,36 @@ class TestHarnessMatchesTheReleasedHarness(unittest.TestCase):
 
         want = {"pope": RELEASED_POPE_MAX_NEW_TOKENS,
                 "chair": RELEASED_CHAIR_MAX_NEW_TOKENS}
-        n_overrides = 0
+        overrides = []
         for job in PLAN:
             with self.subTest(job=job.job_id()):
                 got = job.run_key().variant_fields["max_new_tokens"]
                 if got == want[job.benchmark]:
                     continue
-                n_overrides += 1
+                overrides.append(job)
                 self.assertEqual(job.method, "opera")
                 self.assertEqual(job.benchmark, "pope")
                 self.assertEqual(got, OPERA_POPE_MAX_NEW_TOKENS)
-        self.assertEqual(n_overrides, 1,
-                         "exactly one job may leave the Fox harness's length")
+        # Anchored on the TARGET, not on a count. The count was 1 until the
+        # 1-token decomposition turned out to have measured a regime where
+        # OPERA gains +0.07 -- the controls had to be repeated at 10 tokens,
+        # where it gains +2.10 -- and a hardcoded 1 would have had to be
+        # edited to 3 with nothing checked in return. `opera_protocol` is the
+        # target that means "OPERA's own harness", so requiring the overrides
+        # to be exactly its jobs still fails on any other drift.
+        self.assertTrue(overrides, "no job runs OPERA's own length any more")
+        self.assertEqual(
+            {j.target for j in overrides}, {"opera_protocol"},
+            "only the opera_protocol target may leave the Fox harness's "
+            "length; these jobs do: "
+            + repr(sorted(j.job_id() for j in overrides
+                          if j.target != "opera_protocol")))
+        self.assertEqual(
+            sorted(j.job_id() for j in PLAN if j.target == "opera_protocol"),
+            sorted(j.job_id() for j in overrides),
+            "an opera_protocol job is running at the Fox length, which makes "
+            "it a duplicate of the table1_methods row rather than OPERA's "
+            "own protocol")
 
     def test_the_chair_question_is_the_released_one(self) -> None:
         from foxrepro.data.loaders import PROMPT_TEMPLATES

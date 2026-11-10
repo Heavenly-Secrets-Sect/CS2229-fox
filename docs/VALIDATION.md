@@ -287,9 +287,27 @@ arms land on the same number.
 | `opera_unrestricted` | 79.13 | +0.03 |
 
 A 0.10-point total spread over 3000 questions. Neither of OPERA's two
-unnamed components does measurable work here, so **OPERA's POPE number is
-beam search**, and the published gain over sampling is a decoding-strategy
-gain that the paper attributes to an attention penalty.
+unnamed components does measurable work **at this length**.
+
+> **Corrected 2026-11-10, and the correction matters.** These three arms ran
+> at `max_new_tokens=1`, this project's POPE default. At that length plain
+> OPERA scores 79.10 against a greedy baseline of 79.03 — **+0.07**. The
+> whole method is inert there, so a decomposition finding all three arms
+> equal is a decomposition of nothing, and the sentence that stood here
+> ("OPERA's POPE number is beam search") was not supported by it.
+>
+> At OPERA's own 10-token protocol the same implementation scores **81.13,
+> +2.10** over the same baseline. For a beam search the length is not
+> cosmetic — it scores whole sequences, so the first token depends on how
+> many follow it (`DEVIATIONS.md` §3.13 predicted this; it is now measured).
+> That +2.10 is the gain worth attributing, and the two controls are
+> re-planned at 10 tokens on 1500 questions (`opera_protocol`, 5.2 h).
+>
+> What V5 *does* establish stands: at 1 token the penalty is numerically
+> incapable of acting, by its own telemetry, and that is the row Fox's
+> Table 1 quotes, because Fox re-ran its compared methods in its own
+> 1-token harness. So **the OPERA number in Fox's Table 1 is beam search** —
+> a claim about one table's cell, not about OPERA.
 
 The telemetry recorded on the plain run says why, and said it before the
 controls were compared: the penalty's spread across the five candidates

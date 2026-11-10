@@ -1,0 +1,4 @@
+# 3 job V4-greedy đang chạy ở r11_s1 trên Kaggle
+validation:causalmm:pope:adversarial:greedy
+validation:causalmm:pope:adversarial:greedy:cf_constant
+validation:causalmm:pope:adversarial:greedy:cf_blind

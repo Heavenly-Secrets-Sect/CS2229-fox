@@ -770,8 +770,18 @@ the stand-in's 300x, so the trained model's attention sinks do narrow the
 gap, and not nearly enough to matter. Over 3000 questions the penalty moved
 the top candidate at **one step**. The accuracies agree to within 0.10
 points across all three arms (79.10 / 79.03 / 79.13; `VALIDATION.md` V5), so
-on POPE **OPERA is beam search**, and the paragraph above is now a
+at **one token** OPERA is beam search and the paragraph above is a
 measurement rather than a prediction.
+
+One token is also where plain OPERA gains nothing: 79.10 against a greedy
+baseline of 79.03, **+0.07**. So that decomposition settles what Fox's
+Table 1 cell contains -- Fox re-ran its compared methods in its own 1-token
+harness -- and settles nothing about OPERA itself. **At 10 tokens the same
+implementation scores 81.13, +2.10**, which is the length argument above
+turning out to be the dominant effect: the penalty gets ten steps to act in
+rather than one, and the search scores ten tokens of sequence rather than
+one. The two controls are re-planned at 10 tokens, on 1500 questions, to
+split that +2.10.
 
 #### The rollback, audited but not built
 

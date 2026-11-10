@@ -124,14 +124,23 @@ COST_S: Dict[Tuple[str, str], float] = {
 #: ``max_new_tokens x (1 + num_attn_candidates)`` decode forwards, also at
 #: ``num_beams`` rows.
 #:
-#: Estimated, not measured. A 625-token prefill at batch 5 is ~4.4e13 FLOPs,
-#: ~1.1 s at the ~40 TFLOP/s these two T4s actually reach; a decode forward
-#: is bandwidth-bound at ~13 GB of weights, ~0.04 s, and there are six per
-#: step. Replace both with measurements after the first session --
-#: ``logs/_job_times_*.tsv`` is where every other number here came from.
+#: MEASURED, and the two unknowns are solved from two lengths rather than
+#: estimated. The first guess -- 1.1 s prefill, 0.04 s forward, from FLOPs and
+#: weight bandwidth -- fits the 1-token arm (1.34 predicted, 1.116 measured)
+#: and is 2.2x WRONG at 10 tokens: it predicted 2.9 h for `opera_protocol`,
+#: which took 5.2 h. Two measurements determine both constants exactly:
+#:
+#:     prefill + 6  * forward = 1.116   (the 1-token arms, pope/beam)
+#:     prefill + 60 * forward = 6.235   (opera_protocol, 18706 s / 3000)
+#:
+#: giving forward = 0.0948 s, 2.4x the FLOP estimate. The prefill is cheaper
+#: than guessed and the decode forwards far dearer, which is what sharding
+#: across two T4s does: each of the six forwards per step crosses PCIe twice
+#: and is latency-bound, not bandwidth-bound. Any arm whose length differs
+#: from these two is an extrapolation on a line through two real points.
 BEAM_COST_S: Dict[str, float] = {
-    "prefill": 1.1,
-    "forward": 0.04,
+    "prefill": 0.5472,
+    "forward": 0.0948,
 }
 
 N_SAMPLES: Dict[Tuple[str, str], int] = {
@@ -807,6 +816,29 @@ def _build_plan() -> List[Job]:
     jobs.append(Job("opera_protocol", "opera", "pope", "adversarial",
                     decoding="greedy", max_new_tokens=10,
                     note="OPERA's own 10-token harness; still rollback-free"))
+
+    # V5 AGAIN, at the length where OPERA actually does something. The
+    # decomposition in VALIDATION.md V5 ran at max_new_tokens=1 and found all
+    # three arms within 0.10 points -- but the 1-token run gains only +0.07
+    # over the greedy baseline, so the whole METHOD is inert there and a
+    # decomposition of nothing is not evidence about the penalty. At 10
+    # tokens OPERA gains +2.10, and that is the +2.10 these two arms have to
+    # split.
+    #
+    # HALF the split, 1500 questions, 2.6 h each. A 10-token beam-5 pass costs
+    # 6.235 s per sample, so the full 3000 would be 5.2 h per arm and the pair
+    # would not fit one session. It does not need to: the comparison is PAIRED
+    # on identical questions, and at 1 token the penalty moved the top
+    # candidate at 1 step in 3000. An arm that surrenders a real share of
+    # +2.10 shows ~30 discordant pairs at n=1500, which no test could miss;
+    # an arm that surrenders none shows ~0. Precision on each arm's absolute
+    # accuracy is not what this measures, so the extra 2.6 h would buy
+    # nothing the question needs.
+    for control in ("opera_no_penalty", "opera_unrestricted"):
+        jobs.append(Job("opera_protocol", "opera", "pope", "adversarial",
+                        decoding="greedy", max_new_tokens=10, control=control,
+                        limit=1500,
+                        note=f"decompose the 10-token gain: {control}"))
 
     # CausalMM is not in that round: its harness never argmaxes the unmasked
     # logits, so there is no greedy default to reproduce. It does run
