@@ -689,9 +689,18 @@ def _build_plan() -> List[Job]:
     #     greedy. The plain arm is re-run at the same limit because the only
     #     greedy causalmm on disk is V2's alpha=0 row, which is the baseline
     #     rather than causalmm.
+    #
+    #     Run at 500 first, and the answer came back 498/500 for `constant`
+    #     and 495/500 for `blind` -- with `blind` correct on 5 of the 5
+    #     samples where it differs from `shuffle`, and on 6 of 7 against
+    #     `constant`. Exact McNemar on those discordant pairs is p = 0.0625:
+    #     the direction is consistent and 500 samples cannot establish it.
+    #     At the same flip rate 3000 samples would give p < 1e-4, so the
+    #     arms run on the full split. The 500 already written are kept and
+    #     extended, because `limit` is not part of the run key.
     for control in (None, "cf_constant", "cf_blind"):
         jobs.append(Job("validation", "causalmm", "pope", "adversarial",
-                        control=control, limit=500, decoding="greedy",
+                        control=control, decoding="greedy",
                         note="is the shuffle load-bearing, with no draw to "
                              f"hide behind? {control or 'shuffle'}"))
 

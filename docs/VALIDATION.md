@@ -322,6 +322,78 @@ row, which is the *baseline*, not CausalMM.
 **Prediction, unchanged: token-identical under greedy.** `check_validation.py`
 reads the sampling arms as INFO and decides only on the greedy ones.
 
+## Results, round 10 (2026-11-10) — the plan closes, and V4 fails
+
+**18 predictions held, 1 failed.** Every job in the plan has run.
+
+**V4 under greedy: `cf_constant` holds, `cf_blind` does not.**
+
+| arm | agrees with `shuffle` | accuracy |
+|---|---|---|
+| `shuffle` | — | 77.80 |
+| `cf_constant` | 498/500 (99.6 %) | 77.80 |
+| `cf_blind` | 495/500 (99.0 %) | **78.80** |
+
+The first row is the predicted result and it is a clean one: replacing the
+shuffled CLIP attention with *exactly* `1/n_keys` changes 2 answers in 500
+and moves the score by nothing. A permutation cannot change a mean, the mean
+is what survives the 580x downscale, and the measurement now says so on the
+real model. CausalMM's vision counterfactual is a **language-prior
+contrast**.
+
+The second row is the pre-registered FAIL condition — *"`blind` differs from
+the other two → the residual 0.17 % of the image is doing real work"* — and
+the 7 disagreements across all three arms say which way it works:
+
+| sample | label | `shuffle` | `cf_constant` | `cf_blind` |
+|---|---|---|---|---|
+| q0000035 | yes | No | **Yes** | No |
+| q0000066 | no | Yes | Yes | **No** |
+| q0000070 | no | Yes | Yes | **No** |
+| q0000076 | no | Yes | Yes | **No** |
+| q0000246 | no | Yes | Yes | **No** |
+| q0000366 | no | **No** | Yes | **No** |
+| q0000442 | no | Yes | Yes | **No** |
+
+`cf_blind` is correct on 6 of the 7, and on **5 of 5** where it differs from
+`shuffle` — every one of them a `no` label where the other two hallucinate a
+`Yes`. That is the signature of a *stronger* contrast, not a different one: a
+fully image-blind negative branch is the purest possible language prior, so
+subtracting it removes more of the prior-driven `Yes` than subtracting a
+branch that still carries 0.17 % of the image.
+
+So the reading is not that the 1/n_keys argument is wrong. It is that the
+argument is **99 % right and the missing 1 % runs against CausalMM**: the
+shuffle leaves just enough image in the negative branch to make the contrast
+weaker than the mechanism it is accidentally implementing. The method would
+score higher if it did less.
+
+**This is not yet significant and it is not being claimed as such.** Exact
+McNemar on the discordant pairs:
+
+| pair | discordant | split | p |
+|---|---|---|---|
+| `shuffle` vs `cf_blind` | 5 | 5–0 | 0.0625 |
+| `cf_constant` vs `cf_blind` | 7 | 6–1 | 0.125 |
+| `shuffle` vs `cf_constant` | 2 | 1–1 | 1.0 |
+
+A consistent direction on 5 pairs is what it is. At the same flip rate 3000
+samples would give p < 1e-4, so **the three greedy arms are re-planned on the
+full split** (2.3 h, resuming from the 500 already written — `limit` is not
+part of the run key, so the existing records extend rather than duplicate).
+Until that lands, the honest statement is: `cf_constant` confirms the
+permutation argument, and `cf_blind` suggests the residual hurts CausalMM.
+
+**OPERA's own protocol ran.** `opera_protocol` — 10 tokens, OPERA's
+`pope_eval.py` length rather than this project's 1-token POPE default — had
+OOM'd on its first sample. The cause was that `opera_generate` was never
+decorated `@torch.inference_mode()`, so each of the six forwards per step
+retained an autograd graph pinning the KV buffers it had read; at 1 token
+that is one step and it fitted, at 10 it did not (`DEVIATIONS.md` §3.13).
+With the guard it ran 3000/3000 in 5.2 h at 6.2 s/sample. Grad mode changes
+what is retained, not what is computed, so the 1-token records behind V5 are
+unaffected.
+
 ## V6 — Does each rule change any decision? (no extra run)
 
 Recorded on **every** paired run: `n_diverged` and `diverged_frac`, the

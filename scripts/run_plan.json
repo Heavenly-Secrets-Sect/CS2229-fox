@@ -1,58 +1,38 @@
 {
-  "round": "r10",
+  "round": "r11",
   "order": "priority",
   "n_sessions": 1,
   "budget_hours": 10.0,
   "n_calibrated": 0,
   "in_flight_excluded": [],
   "jobs": {
-    "table15:fox:pope:adversarial:L2-13:s44": {
-      "id": "table15:fox:pope:adversarial:L2-13:s44",
-      "target": "table15",
-      "note": "paper's window, sampling",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 2-13",
+    "validation:causalmm:pope:adversarial:greedy": {
+      "id": "validation:causalmm:pope:adversarial:greedy",
+      "target": "validation",
+      "note": "is the shuffle load-bearing, with no draw to hide behind? shuffle",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
       "est_s": 3300.0,
-      "run_file": "m-fox__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-5e27e634.jsonl",
+      "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
       "n_samples": 3000,
       "measured": false
     },
-    "validation:causalmm:pope:adversarial:greedy:n500": {
-      "id": "validation:causalmm:pope:adversarial:greedy:n500",
-      "target": "validation",
-      "note": "is the shuffle load-bearing, with no draw to hide behind? shuffle",
-      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --limit 500",
-      "est_s": 550.0,
-      "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
-      "n_samples": 500,
-      "measured": false
-    },
-    "validation:causalmm:pope:adversarial:greedy:cf_constant:n500": {
-      "id": "validation:causalmm:pope:adversarial:greedy:cf_constant:n500",
+    "validation:causalmm:pope:adversarial:greedy:cf_constant": {
+      "id": "validation:causalmm:pope:adversarial:greedy:cf_constant",
       "target": "validation",
       "note": "is the shuffle load-bearing, with no draw to hide behind? cf_constant",
-      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control cf_constant --limit 500",
-      "est_s": 550.0,
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control cf_constant",
+      "est_s": 3300.0,
       "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-d9edc133.jsonl",
-      "n_samples": 500,
+      "n_samples": 3000,
       "measured": false
     },
-    "validation:causalmm:pope:adversarial:greedy:cf_blind:n500": {
-      "id": "validation:causalmm:pope:adversarial:greedy:cf_blind:n500",
+    "validation:causalmm:pope:adversarial:greedy:cf_blind": {
+      "id": "validation:causalmm:pope:adversarial:greedy:cf_blind",
       "target": "validation",
       "note": "is the shuffle load-bearing, with no draw to hide behind? cf_blind",
-      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control cf_blind --limit 500",
-      "est_s": 550.0,
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control cf_blind",
+      "est_s": 3300.0,
       "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-0d6afcd8.jsonl",
-      "n_samples": 500,
-      "measured": false
-    },
-    "opera_protocol:opera:pope:adversarial:greedy": {
-      "id": "opera_protocol:opera:pope:adversarial:greedy",
-      "target": "opera_protocol",
-      "note": "OPERA's own 10-token harness; still rollback-free",
-      "command": "python -m foxrepro.bench.generate --method opera --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --max-new-tokens 10",
-      "est_s": 10500.0,
-      "run_file": "m-opera__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-5e8ffbea.jsonl",
       "n_samples": 3000,
       "measured": false
     }
@@ -61,13 +41,11 @@
     {
       "session": 1,
       "jobs": [
-        "table15:fox:pope:adversarial:L2-13:s44",
-        "validation:causalmm:pope:adversarial:greedy:n500",
-        "validation:causalmm:pope:adversarial:greedy:cf_constant:n500",
-        "validation:causalmm:pope:adversarial:greedy:cf_blind:n500",
-        "opera_protocol:opera:pope:adversarial:greedy"
+        "validation:causalmm:pope:adversarial:greedy",
+        "validation:causalmm:pope:adversarial:greedy:cf_constant",
+        "validation:causalmm:pope:adversarial:greedy:cf_blind"
       ],
-      "est_hours": 4.29
+      "est_hours": 2.75
     }
   ]
 }
