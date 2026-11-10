@@ -39,7 +39,7 @@ from foxrepro.bench.stats import (  # noqa: E402
     Comparison, compare_proportions, mcnemar_exact, paired_bootstrap_proportion,
     paired_bootstrap_ratio, power_table, resolvable_gap,
 )
-from foxrepro.storage import paths  # noqa: E402
+from foxrepro.storage import MAX_NEW_TOKENS_DEFAULT, paths  # noqa: E402
 
 __all__ = ["FLAG", "DEGENERACY_FLAG", "RECALL_DROP_FLAG",
            "load_results", "render_report", "PAPER_REFERENCE"]
@@ -184,6 +184,23 @@ class RunResult:
             v = self.prov.get(key)
             if v is not None:
                 bits.append(f"{name}={float(v):g}")
+        # A control is a validation arm, not a tuning knob, but it is still a
+        # different approach under the same method name -- and without it in
+        # the identity every control collapsed onto its own method and the
+        # report refused to build at all. `causalmm` and
+        # `causalmm control=cf_blind` are two arms.
+        control = self.prov.get("control")
+        if control:
+            bits.append(f"control={control}")
+        # Generation length, when it is not the benchmark's default. For
+        # every method but OPERA this only changes how much text the parser
+        # reads; for a beam search it changes the answer -- 1 token gives
+        # +0.07 over the greedy baseline and 10 gives +2.10 -- so the two
+        # OPERA arms are not one bucket.
+        mnt = self.prov.get("max_new_tokens")
+        default = MAX_NEW_TOKENS_DEFAULT.get(self.benchmark)
+        if mnt is not None and default is not None and int(mnt) != int(default):
+            bits.append(f"mnt={int(mnt)}")
         return " ".join(bits)
 
     @property

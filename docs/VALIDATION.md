@@ -412,6 +412,90 @@ With the guard it ran 3000/3000 in 5.2 h at 6.2 s/sample. Grad mode changes
 what is retained, not what is computed, so the 1-token records behind V5 are
 unaffected.
 
+## Results, round 11/12 (2026-11-10) — both open arms close
+
+**18 predictions held, 1 failed.** The gate now decides V4 and V5 by **exact
+McNemar on the discordant pairs** rather than by an agreement threshold. The
+threshold was picked by eye at n=500 and had no sampling distribution behind
+it; at n=3000 it would have called a 12-pair 9–3 split and a 46-pair 36–10
+split by the same rule. Every arm here answers the same questions, so the
+pairing removes question difficulty — which is most of the variance — and
+settles a 0.87-point difference that an unpaired ±1.5-point interval on 3000
+samples would have called noise.
+
+### V4 at full scale: `constant` holds, `blind` fails, and the direction held
+
+Greedy, 3000 questions, paired on identical samples:
+
+| pair | agree | informative pairs | split | p |
+|---|---|---|---|---|
+| `shuffle` vs `cf_constant` | 2988/3000 (99.6 %) | 12 | 9–3 | **0.146** |
+| `shuffle` vs `cf_blind` | 2954/3000 (98.5 %) | 46 | 10–36 | **1.6e-4** |
+| `cf_constant` vs `cf_blind` | 2942/3000 (98.1 %) | 58 | 13–45 | **3.0e-5** |
+
+Accuracy: `shuffle` 76.67, `cf_constant` 76.47, `cf_blind` **77.53**.
+
+`cf_constant` is the predicted result and now has the sample size to say so:
+replacing the shuffled CLIP attention with *exactly* `1/n_keys` is
+indistinguishable from shuffling it. A permutation cannot change a mean, the
+mean is what survives the ~580x downscale, and CausalMM's vision
+counterfactual is a **language-prior contrast**.
+
+`cf_blind` is the one failed prediction in the suite, and the 500-sample
+signal that flagged it (5–0, p=0.0625) held exactly: 36–10 at p=1.6e-4. A
+fully image-blind negative branch is the purest language prior, so
+subtracting it removes more of the prior-driven `Yes` than subtracting a
+branch that still carries 0.17 % of the image. **CausalMM would score higher
+if it did less.** The 1/n_keys argument is 99 % right and the missing 1 %
+runs against the method.
+
+One number worth carrying into Table 1: greedy `causalmm` scores 76.67
+against a greedy baseline of **79.03**. Under sampling it gains (+1.13); under
+greedy it *loses* 2.36. The gain depends on the plausibility mask and the
+stochastic draw, not on the contrast.
+
+### V5 at the length where OPERA works: beam search, confirmed
+
+The 1-token block is kept because it is the length Fox re-ran its compared
+methods at, so it is what Fox's Table 1 cell contains. The verdict comes from
+the 10-token block, 1500 questions, paired:
+
+| | accuracy | vs baseline | agrees with `opera` | informative pairs | p |
+|---|---|---|---|---|---|
+| `opera` | 81.47 | +2.33 | — | — | — |
+| `opera_no_penalty` | **81.47** | +2.33 | 1496/1500 | 2 (1–1) | 1.0 |
+| `opera_unrestricted` | **81.47** | +2.33 | 1474/1500 | 24 (12–12) | 1.0 |
+
+Three arms, one number. **OPERA's POPE gain is beam search.** Neither the
+over-trust penalty nor the five-candidate restriction contributes anything
+measurable, at the length where the method actually gains +2.33.
+
+This is the conclusion the 1-token decomposition reached without being
+entitled to it, and the correction was worth making: the evidence for it did
+not exist until this arm ran. At 1 token OPERA gains +0.07 over the baseline,
+so all three arms agreeing was a fact about a regime where nothing happens.
+
+The telemetry also sharpens the mechanism, and the sharpened version is not
+"inert":
+
+| | 1 token | 10 tokens |
+|---|---|---|
+| penalty spread across the 5 candidates | 0.067 | 0.082 |
+| raw logit spread | 9.099 | 7.889 |
+| ratio | 136x | **96x** |
+| steps where the penalty moved the top candidate | 0.00033/sample | **0.0913/sample** |
+
+At 10 tokens the penalty *does* act — it changes the top candidate in about
+0.9 % of steps, roughly 274 times over 3000 questions. It is not numerically
+incapable of acting, as the 1-token run suggested. It is **behaviourally**
+inert: of those 274 interventions, 4 reach the final answer and they split
+1–1. The penalty reorders candidates the beam would have recovered from
+anyway.
+
+`opera_unrestricted` is the same story more visibly: 26 of 1500 answers
+differ, 12–12. The restriction changes *which* tokens come out without
+changing whether they are right.
+
 ## V6 — Does each rule change any decision? (no extra run)
 
 Recorded on **every** paired run: `n_diverged` and `diverged_frac`, the

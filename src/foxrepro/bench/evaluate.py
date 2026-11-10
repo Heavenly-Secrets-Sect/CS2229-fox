@@ -53,7 +53,9 @@ from foxrepro.bench.chair import CHAIRScorer, CaptionScore  # noqa: E402
 from foxrepro.bench.stats import (  # noqa: E402
     bootstrap_ci, wilson_interval,
 )
-from foxrepro.storage import PROVENANCE_FIELDS, VARIANT_FIELDS, paths  # noqa: E402
+from foxrepro.storage import (  # noqa: E402
+    OPTIONAL_VARIANT_FIELDS, PROVENANCE_FIELDS, VARIANT_FIELDS, paths,
+)
 
 __all__ = [
     "parse_yes_no", "parse_yes_no_released", "POPE_PARSERS",
@@ -226,6 +228,13 @@ def read_run(path: Path, strict: bool = True) -> Tuple[List[Dict[str, Any]], Dic
     shared_keys = (
         "method", "benchmark", "split", "seed", "dtype", "model_id",
         "prompt_template_id", "max_new_tokens", *VARIANT_FIELDS,
+        # OPTIONAL_VARIANT_FIELDS too. `control` is left out of the run-file
+        # NAME when unset, so that adding the field did not rename every
+        # archived run -- but it still identifies the arm, and leaving it out
+        # of the provenance made every control arm indistinguishable from its
+        # own method downstream. report.py then found two results for
+        # ('pope', 'adversarial', 'causalmm') and refused to build at all.
+        *OPTIONAL_VARIANT_FIELDS,
     )
     #: Recorded, allowed to vary across a resumed run, surfaced for audit.
     multi_keys = ("commit_hash", "transformers_path")

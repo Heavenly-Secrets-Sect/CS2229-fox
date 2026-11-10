@@ -780,8 +780,25 @@ harness -- and settles nothing about OPERA itself. **At 10 tokens the same
 implementation scores 81.13, +2.10**, which is the length argument above
 turning out to be the dominant effect: the penalty gets ten steps to act in
 rather than one, and the search scores ten tokens of sequence rather than
-one. The two controls are re-planned at 10 tokens, on 1500 questions, to
+one. The two controls were re-planned at 10 tokens, on 1500 questions, to
 split that +2.10.
+
+**They ran, and there is nothing to split.** At 10 tokens plain OPERA,
+`opera_no_penalty` and `opera_unrestricted` all score **81.47** on the shared
+1500, **+2.33** over the greedy baseline. `no_penalty` agrees with plain
+OPERA on 1496/1500 answers (2 informative pairs, 1-1) and `unrestricted` on
+1474/1500 (24 pairs, 12-12). **OPERA's POPE gain is beam search**, now
+measured at the length where the method gains something.
+
+The mechanism statement needs one correction though, and it is a correction
+away from this file's own earlier wording. At 10 tokens the penalty is **not**
+numerically incapable of acting: the spread ratio falls from 136x to 96x and
+it moves the top candidate in about 0.9 % of steps -- roughly 274 times over
+3000 questions, against **one** step at 1 token. So it acts. Of those ~274
+interventions, 4 survive to the final answer and they split 1-1. The penalty
+reorders candidates that the beam recovers from anyway, which is a different
+claim from "the penalty cannot act" and the only one the 10-token data
+supports.
 
 #### The rollback, audited but not built
 

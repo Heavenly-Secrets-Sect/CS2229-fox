@@ -55,11 +55,67 @@ def find(runs: Path, method: str, *, benchmark: str = "pope",
         dtype="fp16", model_id="llava-hf/llava-1.5-7b-hf",
         prompt_template_id=("pope_v0_raw" if benchmark == "pope"
                             else "chair_v1"),
-        max_new_tokens=MAX_NEW_TOKENS_DEFAULT[benchmark],
-        decoding=decoding, control=control, **variant,
+        decoding=decoding, control=control,
+        # Overridable: OPERA's own protocol runs 10 tokens where this
+        # project's POPE default is 1, and for a beam search that is the
+        # difference between +0.07 and +2.10.
+        **{"max_new_tokens": MAX_NEW_TOKENS_DEFAULT[benchmark], **variant},
     )
     path = runs / cfg.run_key().filename()
     return path if path.is_file() else None
+
+
+PAIRED_ALPHA = 0.05
+
+
+def mcnemar_exact(wins_a: int, wins_b: int) -> float:
+    """Two-sided exact McNemar on the discordant pairs.
+
+    The right test for "do these two arms differ", because every arm here
+    answers the SAME questions: the pairing removes question difficulty,
+    which is most of the variance, and an unpaired interval on 3000 samples
+    (+-1.5 points) would hide a difference of half a point that 46
+    discordant pairs settle at p = 1.6e-4.
+
+    Replaces a 99 %-agreement threshold that was picked by eye at n=500 and
+    had no sampling distribution behind it. At n=3000 that threshold would
+    have called a 12-pair 9-3 split (p = 0.15, nothing) and a 46-pair 36-10
+    split (p = 1.6e-4, real) by the same rule.
+    """
+    from math import comb
+
+    n = wins_a + wins_b
+    if n == 0:
+        return 1.0
+    k = min(wins_a, wins_b)
+    return min(1.0, 2 * sum(comb(n, i) for i in range(k + 1)) / 2 ** n)
+
+
+def _is_correct(output: str, label: object) -> bool:
+    got = str(output).strip().lower().rstrip(".")
+    return got.startswith(str(label).strip().lower().rstrip("."))
+
+
+def paired_verdict(a: Dict[str, dict], b: Dict[str, dict],
+                   ids: List[str]) -> Tuple[int, int, int, float]:
+    """``(n_same, a_wins, b_wins, p)`` over the shared ids, on CORRECTNESS.
+
+    A pair where both arms are wrong, or both right in different words, is
+    discordant in text but carries no information about which arm is better,
+    so it is not counted either way.
+    """
+    diff = [i for i in ids if a[i]["output"] != b[i]["output"]]
+    a_wins = sum(1 for i in diff
+                 if _is_correct(a[i]["output"], a[i]["label"])
+                 and not _is_correct(b[i]["output"], b[i]["label"]))
+    b_wins = sum(1 for i in diff
+                 if _is_correct(b[i]["output"], b[i]["label"])
+                 and not _is_correct(a[i]["output"], a[i]["label"]))
+    return len(ids) - len(diff), a_wins, b_wins, mcnemar_exact(a_wins, b_wins)
+
+
+def records_by_sample(records: List[dict]) -> Dict[str, dict]:
+    return {r["sample_id"]: r for r in records}
 
 
 def pope_accuracy(records: List[dict], split: str) -> float:
@@ -164,63 +220,60 @@ def v2_alpha_zero_collapses(runs: Path) -> List[str]:
 
 
 def v4_is_the_shuffle_load_bearing(runs: Path) -> List[str]:
-    """CausalMM's gain is 1/577 whatever the attention is.
+    """CausalMM's gain is 1/577 whatever the attention is -- is it?
 
-    GREEDY where it exists, and that is a correction with the same cause as
-    V2's. Token identity is not a question sampling can answer: a
-    multinomial draw flips whenever the logits move at all, so two arms
-    whose distributions agree still disagree sample by sample. Read under
-    sampling these arms agreed on 96.6% / 95.2% of 500 answers while their
-    accuracies spanned 0.6 points on n=500 -- inside the noise. Under greedy
-    there is no draw, so a disagreement means the logits really differ.
+    GREEDY only, and that is a correction with the same cause as V2's: token
+    identity is not a question sampling can answer, because a multinomial
+    draw flips whenever the logits move at all. Read under sampling these
+    arms agreed on 96.6 % / 95.2 % of 500 answers, which looked like "the
+    shuffle carries signal" and was not evidence of anything.
+
+    Decided by exact McNemar on the discordant pairs, not by an agreement
+    threshold. The arms answer the same questions, so the pairing removes
+    question difficulty; a 0.86-point accuracy difference that an unpaired
+    interval on n=3000 would call noise is settled at p = 1.6e-4 by 46
+    discordant pairs.
     """
     print("\nV4  Is CausalMM's shuffle doing the work, or just its magnitude?")
+    base = find(runs, "causalmm", decoding="greedy")
+    if base is None:
+        say(SKIP, "plain greedy causalmm not run yet")
+        return []
+    base_records = load(base)[0]
+    ref = records_by_sample(base_records)
     verdicts = []
-    for decoding in ("greedy", "sampling"):
-        base = find(runs, "causalmm", decoding=decoding)
-        if base is None:
+    for control in ("cf_constant", "cf_blind"):
+        path = find(runs, "causalmm", decoding="greedy", control=control)
+        if path is None:
+            say(SKIP, f"{control}: not run under greedy")
             continue
-        exact = decoding == "greedy"
-        label = "greedy, token-identity" if exact else \
-                "sampling, DISTRIBUTION only -- a draw flips on any logit change"
-        print(f"      [{label}]")
-        base_records = load(base)[0]
-        ref = outputs_by_sample(base_records)
-        ref_acc = None
-        for control in ("cf_constant", "cf_blind"):
-            path = find(runs, "causalmm", decoding=decoding, control=control)
-            if path is None:
-                say(SKIP, f"{control}: not run under {decoding}")
-                continue
-            records = load(path)[0]
-            got = outputs_by_sample(records)
-            shared = sorted(set(got) & set(ref))
-            if not shared:
-                say(SKIP, f"{control}: no overlapping sample ids")
-                continue
-            if ref_acc is None:
-                ref_acc = pope_accuracy(
-                    [r for r in base_records if r["sample_id"] in set(shared)],
-                    "adversarial")
-                say(INFO, f"shuffle on these {len(shared)}: {ref_acc:.2f}")
-            acc = pope_accuracy(records, "adversarial")
-            same = sum(1 for s in shared if got[s] == ref[s])
-            frac = same / len(shared)
-            text = (f"{control}: agrees with shuffle on {same}/{len(shared)} "
-                    f"({frac:.1%}), accuracy {acc:.2f} ({acc - ref_acc:+.2f})")
-            if not exact:
-                say(INFO, text + "  -- read the accuracy, not the agreement")
-                continue
-            if frac > 0.99:
-                say(PASS, text + "  -- the vision counterfactual is a "
-                                 "description of something the code does not "
-                                 "do; CausalMM is a language-prior contrast")
-                verdicts.append(PASS)
-            else:
-                say(FAIL, text + "  -- with no draw to blame, the residual "
-                                 "image signal is load-bearing after all and "
-                                 "the 1/n_keys argument is incomplete")
-                verdicts.append(FAIL)
+        records = load(path)[0]
+        got = records_by_sample(records)
+        ids = sorted(set(got) & set(ref))
+        if not ids:
+            say(SKIP, f"{control}: no overlapping sample ids")
+            continue
+        same, ref_wins, ctl_wins, p = paired_verdict(ref, got, ids)
+        acc_ref = pope_accuracy([ref[i] for i in ids], "adversarial")
+        acc_ctl = pope_accuracy([got[i] for i in ids], "adversarial")
+        text = (f"{control}: agrees with shuffle on {same}/{len(ids)} "
+                f"({same / len(ids):.1%}), accuracy {acc_ctl:.2f} vs "
+                f"{acc_ref:.2f} ({acc_ctl - acc_ref:+.2f}); "
+                f"{ref_wins + ctl_wins} informative pairs, shuffle "
+                f"{ref_wins} - {ctl_wins} {control}, p={p:.3g}")
+        if p > PAIRED_ALPHA:
+            say(PASS, text + "  -- no detectable difference, so the vision "
+                             "counterfactual is a description of something "
+                             "the code does not do; CausalMM is a "
+                             "language-prior contrast")
+            verdicts.append(PASS)
+        else:
+            better = control if ctl_wins > ref_wins else "shuffle"
+            say(FAIL, text + f"  -- {better} is really better, so the "
+                             f"residual image signal in the negative branch "
+                             f"is load-bearing and the 1/n_keys argument is "
+                             f"incomplete")
+            verdicts.append(FAIL)
     return verdicts
 
 
@@ -241,58 +294,78 @@ def opera_penalty_diagnostics(records):
 def v5_opera_decomposition(runs: Path) -> List[str]:
     """Which third of OPERA is working?
 
-    Pre-registered prediction (docs/VALIDATION.md V5): `opera_no_penalty`
-    lands ON TOP of plain OPERA, i.e. the over-trust penalty is inert on
-    POPE. A FAIL here is this project's PREDICTION being wrong, not a defect
-    in the port -- it would mean the penalty does real work and the
-    correct-geometry stand-in understated it.
+    BOTH lengths, and the second one is a correction. The decomposition
+    first ran at ``max_new_tokens=1``, this project's POPE default, where
+    plain OPERA gains +0.07 over the greedy baseline: the whole method is
+    inert there, so three equal arms decompose nothing. OPERA's own
+    ``pope_eval.py`` passes 10, where the same code gains +2.33, and that is
+    the gain the controls have to split.
 
-    No direction was pre-registered for `opera_unrestricted`, so it stays
-    INFO: the document lists readings for it but never named a favourite.
+    The 1-token block is kept rather than deleted, because it is the length
+    Fox re-ran its compared methods at, so it is what Fox's Table 1 cell
+    contains. The verdict is taken from the 10-token block.
     """
     print("\nV5  OPERA: beam search, candidate restriction, or penalty?")
-    plain = find(runs, "opera", decoding="greedy")
-    if plain is None:
-        say(SKIP, "plain opera not run yet")
-        return []
-    plain_records = load(plain)[0]
-    plain_acc = pope_accuracy(plain_records, "adversarial")
-    say(INFO, f"opera accuracy {plain_acc:.2f}")
-
-    diag = opera_penalty_diagnostics(plain_records)
-    if diag:
-        parts = [f"{k} {v:.4g}" for k, v in diag.items()]
-        say(INFO, "penalty telemetry: " + ", ".join(parts))
-        changed = diag.get("n_steps_penalty_changed_top")
-        if changed is not None and changed <= 0.0:
-            say(INFO, "the penalty never moved the top candidate at any step, "
-                      "so the accuracy comparison below can only agree")
-
     verdicts = []
-    for control in ("opera_no_penalty", "opera_unrestricted"):
-        path = find(runs, "opera", decoding="greedy", control=control)
-        if path is None:
-            say(SKIP, f"{control} not run yet")
+    for mnt, label in ((1, "1 token -- Fox's harness, and Fox's Table 1 cell"),
+                       (10, "10 tokens -- OPERA's own pope_eval.py")):
+        plain = find(runs, "opera", decoding="greedy", max_new_tokens=mnt)
+        if plain is None:
             continue
-        acc = pope_accuracy(load(path)[0], "adversarial")
-        delta = acc - plain_acc
-        if control == "opera_unrestricted":
-            say(INFO, f"{control}: {acc:.2f} ({delta:+.2f})"
-                      + ("  -- the five-candidate restriction is not what "
-                         "helps" if abs(delta) < 0.2 else
-                         "  -- the restriction is load-bearing"))
-            continue
-        if abs(delta) < 0.2:
-            say(PASS, f"{control}: {acc:.2f} ({delta:+.2f}) -- the over-trust "
-                      f"penalty is INERT on POPE. OPERA's published POPE "
-                      f"number is beam search with a truncated candidate set")
-            verdicts.append(PASS)
-        else:
-            say(FAIL, f"{control}: {acc:.2f} ({delta:+.2f}) -- the penalty "
-                      f"DOES move POPE, so the prediction in VALIDATION.md "
-                      f"V5 was wrong: the stand-in's near-uniform attention "
-                      f"understated it. Not a port defect")
-            verdicts.append(FAIL)
+        print(f"      [{label}]")
+        plain_records = load(plain)[0]
+        ref = records_by_sample(plain_records)
+
+        diag = opera_penalty_diagnostics(plain_records)
+        if diag:
+            say(INFO, "penalty telemetry: "
+                      + ", ".join(f"{k} {v:.4g}" for k, v in diag.items()))
+            ps = diag.get("penalty_spread_mean")
+            ls = diag.get("logit_spread_mean")
+            if ps and ls:
+                say(INFO, f"the raw logits spread {ls / ps:.0f}x wider than "
+                          f"the penalty does across the five candidates")
+
+        base = find(runs, "sampling", decoding="greedy")
+        for control in ("opera_no_penalty", "opera_unrestricted"):
+            path = find(runs, "opera", decoding="greedy", control=control,
+                        max_new_tokens=mnt)
+            if path is None:
+                say(SKIP, f"{control} not run at {mnt} token(s)")
+                continue
+            got = records_by_sample(load(path)[0])
+            ids = sorted(set(got) & set(ref))
+            same, ref_wins, ctl_wins, p = paired_verdict(ref, got, ids)
+            acc_ref = pope_accuracy([ref[i] for i in ids], "adversarial")
+            acc_ctl = pope_accuracy([got[i] for i in ids], "adversarial")
+            gap = ""
+            if base is not None:
+                bl = records_by_sample(load(base)[0])
+                shared = [bl[i] for i in ids if i in bl]
+                if shared:
+                    gap = (f", {acc_ctl - pope_accuracy(shared, 'adversarial'):+.2f} "
+                           f"over the baseline")
+            text = (f"{control}: {acc_ctl:.2f} vs {acc_ref:.2f} "
+                    f"({acc_ctl - acc_ref:+.2f}{gap}); agrees on "
+                    f"{same}/{len(ids)}, {ref_wins + ctl_wins} informative "
+                    f"pairs {ref_wins} - {ctl_wins}, p={p:.3g}")
+            if control == "opera_unrestricted":
+                say(INFO, text)
+                continue
+            if mnt != 10:
+                say(INFO, text + "  -- read at 10 tokens, not here: OPERA "
+                                 "gains +0.07 at this length")
+                continue
+            if p > PAIRED_ALPHA:
+                say(PASS, text + "  -- the over-trust penalty is inert even "
+                                 "where OPERA works, so its POPE gain is "
+                                 "BEAM SEARCH")
+                verdicts.append(PASS)
+            else:
+                say(FAIL, text + "  -- the penalty does real work at this "
+                                 "length; the prediction in VALIDATION.md V5 "
+                                 "was wrong. Not a port defect")
+                verdicts.append(FAIL)
     return verdicts
 
 

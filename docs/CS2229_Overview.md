@@ -129,17 +129,36 @@ Thêm hai điểm:
 
 OPERA là ba cơ chế xếp lên nhau nhưng paper chỉ đặt tên cho một: (1) beam
 search 5 beam, (2) hạn chế cứng 5 candidate, (3) hình phạt "over-trust" thưởng
-cho việc chú ý vào ảnh. Ta phân rã cả ba:
+cho việc chú ý vào ảnh.
 
-| arm | accuracy | vs OPERA |
+Phân rã phải làm ở **protocol 10 token của chính OPERA**, vì ở harness 1 token
+của Fox thì cả phương pháp chỉ được +0.07 — không có gì để phân rã. Ở 10 token
+nó được +2.33, và ba arm chia nhau +2.33 đó:
+
+| arm | accuracy | vs baseline | trùng `opera` | cặp có thông tin | p |
+|---|---|---|---|---|---|
+| `opera` | 81.47 | +2.33 | — | — | — |
+| `opera_no_penalty` | **81.47** | +2.33 | 1496/1500 | 2 (1–1) | 1.0 |
+| `opera_unrestricted` | **81.47** | +2.33 | 1474/1500 | 24 (12–12) | 1.0 |
+
+Ba arm, một con số. **Toàn bộ +2.33 là của beam search.** Không cơ chế nào
+trong hai cơ chế còn lại đóng góp gì đo được.
+
+Và cách phát biểu phải chính xác hơn "hình phạt vô tác dụng". Telemetry:
+
+| | 1 token | 10 token |
 |---|---|---|
-| `opera` | 79.10 | — |
-| `opera_no_penalty` | 79.03 | −0.07 |
-| `opera_unrestricted` | 79.13 | +0.03 |
+| độ tản hình phạt trên 5 candidate | 0.067 | 0.082 |
+| độ tản logit thô | 9.099 | 7.889 |
+| tỉ lệ | 136× | **96×** |
+| số bước hình phạt đổi top candidate | 0.00033/câu | **0.0913/câu** |
 
-0.10 điểm trên 3000 câu. Telemetry nói rõ vì sao: độ tản của hình phạt trên 5
-candidate là **0.067** so với độ tản logit **9.099** — nhỏ hơn 136 lần — và
-trên 3000 câu nó đổi top candidate ở **đúng 1 bước**.
+Ở 10 token hình phạt **có** tác dụng — nó đổi top candidate ở khoảng 0.9% các
+bước, chừng 274 lần trên 3000 câu, so với **đúng 1 bước** ở 1 token. Nhưng
+trong 274 lần đó chỉ 4 lần đi tới câu trả lời cuối, và tỉ số là 1–1. Hình phạt
+sắp xếp lại những candidate mà beam dù sao cũng hồi phục được. Đó là một tuyên
+bố khác với "hình phạt không thể tác dụng", và là tuyên bố duy nhất mà dữ liệu
+10-token cho phép.
 
 ### 5.3 Về CausalMM — counterfactual thị giác là một mô tả của thứ code không làm
 
@@ -148,25 +167,37 @@ và trung bình mỗi ô là `1/577`. Shuffle một ma trận **không đổi đ
 bình**, và bilinear resize hay mean-over-heads cũng không. Hệ quả: "nhánh
 counterfactual" chỉ là ảnh bị hạ tỉ lệ ~580 lần, tức gần như mù.
 
-Đo trên model thật, dưới greedy, 500 câu:
+Đo trên model thật, greedy, 3000 câu, ghép đôi trên cùng sample:
 
-| arm | trùng `shuffle` | accuracy |
-|---|---|---|
-| `cf_constant` (thay bằng đúng `1/n_keys`) | 498/500 | 77.80 |
-| `cf_blind` (xoá trắng feature) | 495/500 | **78.80** |
+| cặp | trùng nhau | cặp có thông tin | tỉ số | p |
+|---|---|---|---|---|
+| `shuffle` vs `cf_constant` | 2988/3000 (99.6%) | 12 | 9–3 | **0.146** |
+| `shuffle` vs `cf_blind` | 2954/3000 (98.5%) | 46 | 10–36 | **1.6e-4** |
+| `cf_constant` vs `cf_blind` | 2942/3000 (98.1%) | 58 | 13–45 | **3.0e-5** |
 
-Hàng đầu xác nhận lập luận. Hàng thứ hai là dự đoán **sai** duy nhất của đồ án
-— và sai theo hướng thú vị: `cf_blind` đúng trên **5/5** câu nó khác `shuffle`,
-toàn bộ là label `no` mà hai arm kia bịa `Yes`. Nhánh mù hoàn toàn là tiên
-nghiệm ngôn ngữ thuần nhất, nên trừ nó đi hiệu quả hơn. **CausalMM sẽ điểm cao
-hơn nếu nó làm ít hơn.** (McNemar chính xác p=0.0625 — đang nâng lên 3000 câu
-để chốt.)
+Accuracy: `shuffle` 76.67 · `cf_constant` 76.47 · `cf_blind` **77.53**.
+
+Hàng đầu xác nhận lập luận, và giờ đủ cỡ mẫu để nói: thay attention đã shuffle
+bằng **đúng** `1/n_keys` là không phân biệt được với shuffle. Counterfactual
+thị giác của CausalMM **là một contrast tiên nghiệm ngôn ngữ**.
+
+Hàng thứ hai là dự đoán **sai** duy nhất trong cả bộ kiểm chứng, và tín hiệu
+phát hiện ra nó ở 500 câu (5–0, p=0.0625) giữ đúng ở 3000 câu: 36–10,
+p=1.6e-4. Nhánh mù hoàn toàn là tiên nghiệm ngôn ngữ thuần nhất, nên trừ nó đi
+loại bỏ nhiều `Yes` do tiên nghiệm sinh ra hơn là trừ một nhánh còn giữ 0.17%
+ảnh. **CausalMM sẽ điểm cao hơn nếu nó làm ít hơn.** Lập luận 1/577 đúng 99%,
+và 1% còn lại chạy ngược lại chính phương pháp.
+
+Một con số cần mang sang Table 1: `causalmm` greedy được 76.67 so với baseline
+greedy **79.03**. Dưới sampling nó *thắng* (+1.13), dưới greedy nó *thua* 2.36.
+Phần lợi của nó phụ thuộc vào mặt nạ plausibility và phép rút ngẫu nhiên, không
+phải vào contrast.
 
 ## 6. Tình trạng hiện tại
 
-- **238/238 job trong plan đã chạy** (3 job đang mở rộng lên full split ở
-  session `fox_r11_s1`).
-- Gate kiểm chứng: **18 đúng / 1 sai**.
+- **240/240 job trong plan đã chạy.** Plan rỗng.
+- Gate kiểm chứng: **18 đúng / 1 sai** (cái sai là dự đoán của nhóm về
+  `cf_blind`, không phải bug — xem 5.3).
 - Mọi **baseline** POPE khớp paper trong 0.05 điểm → harness, dữ liệu, protocol
   đều đúng. Những gì đo được là về phương pháp, không phải về setup.
 
