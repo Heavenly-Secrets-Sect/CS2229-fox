@@ -171,6 +171,71 @@ def head_scores(
     return m_sys, h_vis
 
 
+def diagnostic_stats(
+    attn_probs: torch.Tensor,
+    img_start: int,
+    img_end: int,
+    *,
+    tail: int = 1,
+    eps: float = 1e-12,
+) -> Optional[Dict[str, torch.Tensor]]:
+    """Per-head ``m_sys``, ``m_vis``, ``m_txt`` and ``H_vis`` over a tail window.
+
+    Equation 11 of the paper, read literally::
+
+        m_sys,tail = (1 / |Q_tail|) * sum_{q in Q_tail} sum_{k in I_sys} A[q, k]
+
+    with ``I_sys = [0, img_start)``, and the same form applied to the visual
+    span ``[img_start, img_end + 1)`` and to everything after it. Those three
+    spans partition the keys, so for any head and any tail
+
+        m_sys + m_vis + m_txt == 1
+
+    to floating-point error. That identity is not decoration: Table 13 of the
+    paper reports m_vis 0.57, m_txt 0.62, m_sys 0.82, summing to 2.01, so
+    whatever that table measures it is not Equation 11 applied to the three
+    token groups. `tests/test_diagnose.py` asserts the identity here, and
+    `scripts/analyse_diagnostics.py` reports the measured triple beside the
+    paper's.
+
+    ``H_vis`` is the entropy of attention renormalised over the image span,
+    averaged over the tail, as in ``head_scores`` -- dispersion of visual
+    focus, independent of how much mass reached the image at all.
+
+    This is NOT ``head_scores``. That function is asserted bit-identical to the
+    released source and must keep its exact shape (last query only, double
+    renormalisation); this one answers a different question and takes a window.
+
+    Args:
+        attn_probs: ``[B, H, Q, K]`` post-softmax, causal mask already applied.
+        img_start: first image-token key index.
+        img_end: last image-token key index, inclusive.
+        tail: how many trailing query positions to average over. The paper
+            reports tail = 1 (instantaneous) and tail = 32 (smoothed); a tail
+            longer than the query length is clamped.
+
+    Returns ``None`` when the visual span is empty, matching ``head_scores``.
+    """
+    B, H, Q, K = attn_probs.shape
+    v_s = max(0, min(img_start, K))
+    v_e = max(v_s, min(img_end + 1, K)) if img_end >= 0 else 0
+    if v_e <= v_s:
+        return None
+
+    n = max(1, min(int(tail), Q))
+    a = attn_probs[:, :, Q - n:Q, :]                             # [B, H, n, K]
+
+    m_sys = a[..., 0:v_s].sum(dim=-1).mean(dim=-1)               # [B, H]
+    m_vis = a[..., v_s:v_e].sum(dim=-1).mean(dim=-1)
+    m_txt = a[..., v_e:K].sum(dim=-1).mean(dim=-1)
+
+    p_v = a[..., v_s:v_e]
+    p_v = p_v / (p_v.sum(dim=-1, keepdim=True) + eps)
+    h_vis = -(p_v * (p_v + eps).log()).sum(dim=-1).mean(dim=-1)  # [B, H]
+
+    return {"m_sys": m_sys, "m_vis": m_vis, "m_txt": m_txt, "h_vis": h_vis}
+
+
 def select_heads(
     scores: torch.Tensor,
     ratio: float,

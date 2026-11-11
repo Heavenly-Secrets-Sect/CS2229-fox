@@ -117,6 +117,15 @@ COST_S: Dict[Tuple[str, str], float] = {
     # No ("*", "beam") entry on purpose: OPERA is the one shape whose cost
     # scales with the generation length, so it is not a flat per-sample
     # number -- see BEAM_COST_S and Job.est_seconds.
+    #
+    # ESTIMATED, not measured, like BEAM_COST_S once was -- and that one was
+    # 2.2x wrong at a length it had never been measured at, so treat this the
+    # same way and re-run `plan plan --calibrate` once the first diagnostic
+    # session comes back. Reasoning: a single-branch POPE prefill is 0.56 s
+    # under SDPA; eager attention on all 32 layers adds a [1, 32, Q, Q] fp32
+    # materialisation and a second fp32 softmax per layer, so roughly double.
+    ("pope", "diagnose"): 1.2,
+    ("chair", "diagnose"): 1.2,
 }
 
 #: OPERA's cost, split because it is the only arm where ``max_new_tokens``
@@ -275,6 +284,13 @@ class Job:
         if self.control == "negative_only":
             # The whole point of that arm: no pair, so no second branch.
             return "single"
+        if self.method == "diagnose":
+            # Forward-only, but EAGER on all 32 layers: it materialises a
+            # [1, 32, Q, Q] fp32 attention matrix per layer and softmaxes a
+            # second fp32 copy for the statistics. Cheaper than a decode loop,
+            # dearer than the SDPA single-branch prefill it would otherwise
+            # be costed as.
+            return "diagnose"
         if self.method in BEAM_SEARCH:
             return "beam"
         if self.method in SPLIT_BRANCH:
@@ -728,6 +744,44 @@ def _build_plan() -> List[Job]:
                         decoding="greedy", control=control,
                         note=f"OPERA decomposition: {control}"))
 
+
+    # ---- Round 13: the diagnosis itself ----------------------------------- #
+    # Everything so far has measured what the INTERVENTION does. This measures
+    # what the DIAGNOSIS claims, which is the half of the paper no arm has
+    # touched yet: that system-prompt reliance separates hallucinated from
+    # faithful answers, and that the separation is sharp enough to pick an
+    # intervention window from.
+    #
+    # Forward-only. No token is generated, so the labels come from the
+    # archived greedy baseline joined on sample_id -- which is why a sweep
+    # that would cost tens of hours as a table row costs one.
+    #
+    # Three claims, in descending order of how checkable they are:
+    #
+    #   Figure 3 / Figure 13   ROC-AUC of the sample-level score built from
+    #                          Eq. 11-13. The paper reports 0.818 in the main
+    #                          text and 0.8226 (tail=1) / 0.7626 (tail=32) in
+    #                          the appendix. Both tails are recorded.
+    #   Figure 7 / Table 15    |AUC - 0.5| for H_vis per layer, which is the
+    #                          input to "retain the contiguous early-to-mid
+    #                          window above the threshold". Needs EVERY layer,
+    #                          not the window the rule is meant to choose.
+    #   Table 13               m_vis 0.57, m_txt 0.62, m_sys 0.82. Those are
+    #                          the three token groups of Eq. 11, whose masses
+    #                          partition the keys and therefore sum to one;
+    #                          0.57 + 0.62 + 0.82 = 2.01. Whatever Table 13
+    #                          measures, it is not that, and the table gives
+    #                          no other definition. Measured anyway, so the
+    #                          report can state the gap rather than assert it.
+    #
+    # Eq. 13 also fits its ΔAUC weights on the same labels the resulting AUC
+    # is reported against. The paper calls the aggregate "analysis-only... not
+    # a deployed hallucination detector", which concedes the point in words;
+    # the number is still in-sample, and scripts/analyse_diagnostics.py
+    # reports a held-out split beside it.
+    jobs.append(Job("diagnostics", "diagnose", "pope", "adversarial",
+                    decoding="greedy",
+                    note="attention statistics per head per layer; no generation"))
 
     # ---- Round 6: the compared methods, as themselves --------------------- #
     # Tables 1, 2 and 8 put Fox against Sampling, VCD, ICD, OPERA, CausalMM and

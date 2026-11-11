@@ -69,7 +69,9 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-from foxrepro.fox.kernel import intervene, resolve_logit_dtype
+from foxrepro.fox.kernel import (
+    diagnostic_stats, intervene, resolve_logit_dtype,
+)
 
 __all__ = [
     "FoxState",
@@ -79,6 +81,7 @@ __all__ = [
     "load_llava",
     "locate_image_span",
     "fox_generate",
+    "fox_diagnose",
     "causalmm_vision",
     "ATTN_NAME",
 ]
@@ -180,6 +183,17 @@ class FoxState:
     # ---- readouts, refilled every forward ----
     collect: bool = True
     diagnostics: Dict[int, Dict[str, torch.Tensor]] = field(default_factory=dict)
+
+    #: Measure every layer and edit nothing. Independent of ``enabled`` and of
+    #: ``eager_layers``, because the questions differ: the intervention runs on
+    #: the window it was configured for, while Figure 7 needs |AUC - 0.5| for
+    #: H_vis at EVERY layer in order to say which window the rule would pick.
+    #: ``intervene`` is never called on this path, so the oracle-verified edit
+    #: is untouched by anything the diagnostic pass does.
+    diagnose: bool = False
+    #: Tail windows for Equation 11. The paper reports 1 (instantaneous) and
+    #: 32 (smoothed) and finds the shorter window separates better.
+    diagnose_tails: Tuple[int, ...] = (1, 32)
 
     def reset_diagnostics(self) -> None:
         self.diagnostics.clear()
@@ -622,13 +636,20 @@ def fox_attention_forward(
         # The layer itself is never altered: fall through to the untouched
         # path below with (possibly) a narrower mask.
 
-    if (
-        not FOX.enabled
-        or FOX.mode == "off"
-        or layer_idx is None
-        or layer_idx not in FOX.eager_layers
-        or not FOX.span_is_set()
-    ):
+    # Two independent reasons to take the eager path: an intervention to apply,
+    # or a diagnostic to measure. Keeping them separate is what lets the
+    # diagnostic pass run over all 32 layers with mode="off".
+    diagnosing = (
+        FOX.diagnose and layer_idx is not None and FOX.span_is_set()
+    )
+    intervening = (
+        FOX.enabled
+        and FOX.mode != "off"
+        and layer_idx is not None
+        and layer_idx in FOX.eager_layers
+        and FOX.span_is_set()
+    )
+    if not diagnosing and not intervening:
         return sdpa_attention_forward(
             module, query, key, value, attention_mask,
             scaling=scaling, dropout=dropout, **kwargs,
@@ -663,6 +684,50 @@ def fox_attention_forward(
     # The kernel computes its head statistics from a separate masked fp32 copy,
     # then writes to `logits` raw -- matching the released order, where the
     # causal mask is added only after the intervention.
+    if diagnosing:
+        # The same separate fp32 mask-applied copy the intervention builds its
+        # metrics from, for the same reason: never measure the tensor being
+        # mutated. Here nothing is mutated, but the dtype still matters -- a
+        # softmax in fp16 would quantise the very masses being compared.
+        base = logits.to(torch.float32)
+        if attention_mask is not None:
+            base = base + attention_mask[..., : k_states.shape[-2]].to(torch.float32)
+            base = torch.max(
+                base,
+                torch.tensor(torch.finfo(torch.float32).min, device=base.device),
+            )
+        with torch.no_grad():
+            dprobs = torch.softmax(base, dim=-1)
+            row: Dict[str, torch.Tensor] = {}
+            for t in FOX.diagnose_tails:
+                st = diagnostic_stats(dprobs, FOX.img_start, FOX.img_end, tail=t)
+                if st is None:
+                    continue
+                for k, v in st.items():
+                    row[f"{k}_t{t}"] = v.detach().float().cpu()
+        if row:
+            FOX.diagnostics[layer_idx] = row
+        del base, dprobs
+
+    if not intervening:
+        # Diagnostic-only: hand the unaltered logits to the same softmax the
+        # untouched path would have used. This is eager where the untouched
+        # path is SDPA, so the result agrees to kernel tolerance rather than
+        # bit for bit (~3e-7 in fp32); tests/test_diagnose.py pins both that
+        # and the exact property -- measuring must not perturb an
+        # intervention running beside it.
+        if attention_mask is not None:
+            logits = logits + attention_mask[..., : k_states.shape[-2]].to(logits.dtype)
+            logits = torch.max(
+                logits,
+                torch.tensor(torch.finfo(logits.dtype).min, device=logits.device,
+                             dtype=logits.dtype),
+            )
+        acc = torch.float32 if FOX.softmax_dtype == "fp32" else logits.dtype
+        probs = F.softmax(logits, dim=-1, dtype=acc).to(query.dtype)
+        out = torch.matmul(probs, v_states).transpose(1, 2).contiguous()
+        return out, None
+
     logits, diag = intervene(
         logits,
         FOX.img_start,
@@ -974,6 +1039,96 @@ def _sample_from(
     probs = F.softmax(x[0], dim=-1)
     tok = torch.multinomial(probs, 1, generator=generator).squeeze(-1)
     return tok.to(out_device)
+
+
+@torch.inference_mode()
+def fox_diagnose(
+    model: Any,
+    inputs: Dict[str, torch.Tensor],
+    *,
+    tails: Tuple[int, ...] = (1, 32),
+    image_token_id: Optional[int] = None,
+    softmax_dtype: str = "fp32",
+) -> Dict[str, Any]:
+    """One forward pass, no generation: the attention statistics per head.
+
+    This is the measurement behind Table 13 and Figures 3 and 7. It generates
+    nothing, so it costs one prefill per sample instead of a decode loop --
+    the whole diagnostic sweep is about an hour where the table rows are tens.
+
+    It reads EVERY layer, not the intervention window, because Figure 7 plots
+    |AUC - 0.5| for H_vis per layer and the paper's automatic window rule is
+    "retain the contiguous early-to-mid window above the threshold". A sweep
+    restricted to the window that the rule is supposed to choose could not
+    check the rule.
+
+    Nothing is edited: ``intervene`` is never reached. The output is NOT
+    bit-identical to an untouched forward, though -- measuring forces the
+    eager path, and eager and SDPA reduce in different orders, which is worth
+    about 3e-7 in fp32 on the tiny model. That costs nothing here because this
+    pass generates nothing and no number is read from its logits; the labels
+    that turn these statistics into an AUC come from an archived generation
+    run, joined on ``sample_id``. It would matter if diagnosis were ever
+    switched on during a scored run, so the test asserts the property that
+    protects that case: measuring alongside an intervention leaves the
+    intervened output bit-identical.
+
+    Returns ``{"layers": {layer_idx: {stat_name: [H] floats}}, "n_layers":
+    int, "n_heads": int, "img_start": int, "img_end": int,
+    "n_prompt_tokens": int}``.
+    """
+    if image_token_id is None:
+        cfg = getattr(model, "config", None)
+        image_token_id = getattr(cfg, "image_token_index", None)
+        if image_token_id is None:
+            image_token_id = getattr(cfg, "image_token_id", None)
+    if image_token_id is None:
+        raise ValueError(
+            "the checkpoint declares no image token id; pass image_token_id"
+        )
+
+    input_ids = inputs["input_ids"]
+    img_start, img_end = locate_image_span(input_ids, int(image_token_id))
+    n_layers = int(getattr(
+        getattr(model.config, "text_config", model.config),
+        "num_hidden_layers",
+    ))
+
+    FOX.reset_diagnostics()
+    with FOX.configured(
+        enabled=False,
+        mode="off",
+        diagnose=True,
+        diagnose_tails=tuple(int(t) for t in tails),
+        img_start=img_start,
+        img_end=img_end,
+        eager_layers=frozenset(range(n_layers)),
+        softmax_dtype=softmax_dtype,
+        collect=True,
+        branch_rows=None,
+    ):
+        model(**inputs, use_cache=False)
+        layers = {
+            int(idx): {k: v[0].tolist() for k, v in row.items()}
+            for idx, row in FOX.diagnostics.items()
+        }
+    if not layers:
+        raise RuntimeError(
+            "no layer produced statistics. Either the visual span is empty -- "
+            "check that the processor expanded <image> rather than taking the "
+            "pre-4.44 legacy path -- or the model was not loaded with "
+            "attn_implementation='fox'."
+        )
+    any_row = next(iter(layers.values()))
+    n_heads = len(next(iter(any_row.values())))
+    return {
+        "layers": layers,
+        "n_layers": n_layers,
+        "n_heads": n_heads,
+        "img_start": int(img_start),
+        "img_end": int(img_end),
+        "n_prompt_tokens": int(input_ids.shape[-1]),
+    }
 
 
 @torch.inference_mode()

@@ -1,33 +1,19 @@
 {
-  "round": "r12",
+  "round": "r13",
   "order": "priority",
   "n_sessions": 1,
   "budget_hours": 10.0,
   "n_calibrated": 0,
-  "in_flight_excluded": [
-    "validation:causalmm:pope:adversarial:greedy",
-    "validation:causalmm:pope:adversarial:greedy:cf_blind",
-    "validation:causalmm:pope:adversarial:greedy:cf_constant"
-  ],
+  "in_flight_excluded": [],
   "jobs": {
-    "opera_protocol:opera:pope:adversarial:greedy:opera_no_penalty:n1500": {
-      "id": "opera_protocol:opera:pope:adversarial:greedy:opera_no_penalty:n1500",
-      "target": "opera_protocol",
-      "note": "decompose the 10-token gain: opera_no_penalty",
-      "command": "python -m foxrepro.bench.generate --method opera --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control opera_no_penalty --max-new-tokens 10 --limit 1500",
-      "est_s": 9352.8,
-      "run_file": "m-opera__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-109f4ec7.jsonl",
-      "n_samples": 1500,
-      "measured": false
-    },
-    "opera_protocol:opera:pope:adversarial:greedy:opera_unrestricted:n1500": {
-      "id": "opera_protocol:opera:pope:adversarial:greedy:opera_unrestricted:n1500",
-      "target": "opera_protocol",
-      "note": "decompose the 10-token gain: opera_unrestricted",
-      "command": "python -m foxrepro.bench.generate --method opera --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --control opera_unrestricted --max-new-tokens 10 --limit 1500",
-      "est_s": 9352.8,
-      "run_file": "m-opera__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-3992f856.jsonl",
-      "n_samples": 1500,
+    "diagnostics:diagnose:pope:adversarial:greedy": {
+      "id": "diagnostics:diagnose:pope:adversarial:greedy",
+      "target": "diagnostics",
+      "note": "attention statistics per head per layer; no generation",
+      "command": "python -m foxrepro.bench.generate --method diagnose --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
+      "est_s": 3600.0,
+      "run_file": "m-diagnose__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
+      "n_samples": 3000,
       "measured": false
     }
   },
@@ -35,10 +21,9 @@
     {
       "session": 1,
       "jobs": [
-        "opera_protocol:opera:pope:adversarial:greedy:opera_no_penalty:n1500",
-        "opera_protocol:opera:pope:adversarial:greedy:opera_unrestricted:n1500"
+        "diagnostics:diagnose:pope:adversarial:greedy"
       ],
-      "est_hours": 5.2
+      "est_hours": 1.0
     }
   ]
 }

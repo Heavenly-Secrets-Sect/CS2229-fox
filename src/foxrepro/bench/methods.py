@@ -429,6 +429,69 @@ class SamplingMethod(_LlavaMethod):
 
 
 @register_method
+class DiagnoseMethod(_LlavaMethod):
+    """Measure the attention statistics. Generate nothing.
+
+    This is Table 13 and Figures 3 and 7: one prefill per sample instead of a
+    decode loop, so the whole sweep is about an hour where a table row is
+    tens. It runs through the ordinary method machinery on purpose -- resume
+    by sample_id, provenance, the run-key hash, plan tracking, ingest and
+    archive all come for free, and the records sit in results/runs beside
+    every other measurement.
+
+    It writes an EMPTY ``text``. Nothing downstream should score it: there is
+    no answer to be right or wrong about. The labels that turn these
+    statistics into the paper's AUC -- hallucinated versus faithful -- come
+    from an archived generation run joined on ``sample_id``, which is exactly
+    what lets this pass skip generation.
+
+    Per-head values are kept rather than per-layer means, following the same
+    rule as the run JSONL itself: store what was measured, reduce later. A
+    per-layer mean cannot be un-averaged, and Equation 12 is defined per head.
+    """
+
+    name = "diagnose"
+
+    #: Equation 11's window. The paper reports both and finds the shorter one
+    #: separates better (AUC 0.8226 against 0.7626), which is its evidence
+    #: that system reliance peaks at the instantaneous decision step.
+    TAILS = (1, 32)
+
+    #: Five decimals on a quantity in [0, 1] is well below any difference the
+    #: analysis can resolve, and it keeps a record near 40 KB rather than
+    #: 100 KB. The archive is already 692 MB.
+    ROUND = 5
+
+    def _decode_kwargs(self) -> Dict[str, Any]:  # pragma: no cover - unused
+        """Never called: this method does not generate."""
+        raise NotImplementedError
+
+    def generate(self, sample: Sample, prompt: str) -> MethodOutput:
+        inputs = self._prepare(sample, prompt)
+        got = self._attn.fox_diagnose(self.model, dict(inputs), tails=self.TAILS)
+
+        r = self.ROUND
+        layers = {
+            str(idx): {k: [round(float(x), r) for x in v] for k, v in row.items()}
+            for idx, row in got["layers"].items()
+        }
+        return MethodOutput(
+            text="",
+            n_prompt_tokens=got["n_prompt_tokens"],
+            n_gen_tokens=0,
+            extra={
+                "variant": "diagnose",
+                "diag_layers": layers,
+                "n_layers": got["n_layers"],
+                "n_heads": got["n_heads"],
+                "img_start": got["img_start"],
+                "img_end": got["img_end"],
+                "tails": list(self.TAILS),
+            },
+        )
+
+
+@register_method
 class FoxMethod(_LlavaMethod):
     """Fox: diagnose risky heads, intervene pre-softmax, fuse two branches.
 
