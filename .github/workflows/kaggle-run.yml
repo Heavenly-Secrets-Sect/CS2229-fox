@@ -64,7 +64,12 @@ jobs:
           : "${CI_RUN_SECRET:?secret CI_RUN_SECRET chưa được đặt cho repo}"
           : "${BOT_URL:?variable KAGGLE_BOT_URL chưa được đặt cho repo}"
           dry=false
-          if [ "${IN_DRY:-false}" = "true" ] || [ "${IS_PRERELEASE:-false}" = "true" ]; then dry=true; fi
+          why=""
+          if [ "${IN_DRY:-false}" = "true" ]; then dry=true; why="dry_run được chọn khi bấm chạy"; fi
+          if [ "${IS_PRERELEASE:-false}" = "true" ]; then dry=true; why="release này được đánh PRE-RELEASE"; fi
+          if [ "$dry" = "true" ]; then
+            echo "::warning title=Diễn tập, không chạy thật::$why. Bot chỉ in kế hoạch chọn tài khoản; KHÔNG có session nào được đẩy lên Kaggle. Muốn chạy thật: Actions -> kaggle-run -> Run workflow, bỏ tick dry_run. (Bỏ tick pre-release rồi Lưu sẽ KHÔNG kích hoạt lại: GitHub bắn 'released', workflow này nghe 'published'.)"
+          fi
           tag=${RELEASE_TAG:-$(git rev-parse --short HEAD)}
           body=$(yq -o=json kaggle-run.yml | jq -c --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg tag "$tag" --argjson dry "$dry" \
             '{repo:$repo, sha:$sha, tag:$tag, manifest:., dry_run:$dry}')
