@@ -35,6 +35,23 @@ jobs:
             exit 1
           }
 
+          # Tag chỉ là nhãn -- SHA mới là định danh -- nhưng một nhãn sai còn
+          # tệ hơn không có nhãn: zip ra tên fox_<round>_s<N>.zip theo PLAN,
+          # nên release gắn r13 mà plan đóng băng ở r12 sẽ sinh fox_r12_s1.zip
+          # và tin Discord nói r13. Chỉ ép với tag dạng r<N> hoặc r<N>.<k>;
+          # ci-smoke-* và mọi nhãn khác được bỏ qua.
+          tag="${RELEASE_TAG:-}"
+          if [ -n "$tag" ] && printf '%s' "$tag" | grep -Eq '^r[0-9]+(\.[0-9]+)?$'; then
+            base=${tag%%.*}
+            [ "$base" = "$round" ] || {
+              echo "::error::release gắn tag '$tag' nhưng plan đóng băng ở '$round'. Zip sẽ ra tên fox_${round}_s<N>.zip, không khớp nhãn."
+              exit 1
+            }
+            echo "tag '$tag' khớp round '$round'"
+          else
+            echo "tag '$tag' không phải tag round; bỏ qua kiểm tra round"
+          fi
+
       - name: Gọi bot chạy thực nghiệm trên Kaggle
         env:
           CI_RUN_SECRET: ${{ secrets.CI_RUN_SECRET }}
