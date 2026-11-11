@@ -391,7 +391,7 @@ Sidebar → **Accelerator = GPU T4 × 2**. Bắt buộc — một T4 không đ�
 làm đổi chính đại lượng đang nghiên cứu.
 
 ```bash
-!git clone -q https://github.com/KiRzEa/fox.git /kaggle/working/fox
+!git clone -q https://github.com/Heavenly-Secrets-Sect/CS2229-fox.git /kaggle/working/fox
 %cd /kaggle/working/fox
 !bash run_kaggle_fox.sh 1        # 1..N, xem scripts/run_plan.json
 ```

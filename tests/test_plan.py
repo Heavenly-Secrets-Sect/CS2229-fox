@@ -1484,3 +1484,103 @@ class TestInFlightJobsAreLeftOut(unittest.TestCase):
             freeze_plan(None, 10.0, self.out, round_tag="t", skip_done=False,
                         in_flight=["table7:fox:pope:adversarial:greedy:a9"])
         self.assertIn("not job ids", str(cm.exception))
+
+
+class TestTheKaggleCiManifest(unittest.TestCase):
+    """`kaggle-run.yml` dispatches GPU sessions, so its numbers must be real.
+
+    A release publishes `sessions` sessions and each one runs
+    `run_kaggle_fox.sh <N>` for N = 1..sessions. If that count is above what
+    the frozen plan holds, the extra sessions install the package, probe the
+    host, ingest the archive, find nothing to run and exit -- a session of
+    someone's GPU quota spent on nothing. If it is below, jobs sit unrun with
+    no sign of it anywhere.
+
+    Read with a line parser rather than PyYAML because this project declares
+    no dependencies (pyproject `dependencies = []`), and a guard that skips
+    itself when an import is missing is the failure it exists to prevent.
+    The manifest is a flat map of scalars, which is also all `yq` reads out
+    of it in the workflow.
+    """
+
+    @staticmethod
+    def _scalars(path: Path) -> dict:
+        out = {}
+        for line in path.read_text().splitlines():
+            if not line or line[0].isspace() or line.lstrip().startswith("#"):
+                continue
+            key, sep, rest = line.partition(":")
+            if not sep:
+                continue
+            value = rest.split("#", 1)[0].strip().strip('"').strip("'")
+            out[key.strip()] = value
+        return out
+
+    def setUp(self) -> None:
+        self.manifest_path = REPO_ROOT / "kaggle-run.yml"
+        if not self.manifest_path.is_file():
+            self.skipTest("no kaggle-run.yml in this repo")
+        self.manifest = self._scalars(self.manifest_path)
+        self.frozen = json.loads(
+            (REPO_ROOT / "scripts" / "run_plan.json").read_text())
+
+    def test_sessions_matches_the_frozen_plan(self) -> None:
+        self.assertEqual(
+            int(self.manifest["sessions"]), int(self.frozen["n_sessions"]),
+            f"kaggle-run.yml says sessions={self.manifest['sessions']} but the "
+            f"frozen plan ({self.frozen.get('round')}) has "
+            f"{self.frozen['n_sessions']}. Re-freezing the plan means editing "
+            f"both, and the workflow refuses to launch when they disagree."
+        )
+
+    def test_budget_fits_the_session_wall(self) -> None:
+        budget = float(self.manifest["budget_hours"])
+        self.assertLessEqual(budget, TestSessionBudget.WALL_HOURS)
+        for sess in self.frozen["sessions"]:
+            with self.subTest(session=sess["session"]):
+                self.assertLessEqual(float(sess["est_hours"]), budget)
+
+    def test_the_run_command_dispatches_by_session(self) -> None:
+        run = self.manifest["run"]
+        self.assertIn("{session}", run,
+                      "the bot substitutes {session}; without it every "
+                      "session of the round runs the same jobs")
+        self.assertIn("BUDGET=${BUDGET_HOURS}", run,
+                      "run_kaggle_fox.sh reads BUDGET, and the bot exports "
+                      "BUDGET_HOURS -- without the bridge the script falls "
+                      "back to its own default and ignores the manifest")
+
+    def test_setup_does_not_build_track_a(self) -> None:
+        """Track A is transformers 4.29 on Python 3.11; Kaggle ships 3.13.
+
+        The records in results/runs were produced by the host's transformers
+        (5.16.1, Python 3.13, torch 2.11) through `pip install -e .` inside
+        run_kaggle_fox.sh. Putting kaggle_setup.sh in `setup` would try to
+        build an environment this image cannot build.
+        """
+        self.assertNotIn("kaggle_setup", self.manifest.get("setup", ""))
+
+    def test_the_output_is_one_zip(self) -> None:
+        """Exactly one zip in /kaggle/working, which the download button needs.
+
+        pack_runs.sh writes /kaggle/working/fox_runs_<tag>.zip and `rm -f`s it
+        first, so repacking after every job overwrites rather than
+        accumulates. The run command moves runs and logs off /kaggle/working
+        with FOX_PERSIST_ROOT so nothing else lands beside the zip.
+        """
+        self.assertIn("FOX_PERSIST_ROOT=/kaggle/temp", self.manifest["run"])
+        pack = (REPO_ROOT / "scripts" / "pack_runs.sh").read_text()
+        self.assertIn('rm -f "$OUT"', pack)
+        self.assertIn('OUT="${DEST}/fox_runs_${TAG}.zip"', pack)
+
+    def test_the_workflow_guards_the_same_invariant(self) -> None:
+        """A test only runs when someone runs it; the release path must check."""
+        wf = REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml"
+        self.assertTrue(wf.is_file(), "no kaggle-run workflow")
+        text = wf.read_text()
+        self.assertIn("scripts/run_plan.json", text,
+                      "the workflow must compare the manifest against the "
+                      "frozen plan before spending quota")
+        self.assertIn("prerelease", text,
+                      "a pre-release must stay dry_run, or the rehearsal "
+                      "spends quota")

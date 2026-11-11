@@ -1,0 +1,58 @@
+# Publish một release (hoặc bấm tay) thì gửi round thực nghiệm này cho bot
+# message-talisman, bot đẩy lên Kaggle.
+#
+# Cần: secret CI_RUN_SECRET và variable KAGGLE_BOT_URL của repo (không dấu `/`
+# cuối). Release đánh dấu pre-release chỉ chạy dry_run (xem kế hoạch chọn
+# account, không chạy).
+#
+# KHÔNG chạy mỗi commit: mỗi lần chạy tốn quota GPU của một thành viên.
+name: kaggle-run
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run: { description: "Chỉ xem kế hoạch chọn tài khoản, không chạy", type: boolean, default: false }
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Một release đẩy sessions session GPU. Nếu con số đó lệch khỏi plan đã
+      # đóng băng thì hoặc có session chạy rỗng (tốn quota, không ra job nào),
+      # hoặc có job không ai chạy. Rẻ hơn nhiều khi chặn ở đây so với lúc nhận
+      # tin tổng kết.
+      - name: Manifest phải khớp plan đã đóng băng
+        run: |
+          set -euo pipefail
+          want=$(jq -r '.n_sessions' scripts/run_plan.json)
+          got=$(yq -r '.sessions' kaggle-run.yml)
+          round=$(jq -r '.round' scripts/run_plan.json)
+          echo "plan $round: $want session; kaggle-run.yml: $got"
+          [ "$want" = "$got" ] || {
+            echo "::error::kaggle-run.yml khai sessions=$got nhưng scripts/run_plan.json ($round) có $want. Đóng băng plan lại thì sửa cả hai."
+            exit 1
+          }
+
+      - name: Gọi bot chạy thực nghiệm trên Kaggle
+        env:
+          CI_RUN_SECRET: ${{ secrets.CI_RUN_SECRET }}
+          BOT_URL: ${{ vars.KAGGLE_BOT_URL }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          IN_DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          : "${CI_RUN_SECRET:?secret CI_RUN_SECRET chưa được đặt cho repo}"
+          : "${BOT_URL:?variable KAGGLE_BOT_URL chưa được đặt cho repo}"
+          dry=false
+          if [ "${IN_DRY:-false}" = "true" ] || [ "${IS_PRERELEASE:-false}" = "true" ]; then dry=true; fi
+          tag=${RELEASE_TAG:-$(git rev-parse --short HEAD)}
+          body=$(yq -o=json kaggle-run.yml | jq -c --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg tag "$tag" --argjson dry "$dry" \
+            '{repo:$repo, sha:$sha, tag:$tag, manifest:., dry_run:$dry}')
+          ts=$(date +%s)000
+          sig=$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$CI_RUN_SECRET" -hex | sed 's/^.* //')
+          curl -sS --fail-with-body -X POST "$BOT_URL/ci/kaggle-run" -H "content-type: application/json" \
+            -H "x-ci-timestamp: $ts" -H "x-ci-signature: sha256=$sig" --data-binary "$body" | tee response.json | jq .
+          jq -e '.ok == true' response.json > /dev/null

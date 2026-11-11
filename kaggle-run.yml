@@ -1,0 +1,34 @@
+# Khai báo chạy thực nghiệm trên Kaggle cho bot message-talisman.
+# Publish một release trên GitHub thì mỗi session dưới đây thành một version
+# của notebook, chạy trên account Kaggle còn quota.
+#
+# `sessions` PHẢI khớp scripts/run_plan.json, vì run_kaggle_fox.sh dispatch
+# theo N = 1..sessions và một N ngoài phạm vi là một session chạy rỗng, tốn
+# quota. tests/test_plan.py::TestTheKaggleCiManifest giữ hai file này đồng bộ,
+# nên đóng băng plan lại là phải sửa cả đây.
+notebook: fox-repro-ci
+sessions: 1
+accelerator: gpu
+internet: true
+budget_hours: 10
+est_hours: 5.2
+
+# Rỗng có chủ ý. run_kaggle_fox.sh tự `pip install -e .`, chặn host không có
+# GPU, kiểm tra checkpoint đã convert và tải ảnh mà đúng session này cần.
+#
+# KHÔNG gọi kaggle_setup.sh ở đây. Script đó dựng Track A (transformers 4.29,
+# Python 3.11) cho các arm đối chiếu với release gốc; image Kaggle hiện tại là
+# Python 3.13 và nó sẽ không dựng được. Track B — transformers của host — là
+# cái đã sinh ra mọi record trong results/runs.
+setup: ""
+
+# FOX_PERSIST_ROOT đẩy runs + logs sang /kaggle/temp để /kaggle/working chỉ
+# còn ĐÚNG MỘT zip, là thứ nút "⬇ Tải kết quả" trỏ tới.
+#
+# Mặc định storage.py đặt chúng ở /kaggle/working/fox-repro (~700 MB, ~250
+# file). Lý do duy nhất để giữ vậy là cứu record của job đang dở khi session bị
+# cắt giữa job — nhưng trong CI không ai tải thư mục đó, bot chỉ lấy zip, nên
+# chỗ đó không cứu được gì. pack_runs.sh hỏi storage.py nên nó tự theo biến
+# này, và zip vẫn ghi vào /kaggle/working sau MỖI job xong: session bị cắt vẫn
+# để lại zip của mọi job đã hoàn thành.
+run: FOX_PERSIST_ROOT=/kaggle/temp/fox-persist BUDGET=${BUDGET_HOURS} bash run_kaggle_fox.sh {session}
