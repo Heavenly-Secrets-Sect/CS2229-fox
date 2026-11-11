@@ -6,7 +6,7 @@
 # theo N = 1..sessions và một N ngoài phạm vi là một session chạy rỗng, tốn
 # quota. tests/test_plan.py::TestTheKaggleCiManifest giữ hai file này đồng bộ,
 # nên đóng băng plan lại là phải sửa cả đây.
-notebook: fox-repro-ci
+notebook: ml-fox-ci
 sessions: 1
 accelerator: gpu
 internet: true
