@@ -1143,6 +1143,7 @@ def fox_generate(
     tau_js: float = 0.15,
     alpha: float = 2.0,
     beta: float = 0.1,
+    fuse_strategy: str = "hybrid",
     logit_dtype: str = "native",
     softmax_dtype: str = "fp32",
     greedy: bool = False,
@@ -1424,7 +1425,8 @@ def fox_generate(
                     else:
                         d_t = jsd(z_obs, z_do)
                     fused, masked, lam = fuse(
-                        z_obs, z_do, d_t, alpha=alpha, tau_js=tau_js, beta=beta
+                        z_obs, z_do, d_t, alpha=alpha, tau_js=tau_js,
+                        beta=beta, strategy=fuse_strategy,
                     )
                     decision = fused if (greedy and not mask_greedy) else masked
             nxt = _sample_from(

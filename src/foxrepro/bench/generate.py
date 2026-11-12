@@ -67,7 +67,8 @@ from foxrepro.data.loaders import (  # noqa: E402
 )
 from foxrepro.data.loaders import DEFAULT_TEMPLATE_IDS  # noqa: E402
 from foxrepro.storage import (  # noqa: E402
-    BENCHMARK_SPLITS, DTYPES, INTERVENTION_MODES, LOGIT_DTYPES,
+    BENCHMARK_SPLITS, DTYPES, FUSE_STRATEGIES, INTERVENTION_MODES,
+    LOGIT_DTYPES,
     MAX_NEW_TOKENS_DEFAULT, PROVENANCE_FIELDS, SOFTMAX_DTYPES,
     SYSTEM_PROMPT_IDS, VARIANT_FIELDS, WRAPPER_IDS,
     CONTROL_ARMS, OPTIONAL_VARIANT_FIELDS,
@@ -142,6 +143,11 @@ class GenConfig:
     #: Optional in the run key, so leaving it unset keeps a run's file name
     #: byte-identical to what it was before this field existed.
     control: Optional[str] = None
+    #: Table 14 / Figure 19: which rule picks Fox's fusion weight. ``None``
+    #: means the released hybrid rule of Eq. 7, and is optional in the run
+    #: key for the same reason ``control`` is -- every file already in
+    #: results/runs/ keeps its name.
+    fuse_strategy: Optional[str] = None
     # --- sharding (Kaggle T4x2 is the primary host) ----------------------- #
     # A single T4 cannot hold the model in fp16 (13.16 GiB of weights against
     # ~14.3 GiB usable), but two can when the layers are split across them.
@@ -163,6 +169,23 @@ class GenConfig:
             raise ValueError(f"softmax_dtype must be one of {SOFTMAX_DTYPES}")
         if self.mode not in INTERVENTION_MODES:
             raise ValueError(f"mode must be one of {INTERVENTION_MODES}")
+        if self.fuse_strategy is not None:
+            if self.fuse_strategy not in FUSE_STRATEGIES:
+                raise ValueError(
+                    f"fuse_strategy must be one of {FUSE_STRATEGIES}"
+                )
+            if self.method not in ("fox", "echo"):
+                # Only Fox's fusion has a lambda to choose. Silently ignoring
+                # it elsewhere would put a run in a file whose name promises
+                # an arm that never ran. ``echo`` is allowed because
+                # ``--dry-run`` substitutes it for whatever --method said,
+                # keeping every other flag -- so refusing it here would
+                # reject the smoke test of a perfectly valid Fox command,
+                # which is how the frozen plan's commands get checked.
+                raise ValueError(
+                    "fuse_strategy applies to --method fox only; "
+                    f"{self.method} uses a different fusion rule"
+                )
         if self.system_prompt_id not in SYSTEM_PROMPT_IDS:
             raise ValueError(
                 f"system_prompt_id must be one of {SYSTEM_PROMPT_IDS}"
@@ -230,6 +253,7 @@ class GenConfig:
             "temperature": self.temperature,
             "intervention_layers": self.intervention_layers,
             "control": self.control,
+            "fuse_strategy": self.fuse_strategy,
             "logit_dtype": self.logit_dtype,
             "softmax_dtype": self.softmax_dtype,
             "mode": self.mode,
@@ -963,6 +987,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--tau-js", type=float, default=None, help="Fox JSD threshold (0.2)")
     ap.add_argument("--alpha", type=float, default=None, help="Fox consensus gain (2)")
     ap.add_argument("--beta", type=float, default=None, help="Fox truncation ratio (0.1)")
+    ap.add_argument(
+        "--fuse-strategy", choices=FUSE_STRATEGIES, default=None,
+        help="Table 14 / Figure 19: how Fox's fusion weight is chosen. "
+             "Unset means the released hybrid rule of Eq. 7. 'fixed' holds "
+             "lambda at alpha (the gate never fires); 'dynamic' holds it at "
+             "the JSD (no consensus floor). Both are rows of the paper's own "
+             "Table 14 that the released code has no flag for.",
+    )
     # --- precision axes of the central experiment ------------------------- #
     ap.add_argument(
         "--logit-dtype", choices=LOGIT_DTYPES, default="native",
@@ -1064,6 +1096,7 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         wrapper_id=args.wrapper,
         allow_cpu=args.allow_cpu,
         control=args.control,
+        fuse_strategy=args.fuse_strategy,
     )
     # Must happen before any model is loaded: cudnn.allow_tf32 defaults to
     # True, and on Ampere+ a TF32 matmul has ~10 mantissa bits, which would

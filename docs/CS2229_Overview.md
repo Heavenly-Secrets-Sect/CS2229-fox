@@ -316,13 +316,45 @@ như nhau — nên đây không phải cái bẫy "nói ít nên ảo ít" mà `
 bị gắn cờ. ==Chọn head ngẫu nhiên tái lập con số CHAIR của paper sát hơn chính
 phần chẩn đoán của paper.==
 
-Cái Figure 8 thực sự quét là Δ theo **K**, và ta chỉ có một K. r14 quét
+Cái Figure 8 thực sự quét là Δ theo **K**, và ta chỉ có một K. r15 quét
 `k ∈ {0.10, 0.20, 0.45}` — ở k = 0.10 chỉ 3 head bị sửa, nơi thứ hạng phải
 quan trọng nhất nếu nó quan trọng ở đâu cả.
 
+### 5.6 Cái cổng JSD — nửa còn lại, và nó đã đo được một phần
+
+Mọi phép đo ở trên đều nhắm vào **phần chẩn đoán**. Nhưng cái còn lại để giải
+thích Fox là **luật hợp nhất**: `fox off` giữ nguyên dual pass và fusion, tắt
+hoàn toàn can thiệp, vẫn được +2.21 trong +5.03. Table 14 của paper là
+ablation của đúng chỗ đó, và code phát hành không có cờ nào cho hai trong ba
+dòng của nó. r15 thêm `--fuse-strategy` (V9).
+
+Điều hay: **không cần chạy mới cũng đã biết một nửa câu trả lời.** Mỗi record
+Fox đã lưu `d_t` và `lambda` theo từng sample, nên hành vi của cổng là đo
+được, không phải đoán. Với `tau_js = 0.15`:
+
+| | `d_t` trung bình | λ trung bình | % sample từng đạt `d_t ≥ tau_js` |
+|---|---|---|---|
+| POPE-adv, 3000 | 0.0161 | 1.9964 | **0.2 %** |
+| CHAIR, 500 | 0.1285 | 1.3848 | **100 %** |
+
+POPE sinh **một** token nên `d_t` là một số cho mỗi sample, và 2993/3000 nằm
+dưới ngưỡng. Vậy trên POPE, `fixed` và `hybrid` **là cùng một run** trên
+2993/3000 sample — cổng gần như không bao giờ mở. CHAIR sinh tới 512 token nên
+mọi caption đều vượt ngưỡng ở đâu đó. ==Một trục, hai chế độ hoàn toàn khác
+nhau, nên V9 chạy cả hai benchmark.==
+
+Và paper báo **thứ tự ngược lại**: Table 14 cho `fixed` (49.20 CHAIR_S) *tệ
+hơn* `dynamic` (47.68) — tức luật nâng λ gây hại nhiều hơn luật bỏ λ. Trên
+stack này, bỏ λ là bỏ luôn phương pháp. Một trong hai cách giải thích sai, và
+14.6 GPU-h phân định.
+
 ## 6. Tình trạng hiện tại
 
-- **241/265 job đã chạy.** Round **r14** vừa đóng băng: 24 job, 22.0 GPU-h, 3 session — V7 (quét K của Figure 8) và V8 (cửa sổ can thiệp mà r13 đo được là mạnh nhất).
+- **241/277 job đã chạy.** Round **r15** vừa đóng băng: 36 job, 36.6 GPU-h, **6 session cân bằng** (6.1 h mỗi cái) — V7 (quét K của Figure 8), V8 (cửa sổ can thiệp mà r13 đo được là mạnh nhất) và V9 (Table 14 + Figure 19, luật hợp nhất).
+- Chia 6 session thay vì 3 là để **chạy song song**, không phải để tiết kiệm:
+  hàng đợi của bot giữ session chưa có chỗ ở trạng thái `pending` và tự đẩy
+  khi có account trống, nên gửi hết vào một round là an toàn. Trần cứng là 12
+  session một round (`MAX_SESSIONS` của bot).
 - Gate kiểm chứng: **18 đúng / 1 sai** (cái sai là dự đoán của nhóm về
   `cf_blind`, không phải bug — xem 5.3).
 - Mọi **baseline** POPE khớp paper trong 0.05 điểm → harness, dữ liệu, protocol
@@ -419,19 +451,22 @@ Ba quy tắc rút ra từ việc mất GPU-h thật:
 
 ## 8. Còn lại gì — việc có thể nhận
 
-**r14 đã đóng băng** (24 job, 22.0 GPU-h, 3 session) — V7 quét K của Figure 8
-và V8 thử cửa sổ can thiệp mà r13 đo được là mạnh nhất. Những mục còn lại dưới
-đây **chưa** nằm trong plan; đánh giá chi phí lấy từ
+**r15 đã đóng băng** (36 job, 36.6 GPU-h, 6 session cân bằng) — V7 quét K của
+Figure 8, V8 thử cửa sổ can thiệp mà r13 đo được là mạnh nhất, V9 là Table 14
++ Figure 19. Sau r15, **mọi job trong plan đã chạy hết**: những mục còn lại
+dưới đây đều cần code mới trước khi xin quota. Đánh giá chi phí lấy từ
 [`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
 
-Thứ tự đề xuất, theo "cần code mới" tăng dần — vì phần không cần code thì chạy
-được ngay, phần cần code thì viết trước rồi mới xin quota:
+Thứ tự đề xuất, theo "cần code mới" tăng dần:
 
-1. **r14** (đang mở, không cần code mới) — V7 + V8.
-2. **r15** — Table 14 + Figure 19 (thêm tham số `strategy` vào `fuse()`), rồi
-   Table 4 / 12 (bộ chọn anchor).
-3. **r16+** — MME, MMBench, MathVista (mỗi cái một harness mới).
-4. **r17+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
+1. **r15** (đang mở) — V7 + V8 không cần code mới; V9 cần `--fuse-strategy`,
+   đã viết và đã test (`tests/test_fuse_strategy.py`, 19 test).
+2. **r16** — Table 4 / 12 (bộ chọn anchor). Đây là mục *không* gộp được vào
+   r15: "x_last only" và "mean-pool all tokens" cần query vector của các vị
+   trí **trước** bước hiện tại, mà KV cache chỉ giữ K và V, không giữ Q. Phải
+   thêm chỗ lưu Q theo từng bước — máy móc mới, không phải một tham số.
+3. **r17+** — MME, MMBench, MathVista (mỗi cái một harness mới).
+4. **r18+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
 
 Không tái lập được, có lý do, **không phải lỗi implementation**:
 
@@ -445,7 +480,7 @@ Không tái lập được, có lý do, **không phải lỗi implementation**:
 | việc | GPU-h | cần code mới? | giá trị |
 |---|---|---|---|
 | ~~**Table 13 + Figure 3, 7, 1a**~~ — **đã chạy r13 (2026-11-12)** | 0.6 thực đo | xong | ba phát hiện, xem `VALIDATION.md` §r13: mẫu số của Eq. 13 là phần dư ~4 %, dấu của nó quyết định AUC là 0.13 hay 0.87; `m_sys` **ngược hướng** paper ở các layer mạnh nhất; cửa sổ L2–15 mà code ship **dưới mức trung bình** theo đúng tiêu chí chọn cửa sổ của paper |
-| **Table 14 + Figure 19** — quy tắc hợp nhất | ~5 | ít: hai dòng trong `reference_fuse` | cao: arm `off` cho thấy riêng phần hợp nhất mang +2.21 trong +5.03 của Fox; mục này tách quy tắc gating bên trong nó |
+| ~~**Table 14 + Figure 19**~~ — quy tắc hợp nhất — **trong r15, V9** | 14.6 | xong: `--fuse-strategy`, mặc định khẳng định bit-equal với `reference_fuse` | cao: arm `off` cho thấy riêng phần hợp nhất mang +2.21 trong +5.03 của Fox. Đã đo được từ archive: cổng chỉ mở trên **0.2 %** sample POPE nhưng **100 %** caption CHAIR |
 | **Table 4 / 12** — vị trí truy vấn | ~17 (hoặc ~5 nếu chỉ POPE-adv) | có: bộ chọn anchor | trung bình-cao: code gốc dùng `tail_n = 1`, một vị trí, **không phải** hai anchor như paper mô tả. Mục này đo cái giá của lựa chọn đó |
 | **MME harness** | ~4 | có, viết từ đầu | trung bình: release không có script MME |
 | **MMBench** | ~6 | có (SID có script tham khảo) | trung bình |
@@ -502,6 +537,7 @@ Mỗi dòng dưới đây đã tốn thời gian thật và giờ đều có tes
 | Quên `@torch.inference_mode()` | graph autograd giữ KV buffer; job 10-token OOM ngay sample đầu |
 | Đo token-identity dưới **sampling** | một lần rút multinomial lật bất cứ khi nào logit nhích, nên hai arm có cùng phân phối vẫn khác nhau từng token. Test identity **phải** chạy greedy |
 | **Chạy arm rồi không chấm** | `fox random_heads` — phép tự-kiểm quan trọng nhất của paper — chạy từ r6, nằm trong `plan list`, trong mọi zip, và **không tài liệu nào nhắc đến nó suốt 7 round**. Chấm nó mất 0 GPU-h và cho ra phát hiện 5.5. Sinh job và chấm job là hai việc khác nhau; `plan list` nói cái gì đã *chạy*, không nói cái gì đã được *đọc* |
+| `plan plan --order balanced` trên plan đã chạy gần hết | `partition_jobs` chia plan **như lúc viết**, không phải **như còn lại**: r15 ra 6 session × 47 h trên ngân sách 10 h, vì 241 job resume trong vài giây bị tính giá đầy đủ. Không job nào chạy hai lần (resume khoá theo run file) nhưng `n_sessions` của manifest là con số CI dùng để phóng session. Nhánh `priority` vốn đã lọc; đã thêm `skip_done` cho nhánh `balanced` + test |
 | Chạy `plan plan` khi plan đã cạn | ghi đè `scripts/run_plan.json` thành plan rỗng `round: r1, n_sessions: 0`, xoá luôn bản ghi round vừa chạy. Tệ hơn: nếu sửa `kaggle-run.yml` thành `sessions: 0` cho khớp thì publish release sẽ chạy **không gì cả, im lặng**. Hai test guard chặn đúng chỗ này — **thêm job trước, đóng băng sau** |
 | Chia cho một tổng có dấu | xem 5.4(a): mẫu số của Eq. 13 là phần dư ~4 % của 1024 số hạng triệt tiêu nhau, nên dấu của nó — chứ không phải cơ chế nào — quyết định AUC là 0.13 hay 0.87. Khi một công thức chuẩn hoá bằng `Σ x`, hỏi ngay `Σ x` có thể bằng 0 hay đổi dấu không |
 

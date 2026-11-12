@@ -141,6 +141,16 @@ INTERVENTION_MODES = (
     "ulp_control", "noise_control", "random_heads",
 )
 
+#: Table 14 / Figure 19: which rule picks Fox's fusion weight ``lambda``.
+#:
+#: Mirrors ``fox.kernel.FUSE_STRATEGIES``, which is the implementation and
+#: cannot be imported here -- ``kernel`` deliberately imports nothing from
+#: this package so it stays a standalone torch module. The two are asserted
+#: equal in ``tests/test_fuse_strategy.py`` for the same reason the prompt
+#: ids below are: a name known to one module and not the other would either
+#: reject a valid run or let two different fusion rules share a run file.
+FUSE_STRATEGIES = ("hybrid", "fixed", "dynamic")
+
 #: Prompt arms. The strings themselves live in ``bench.methods``, which cannot
 #: be imported here (it imports ``bench.generate``, which imports this module),
 #: so the *names* live here and ``methods`` asserts its dicts match. Keeping
@@ -223,7 +233,10 @@ VARIANT_FIELDS: tuple[str, ...] = (
 #: `control` is the validation axis: the arms that exist to check whether a
 #: compared method is doing what its paper says, rather than to produce a
 #: table row. See CONTROL_ARMS.
-OPTIONAL_VARIANT_FIELDS: tuple[str, ...] = ("control",)
+#: `fuse_strategy` is Table 14's axis, and is optional for exactly the same
+#: reason: 241 runs already exist with the released hybrid rule, and spelling
+#: it into their keys would rename every one of them.
+OPTIONAL_VARIANT_FIELDS: tuple[str, ...] = ("control", "fuse_strategy")
 
 #: Every legal value of `control`, with what it is for.
 #:

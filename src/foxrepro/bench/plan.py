@@ -22,7 +22,7 @@ Table 3 (recent backbones)             Qwen3-VL-8B and InternVL3-8B are both
 Figures 3, 7, 12, 13, 14               diagnostic only -- one forward pass per
                                        sample, no generation, so cheap
 Figure 1a                              same data as Figure 12
-Figure 8 (random vs diagnosed heads)   ran in r6 at the released K; r14
+Figure 8 (random vs diagnosed heads)   ran in r6 at the released K; r15
                                        sweeps K, which is the figure's axis
 Figure 9 (k / tau_JS / beta)           500 COCO samples, as the paper states
 Figure 19 (JSD gating)                 mode=off vs always-intervene
@@ -222,6 +222,10 @@ class Job:
     max_new_tokens: Optional[int] = None
     #: A validation arm rather than a table row; see storage.CONTROL_ARMS.
     control: Optional[str] = None
+    #: Table 14 / Figure 19. None is the released hybrid rule of Eq. 7, so
+    #: this is only ever set to one of the paper's two other rows. Optional
+    #: in the run key, so the 241 existing runs keep their file names.
+    fuse_strategy: Optional[str] = None
     note: str = ""
 
     def template_id(self) -> str:
@@ -256,6 +260,8 @@ class Job:
             bits.append(self.prompt_template_id)
         if self.intervention_layers is not None:
             bits.append(f"L{self.intervention_layers}")
+        if self.fuse_strategy is not None:
+            bits.append(f"fs{self.fuse_strategy}")
         for nm, v in (("g", self.gamma), ("k", self.k),
                       ("t", self.tau_js), ("a", self.alpha),
                       ("b", self.beta)):
@@ -341,6 +347,8 @@ class Job:
         # storage.OPTIONAL_VARIANT_FIELDS.
         if self.control is not None:
             variant["control"] = self.control
+        if self.fuse_strategy is not None:
+            variant["fuse_strategy"] = self.fuse_strategy
         return RunKey(
             method=self.method, benchmark=self.benchmark, split=self.split,
             seed=self.seed, dtype="fp16", variant_fields=variant,
@@ -372,6 +380,8 @@ class Job:
             parts.append(f"--intervention-layers {self.intervention_layers}")
         if self.control is not None:
             parts.append(f"--control {self.control}")
+        if self.fuse_strategy is not None:
+            parts.append(f"--fuse-strategy {self.fuse_strategy}")
         if self.max_new_tokens is not None:
             parts.append(f"--max-new-tokens {self.max_new_tokens}")
         if self.limit:
@@ -923,7 +933,7 @@ def _build_plan() -> List[Job]:
                         "val2014_500", seed=seed,
                         note="VCD's noise in Fox's fusion"))
 
-    # ---- Round 14: the two axes the diagnosis is defended on ------------- #
+    # ---- Round 15, part 1: the two axes the diagnosis is defended on ----- #
     # V7 and V8 in docs/VALIDATION.md. Both ask whether the DIAGNOSIS does
     # work, as opposed to the edit it triggers -- which r6's `random_heads`
     # seeds and r13's per-layer measurement both put in doubt.
@@ -961,6 +971,43 @@ def _build_plan() -> List[Job]:
                 "fig8", "fox", "pope", "adversarial", seed=seed,
                 intervention_layers=layers,
                 note=f"V8: {why}, against the shipped 2-15",
+            ))
+
+    # ---- Round 15, part 2: the gate, which is the half that survives ------ #
+    # V9 in docs/VALIDATION.md. Every arm above interrogates the DIAGNOSIS.
+    # This one interrogates the other component -- and it is the component
+    # the measurements keep pointing at. `fox off` keeps the dual pass and
+    # the fusion while disabling the intervention entirely, and still scores
+    # +2.21 of Fox's +5.03; random head selection keeps +4.54 of it. What is
+    # left to explain the method is the fusion rule, and Table 14 is the
+    # paper's own ablation of exactly that.
+    #
+    # Three rows, of which the hybrid one is already run 10 times over:
+    #   always fixed   (lambda = alpha)      49.20 / 13.74 / 74.91
+    #   always dynamic (lambda = d_t)        47.68 / 13.21 / 75.83
+    #   hybrid, Eq. 7                        46.40 / 12.90 / 76.57
+    # Figure 19's "always apply the intervention" arm is the fixed row, so
+    # the two artefacts cost one sweep rather than two.
+    #
+    # Both benchmarks, because Table 14 reports CHAIR and F1 together and
+    # this project has repeatedly found the two disagreeing -- random heads
+    # lose 0.49 on POPE and WIN 6.2 CHAIR_S points at equal recall. A fusion
+    # rule that moved them the same way would itself be the finding.
+    for strategy in ("fixed", "dynamic"):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "table14", "fox", "pope", "adversarial", seed=seed,
+                fuse_strategy=strategy,
+                note=f"Table 14: lambda is always {strategy}",
+            ))
+        # Three seeds on CHAIR, the project's standing tier-3 width: enough
+        # for a direction with an interval, where ten would cost 15 h to
+        # refine a question 500 images cannot answer more precisely anyway.
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "table14", "fox", "chair", "val2014_500", seed=seed,
+                fuse_strategy=strategy,
+                note=f"Table 14 / Figure 19: lambda is always {strategy}",
             ))
 
     return jobs
@@ -1060,7 +1107,9 @@ def pilot_jobs(jobs: Iterable[Job] = ()) -> List[List[Job]]:
 
 
 def partition_jobs(n_sessions: int, jobs: Iterable[Job] = (),
-                   pilot: bool = False) -> List[List[Job]]:
+                   pilot: bool = False, *,
+                   runs_root: Optional[Path] = None,
+                   skip_done: bool = False) -> List[List[Job]]:
     """Split the plan into ``n_sessions`` cost-balanced, disjoint groups.
 
     Longest-processing-time-first: sort by estimated cost descending and give
@@ -1068,6 +1117,19 @@ def partition_jobs(n_sessions: int, jobs: Iterable[Job] = (),
     greedy makespan heuristic and it matters here because a naive round-robin
     over 53 jobs whose costs range from 0.2 h to 2.3 h can leave one session
     with twice the work of another.
+
+    ``skip_done`` drops already-finished jobs, as
+    :func:`partition_by_priority` does. It is off by default here so this
+    stays a pure function of the plan -- :func:`freeze_plan` turns it on,
+    which is the only caller that should care about the disk. Without it the
+    balanced order partitions the plan as first WRITTEN rather than as it
+    REMAINS: freezing six sessions
+    over a plan that is 241/277 done produced six sessions of 47 h each
+    against a 10 h budget, every one of them flagged over budget, because 241
+    jobs that resume in seconds were costed at their full price. The sessions
+    would still have run the right work -- resume is keyed on the run file --
+    but every number in the manifest, and so the session count the CI
+    launches, would have been meaningless.
 
     **Reassignment is safe.** Editing the plan can move a job between
     sessions, but every job resumes from its own run file, whose name is
@@ -1079,6 +1141,11 @@ def partition_jobs(n_sessions: int, jobs: Iterable[Job] = (),
     if n_sessions < 1:
         raise ValueError("n_sessions must be >= 1")
     jobs = list(jobs) or PLAN
+
+    if skip_done:
+        rows = scan_progress(jobs, runs_root=runs_root)["rows"]
+        finished = {r["file"] for r in rows if r["complete"]}
+        jobs = [j for j in jobs if j.run_key().filename() not in finished]
 
     pinned: List[List[Job]] = []
     if pilot:
@@ -1758,7 +1825,8 @@ def freeze_plan(
     elif order == "balanced":
         if n_sessions is None:
             raise ValueError("--sessions is required with --order balanced")
-        groups = partition_jobs(n_sessions, jobs, pilot=pilot)
+        groups = partition_jobs(n_sessions, jobs, pilot=pilot,
+                                runs_root=runs_root, skip_done=skip_done)
     else:
         raise ValueError("order must be 'priority' or 'balanced'")
     payload: Dict[str, object] = {

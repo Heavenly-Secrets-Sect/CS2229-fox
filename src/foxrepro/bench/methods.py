@@ -516,6 +516,9 @@ class FoxMethod(_LlavaMethod):
             "tau_js": c.tau_js if c.tau_js is not None else FOX_DEFAULTS["tau_js"],
             "alpha": c.alpha if c.alpha is not None else FOX_DEFAULTS["alpha"],
             "beta": c.beta if c.beta is not None else FOX_DEFAULTS["beta"],
+            # Table 14 / Figure 19. None means the released rule, so the
+            # default arm keeps the kwargs it had before this axis existed.
+            "fuse_strategy": c.fuse_strategy or "hybrid",
         }
 
     def describe(self) -> Dict[str, Any]:

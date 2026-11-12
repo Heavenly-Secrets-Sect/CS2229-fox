@@ -63,6 +63,8 @@ def cfg_from_command(cmd: str) -> GenConfig:
         max_new_tokens=int(str(args["max_new_tokens"]))
         if args.get("max_new_tokens") else MAX_NEW_TOKENS_DEFAULT[str(bench)],
         control=str(args["control"]) if args.get("control") else None,
+        fuse_strategy=(str(args["fuse_strategy"])
+                       if args.get("fuse_strategy") else None),
         decoding=str(args["decoding"]),
         system_prompt_id=str(args["system_prompt"]),
         wrapper_id=str(args.get("wrapper") or "released"),
@@ -300,6 +302,48 @@ class TestSessionPartition(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             partition_jobs(0)
+
+    def test_the_balanced_order_can_drop_finished_work(self) -> None:
+        """Otherwise it partitions the plan as WRITTEN, not as it REMAINS.
+
+        Hit for real when r15 was frozen at six sessions over a plan that was
+        241/277 done: every session came out at 47 h against a 10 h budget,
+        because 241 jobs that resume in seconds were costed at full price.
+        Nothing would have run twice -- resume is keyed on the run file -- but
+        the manifest's session count is what the CI launches, and that number
+        was derived from the wrong total. The priority order has always
+        filtered; this is the same filter on the other path.
+        """
+        import json as _json
+        import tempfile
+        from foxrepro.bench.plan import PLAN, partition_jobs
+
+        done, pending = PLAN[0], PLAN[1]
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        runs = Path(td.name)
+        prov = cfg_from_command(done.command()).provenance()
+        with (runs / done.run_key().filename()).open("w") as fh:
+            for i in range(done.n_samples):
+                rec = dict(prov)
+                rec.update(
+                    sample_id=f"{done.benchmark}/{done.split}/q{i:07d}",
+                    image_id=i, prompt="p", output="Yes", latency_ms=1.0,
+                    n_prompt_tokens=600, n_gen_tokens=1,
+                    timestamp="2026-01-01T00:00:00Z", commit_hash="x",
+                    transformers_path="y", label="yes",
+                )
+                fh.write(_json.dumps(rec) + "\n")
+
+        groups = partition_jobs(2, [done, pending], runs_root=runs,
+                                skip_done=True)
+        left = [j.job_id() for g in groups for j in g]
+        self.assertNotIn(done.job_id(), left)
+        self.assertIn(pending.job_id(), left)
+
+        # Off by default, so it stays a pure function of the plan.
+        both = partition_jobs(2, [done, pending], runs_root=runs)
+        self.assertEqual(len([j for g in both for j in g]), 2)
 
     def test_job_ids_are_unique(self) -> None:
         """The frozen plan and the calibration TSV are both keyed on them."""

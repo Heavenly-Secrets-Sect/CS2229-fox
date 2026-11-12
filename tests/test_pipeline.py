@@ -957,6 +957,7 @@ class TestEveryVariantFieldReachesTheArmIdentity(unittest.TestCase):
                  "logit_dtype": "fp32", "softmax_dtype": "fp16",
                  "gamma": 4.0, "k": 0.25, "tau_js": 0.1, "alpha": 3.0,
                  "beta": 0.2, "control": "negative_only",
+                 "fuse_strategy": "fixed",
                  "max_new_tokens": 10, "model_id": "other/model",
                  "top_p": 1.0, "temperature": 0.7}
         plain = RunResult(metrics_path=Path("x.metrics.json"),

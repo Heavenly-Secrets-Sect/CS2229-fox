@@ -568,6 +568,19 @@ def add_diffusion_noise(
     return a_t * image_tensor + a_1m_t * noise
 
 
+#: Table 14 / Figure 19: how ``lambda`` is chosen, and the two arms the
+#: paper's own ablation reports against the shipped rule.
+#:
+#: ``"hybrid"`` is Eq. 7 and the default -- the released rule, bit for bit.
+#: The other two are not inventions of this reproduction: Table 14 names them
+#: "always fixed" and "always dynamic" and gives a number for each, so they
+#: are table rows that the released code has no flag for.
+#:
+#: Figure 19 ("the role of JSD gating") overlaps this axis: its "always apply
+#: the intervention" arm is ``"fixed"``, where the gate never fires.
+FUSE_STRATEGIES: Tuple[str, ...] = ("hybrid", "fixed", "dynamic")
+
+
 def fuse(
     obs_logits: torch.Tensor,
     do_logits: torch.Tensor,
@@ -576,11 +589,32 @@ def fuse(
     alpha: float = 2.0,
     tau_js: float = 0.15,
     beta: float = 0.1,
+    strategy: str = "hybrid",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Conflict-gated additive fusion, per batch row.
 
     ``lambda = alpha`` where ``js < tau_js`` (consensus), else ``lambda = js``
     (conflict), then ``z_final = z_obs + lambda * z_do``.
+
+    ``strategy`` selects the rule for ``lambda``, and the three are Table 14's
+    three rows:
+
+    * ``"hybrid"`` -- Eq. 7, as above. The default, and bit-identical to what
+      this function did before the parameter existed.
+    * ``"fixed"`` -- ``lambda = alpha`` always. The gate never fires, so the
+      negative branch is added at full weight even where the two branches
+      disagree completely.
+    * ``"dynamic"`` -- ``lambda = js`` always. No floor, so on a token where
+      the branches agree (``js -> 0``) the intervention vanishes instead of
+      being amplified to ``alpha``.
+
+    Note which direction each arm breaks. ``tau_js = 0.15`` against a JSD in
+    [0, ln 2] means the gate is usually in its consensus branch, so ``"fixed"``
+    differs from ``"hybrid"`` only on the minority of tokens where the branches
+    conflict, while ``"dynamic"`` differs on the majority where they do not.
+    Table 14 reports ``"fixed"`` as the worse of the two (49.20 vs 47.68
+    CHAIR_S), which is the opposite ordering to the number of tokens each one
+    touches -- a thing worth having measured rather than assumed.
 
     Returns ``(fused, masked, lam)``:
       * ``fused`` -- raw. The released GREEDY path argmaxes this, unmasked.
@@ -596,8 +630,17 @@ def fuse(
     batched. The released version computes it from row 0 and applies that
     scalar everywhere.
     """
+    if strategy not in FUSE_STRATEGIES:
+        raise ValueError(
+            f"strategy={strategy!r} is not one of {FUSE_STRATEGIES}"
+        )
     js = js.to(obs_logits.dtype).reshape(-1, 1)
-    lam = torch.where(js < tau_js, torch.full_like(js, alpha), js)
+    if strategy == "fixed":
+        lam = torch.full_like(js, alpha)
+    elif strategy == "dynamic":
+        lam = js.clone()
+    else:
+        lam = torch.where(js < tau_js, torch.full_like(js, alpha), js)
     fused = obs_logits + lam * do_logits
 
     cutoff = math.log(beta) + obs_logits.max(dim=-1, keepdim=True).values

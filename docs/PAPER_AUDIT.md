@@ -98,7 +98,7 @@ Runnable, and it bears directly on a finding of ours: the released code uses
 `tail_n = 1`, a single query position, not the two anchors the paper
 describes. These rows would measure what that choice costs.
 
-### Table 14 — fusion-strategy ablation — **RUNNABLE, high value**
+### Table 14 — fusion-strategy ablation — **PRE-REGISTERED as V9, r15**
 
 | strategy | CHAIR_S | CHAIR_I | F1 |
 |---|---|---|---|
@@ -106,9 +106,22 @@ describes. These rows would measure what that choice costs.
 | always dynamic (λ = d_t) | 47.68 | 13.21 | 75.83 |
 | hybrid, Eq. 7 | **46.40** | **12.90** | **76.57** |
 
-Two one-line changes to `reference_fuse`. High value because our `off` arm
-already shows the fusion alone carries +2.21 of Fox's +5.03 on POPE, and this
-isolates the gating rule inside it.
+High value because our `off` arm already shows the fusion alone carries +2.21
+of Fox's +5.03 on POPE, and this isolates the gating rule inside it.
+
+Implemented as `--fuse-strategy`, a `strategy` parameter on `fox.kernel.fuse`
+whose default is asserted bit-equal to `reference_fuse`. Not two one-line
+changes after all: the value has to reach the run key, or two fusion rules
+share a file and resume from each other. It is in `OPTIONAL_VARIANT_FIELDS`,
+so the 241 existing runs keep their names.
+
+Already measurable from the archive, and it sharpens the prediction a long
+way: every Fox run records `d_t` per sample, and on POPE the gate fires on
+**0.2 %** of samples (mean `d_t` 0.0161, mean λ 1.9964) against **100 %** on
+CHAIR (mean `d_t` 0.1285, mean λ 1.3848). So `fixed` and `hybrid` are nearly
+the same run on POPE, and `dynamic` should remove the method there. The paper
+reports `fixed` as the *worse* of its two non-hybrid rows, which is the
+opposite ordering. See V9 in docs/VALIDATION.md.
 
 ### Table 15 — manual vs automatic layer window — **RUNNABLE**
 
@@ -165,7 +178,7 @@ released window's own width of 14 layers, L2–15 scores 0.0305 for H_vis and
 below the best equal-width window (L11–24 / L13–26). There is no contiguous
 early-to-mid run above threshold to keep: the signal is mid-to-late.
 
-### Figure 8 — diagnosis-driven vs random head selection — **DONE at the released K; sweep in r14**
+### Figure 8 — diagnosis-driven vs random head selection — **DONE at the released K; sweep in r15**
 
 The paper's own validation that the diagnosis does something: Fox against
 random head selection at matched budget K. The claim our finding most directly
@@ -191,7 +204,7 @@ effect, plotted as validation of a causal story that the other 4.54 points do
 not support.
 
 What it has not answered is the axis the figure actually sweeps — Δ against K.
-r14 runs `k ∈ {0.10, 0.20, 0.45}` × {diagnosed, random} × 3 seeds at full
+r15 runs `k ∈ {0.10, 0.20, 0.45}` × {diagnosed, random} × 3 seeds at full
 3000, pre-registered as **V7**. `k = 0.10` edits three heads, where the ranking
 should matter most if it matters anywhere.
 
@@ -199,10 +212,11 @@ should matter most if it matters anywhere.
 
 We have k ∈ {0.25, 0.45} and τ_JS ∈ {0.1, 0.2} at n=500. β is untouched.
 
-### Figure 19 — the role of JSD gating — **RUNNABLE**
+### Figure 19 — the role of JSD gating — **PRE-REGISTERED as V9, r15**
 
 Overlaps Table 14; the "always apply the intervention" arm is the
-`always fixed` row.
+`always fixed` row, so `--fuse-strategy fixed` produces both and the sweep is
+costed once.
 
 ---
 
@@ -296,9 +310,9 @@ Reachable and not yet run, in descending value:
 | item | why it matters | rough cost |
 |---|---|---|
 | VCD + ICD, both benchmarks | the paper's own comparison, and its code cannot produce it | ~60 h |
-| ~~Figure 8, random-head control~~ | **done at K=0.35** from r6's archive — the diagnosis is worth 0.49 of 5.03 pts on POPE and *loses* on CHAIR. The K sweep is r14/V7 | ~22 h (with V8) |
-| Table 14 + Figure 19, fusion rule | isolates the gate inside the component carrying 44% of the effect | ~6 h |
-| ~~Table 15, L2–13 vs L2–15~~ | **done** — equivalent at ±0.42. r14/V8 asks the same question against L11–24 and L13–26, the windows r13 measured as strongest | in r14 |
+| ~~Figure 8, random-head control~~ | **done at K=0.35** from r6's archive — the diagnosis is worth 0.49 of 5.03 pts on POPE and *loses* on CHAIR. The K sweep is r15/V7 | ~22 h (with V8) |
+| Table 14 + Figure 19, fusion rule | isolates the gate inside the component carrying 44% of the effect | in r15, 14.6 h |
+| ~~Table 15, L2–13 vs L2–15~~ | **done** — equivalent at ±0.42. r15/V8 asks the same question against L11–24 and L13–26, the windows r13 measured as strongest | in r15 |
 | Tables 4/12, query positions | measures the cost of the released `tail_n = 1` | ~12 h |
 | Table 7, α = 0 and 3 | completes the sweep; α=0 is a sanity check on our fusion | ~5 h |
 | ~~Table 13, Figure 3, Figure 7~~ | **done, r13** — 0.71 s/sample, 35 min for 3000 | ~~~1 h~~ |

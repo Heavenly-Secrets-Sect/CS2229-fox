@@ -824,6 +824,82 @@ paper, which is the reason to run it.
 
 ---
 
+## V9 — Is the fusion GATE doing the work the intervention is not?
+
+`--fuse-strategy fixed` and `dynamic` against the released hybrid rule, on
+POPE-adversarial (3000) **and** CHAIR (val2014_500), sampling, seeds 42/43/44.
+**14.6 h.** This is the paper's own Table 14, which the released code has no
+flag for; Figure 19's "always apply the intervention" arm is the `fixed` row,
+so one sweep answers both.
+
+Every other prediction in this suite interrogates the **diagnosis**. This one
+interrogates the component the measurements keep pointing at instead:
+
+| arm | over baseline | what it isolates |
+|---|---|---|
+| `fox` | +5.03 | everything |
+| `fox random_heads` | +4.54 | the edit, with the ranking thrown away |
+| `fox off` | +2.21 | the dual pass and the fusion, no intervention at all |
+| `ulp_control` | ≡ `fox` (±0.38) | rounding the logits, no diagnosis |
+
+`off` keeps 44 % of the gain while doing nothing the paper's causal framework
+describes. What is left to explain Fox is the fusion rule — and the gate
+inside Eq. 7 is the one piece of it nothing here has varied.
+
+### The gate is already measured, and it almost never fires on POPE
+
+Every archived Fox run records `d_t_mean`, `d_t_max` and `lambda_mean` per
+sample, so the gate's behaviour does not have to be assumed. On the headline
+arms, at `tau_js = 0.15`:
+
+| | mean `d_t` | mean λ | samples ever reaching `d_t ≥ tau_js` |
+|---|---|---|---|
+| POPE-adversarial, 3000 | 0.0161 | 1.9964 | **0.2 %** |
+| CHAIR, val2014_500 | 0.1285 | 1.3848 | **100 %** |
+
+POPE emits **one** token, so its `d_t` is a single number per sample, and it
+sits below the threshold on 2993 of 3000. CHAIR emits up to 512, so every
+caption crosses the threshold somewhere and λ averages 1.38 rather than 2.
+One axis, two completely different regimes — which is why this runs on both.
+
+**Prediction, POPE: `fixed` ≡ `hybrid` within 0.3 points, and `dynamic`
+loses most of the +5.03 — landing within 1 point of the `sampling`
+baseline.**
+
+This is close to arithmetic rather than a hunch. On POPE `fixed` can only
+differ from `hybrid` on the 0.2 % of samples where the gate fires, so the two
+arms are the same run for 2993 of 3000 samples. `dynamic` replaces λ = 2 with
+λ = `d_t` ≈ 0.016 on the other 2993 — a 125-fold reduction — which switches
+the negative branch off almost entirely and should leave something very close
+to plain sampling.
+
+**Prediction, CHAIR: `fixed` is the arm that moves, and `dynamic` moves
+further.** λ already averages 1.38 there, so `fixed` is a real change (1.38 →
+2.0) and `dynamic` a larger one in the other direction.
+
+**The paper reports the opposite ordering.** Table 14 gives `fixed` as *worse*
+than `dynamic` — 49.20 vs 47.68 CHAIR_S, 74.91 vs 75.83 F1 — i.e. the rule
+that raises λ doing more damage than the rule that removes it. On this stack,
+removing λ removes the method. One of the two accounts is wrong about this
+fusion rule, and 14.6 h settles which.
+
+| outcome | reading |
+|---|---|
+| POPE: `fixed` ≡ `hybrid`, `dynamic` ≈ baseline | the gate is a **floor, not a gate**: what matters is that λ is large, not that it is conditional. Eq. 7's threshold is then decoration on POPE, where the paper's headline accuracy numbers live, and `tau_js` could be set to 0 with no loss |
+| CHAIR: `dynamic` beats `hybrid` | **the prediction fails and the gate is load-bearing against the paper** — amplifying on consensus would be the harmful part, and the released rule would be worse than the simpler one it replaced |
+| the paper's ordering reproduces on CHAIR (`fixed` worse than `dynamic`) | **the prediction fails constructively.** Amplifying on conflict is actively harmful, which is a real mechanism and the first component of Fox to survive this audit intact |
+| all three within 0.5 on both | the fusion rule does not matter either, and `off`'s +2.21 belongs to the dual pass — the plausibility mask and the second forward — rather than to any choice of λ. The strongest version of the requantisation account |
+
+Both benchmarks also because this project has twice found them disagreeing:
+random head selection loses 0.49 on POPE and **wins** 6.2 CHAIR_S points at
+equal recall. A fusion rule that moved POPE and CHAIR the same way would
+itself be worth reporting. CHAIR gets the standing three seeds — against a
+measured 5.20-point draw-to-draw drift, three give a direction with an
+interval, and ten would cost 15 h to refine a question 500 images cannot
+answer more precisely anyway.
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

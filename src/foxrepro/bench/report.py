@@ -141,6 +141,9 @@ ARM_FIELDS: Dict[str, Tuple[str, object]] = {
     "alpha": ("alpha", None),
     "beta": ("beta", None),
     "control": ("control", None),
+    # Table 14's axis. None is the released hybrid rule, so a run that does
+    # not set it keeps the arm label it had before this field existed.
+    "fuse_strategy": ("fuse", None),
     "max_new_tokens": ("mnt", _BENCHMARK_DEFAULT),
     "model_id": ("model", "llava-hf/llava-1.5-7b-hf"),
     "top_p": ("p", 0.9),
