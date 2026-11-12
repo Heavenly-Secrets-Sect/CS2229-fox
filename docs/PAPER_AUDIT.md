@@ -178,7 +178,16 @@ released window's own width of 14 layers, L2–15 scores 0.0305 for H_vis and
 below the best equal-width window (L11–24 / L13–26). There is no contiguous
 early-to-mid run above threshold to keep: the signal is mid-to-late.
 
-### Figure 8 — diagnosis-driven vs random head selection — **DONE at the released K; sweep in r15**
+**r14 then intervened on those two windows, and they do not work.** L11–24 is
+3.07 points below the shipped L2–15 and *worse than performing no
+intervention at all*; L13–26 is 2.24 below and statistically identical to no
+intervention. So the diagnostic signal peaks where intervening is worthless,
+and the intervention works where the diagnostic signal is weakest. Those are
+measurements of two different layer ranges, and the paper presents them as
+one argument. r15/V10 asks whether "early" is a depth effect of the model
+rather than anything Fox selects.
+
+### Figure 8 — diagnosis-driven vs random head selection — **DONE, r6 + r14**
 
 The paper's own validation that the diagnosis does something: Fox against
 random head selection at matched budget K. The claim our finding most directly
@@ -204,7 +213,7 @@ effect, plotted as validation of a causal story that the other 4.54 points do
 not support.
 
 What it has not answered is the axis the figure actually sweeps — Δ against K.
-r15 runs `k ∈ {0.10, 0.20, 0.45}` × {diagnosed, random} × 3 seeds at full
+r14 ran `k ∈ {0.10, 0.20, 0.45}` × {diagnosed, random} × 3 seeds at full
 3000, pre-registered as **V7**. `k = 0.10` edits three heads, where the ranking
 should matter most if it matters anywhere.
 
@@ -310,9 +319,9 @@ Reachable and not yet run, in descending value:
 | item | why it matters | rough cost |
 |---|---|---|
 | VCD + ICD, both benchmarks | the paper's own comparison, and its code cannot produce it | ~60 h |
-| ~~Figure 8, random-head control~~ | **done at K=0.35** from r6's archive — the diagnosis is worth 0.49 of 5.03 pts on POPE and *loses* on CHAIR. The K sweep is r15/V7 | ~22 h (with V8) |
+| ~~Figure 8, random-head control~~ | **done, r6 + r14.** The gap is 0.26 pts at k=0.10 (indistinguishable from zero), 1.37 at k=0.20, 0.79 at k=0.45 — and random heads at k=0.45 beat diagnosed heads at k=0.20. The effect is bought by *how many* heads are edited | ~~22 h~~ spent |
 | Table 14 + Figure 19, fusion rule | isolates the gate inside the component carrying 44% of the effect | in r15, 14.6 h |
-| ~~Table 15, L2–13 vs L2–15~~ | **done** — equivalent at ±0.42. r15/V8 asks the same question against L11–24 and L13–26, the windows r13 measured as strongest | in r15 |
+| ~~Table 15, L2–13 vs L2–15~~ | **done** — equivalent at ±0.42, and r14/V8 explains why: both are early. L11–24 and L13–26, the windows r13 measured as strongest, are 3.07 and 2.24 points **worse**, and no better than not intervening at all. r15/V10 sweeps position at matched width | done; V10 in r15 |
 | Tables 4/12, query positions | measures the cost of the released `tail_n = 1` | ~12 h |
 | Table 7, α = 0 and 3 | completes the sweep; α=0 is a sanity check on our fusion | ~5 h |
 | ~~Table 13, Figure 3, Figure 7~~ | **done, r13** — 0.71 s/sample, 35 min for 3000 | ~~~1 h~~ |

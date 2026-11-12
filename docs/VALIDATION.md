@@ -501,8 +501,8 @@ changing whether they are right.
 **These were not pre-registered.** V1–V6 ask whether *our* implementations are
 the methods their papers describe. This round asks a different question — do
 the paper's own published diagnostic numbers reproduce — so there is no arm to
-predict and nothing to score against the gate. The gate stands at **18 held, 1
-failed**. Read what follows as measurement, not as confirmation: the analysis
+predict and nothing to score against the gate. The gate stood at **18 held, 1
+failed** when this round ran; r14 below moves it to **19 held, 2 failed**. Read what follows as measurement, not as confirmation: the analysis
 was written before the run (`scripts/analyse_diagnostics.py`, committed in
 `a48c207`), but the quantities below were not bet on in advance.
 
@@ -824,6 +824,96 @@ paper, which is the reason to run it.
 
 ---
 
+## Results, round 14 (2026-11-12) — V7 holds where it was sharpest, V8 fails
+
+**Both were pre-registered**, in `2e683d6`, before the jobs existed. V7's
+prediction **splits** — the clause that carried the argument holds, the
+numeric bound does not — and V8's **fails outright**. The gate moves to
+**19 held, 2 failed**: V7 counts as held on its falsifier and V8 as failed,
+which is the honest reading of a document whose whole point is that a
+prediction written afterwards is worth nothing.
+
+24 jobs, 3 sessions, 3 Kaggle accounts, all green. POPE-adversarial,
+sampling, seeds 42/43/44, full 3000 each, paired bootstrap at 90 % over
+9000 (seed, sample) pairs. Anchors on the same three seeds: `sampling`
+76.72, `fox off` 78.97, `fox` (shipped L2–15) 81.56.
+
+### V7 — the prediction splits, and the half that mattered holds
+
+| K | heads edited | diagnosed | random | gap [90 %] |
+|---|---|---|---|---|
+| 0.10 | 3 | 79.40 | 79.14 | **+0.26 [−0.20, +0.71]**, p = 0.37 |
+| 0.20 | 6 | 81.16 | 79.79 | +1.37 [+0.91, +1.80] |
+| 0.45 | 14 | 82.28 | 81.49 | +0.79 [+0.36, +1.22] |
+
+The prediction had two clauses. "Gap < 1 point at every K" **fails** at
+`k = 0.20` on the point estimate (1.37, though its interval still contains
+1.0). "Does not grow as K shrinks" **holds, decisively**: at `k = 0.10` —
+three heads, where picking the right three should matter most — the gap is
+**indistinguishable from zero**. The pre-registered falsifier was a gap above
+2 points there; the measurement is 0.26.
+
+What the arms do over the baseline is the clearer statement:
+
+| K | diagnosed over baseline | random over baseline |
+|---|---|---|
+| 0.10 | +2.68 | +2.42 |
+| 0.20 | +4.43 | +3.07 |
+| 0.45 | +5.56 | +4.77 |
+
+Both arms grow with K, and **random heads at `k = 0.45` (+4.77) beat
+diagnosed heads at `k = 0.20` (+4.43)**. The effect is bought by *how many*
+heads are edited, not by which — editing more of them at random buys back
+everything the ranking provides, and more. That is V2's requantisation
+account making a quantitative prediction and the sweep confirming it.
+
+### V8 — the prediction fails, and the failure is the finding
+
+| window | width | accuracy | vs L2–15 | vs `fox off` |
+|---|---|---|---|---|
+| **L2–15** (shipped) | 14 | 81.56 | — | **+2.59 [+2.09, +3.09]** |
+| L11–24 (best for `H_vis`) | 14 | 78.49 | **−3.07 [−3.59, −2.54]** | −0.48 [−0.91, −0.06] |
+| L13–26 (best for `m_sys`) | 14 | 79.31 | **−2.24 [−2.73, −1.77]** | +0.34 [−0.07, +0.77] |
+
+Predicted equivalence at ±0.5. The measured gaps are 4× to 6× that, and both
+in the worse direction. **The intervention window is load-bearing, and
+"14 layers of requantisation is 14 layers of requantisation wherever they
+sit" is simply wrong.**
+
+Read the last column, because it is the sharper half. `fox off` is the arm
+that keeps the dual pass and the fusion and performs **no intervention at
+all**. Moving the window to L11–24 is *worse* than not intervening, and
+L13–26 is **statistically indistinguishable from not intervening**
+(+0.34, p = 0.18). All +2.59 of the intervention's contribution requires it
+to happen **early**.
+
+That corrects this document's own account in one direction and sharpens it in
+another:
+
+* **Against us.** V2's framing treated requantisation as position-blind. It
+  is not: an edit at layer 2 passes through 30 more layers of processing, an
+  edit at layer 26 through six. Depth of propagation belongs in the account,
+  and r14 is what put it there;
+* **Against the paper, harder.** r13 measured the per-layer diagnostic
+  strength on the paper's own criterion and found it **peaks at L11–26** —
+  which is exactly where intervening does nothing. So the place the
+  diagnosis points and the place the intervention works are **different
+  places**. Figure 7's automatic rule, applied to the signal this
+  reproduction measured, selects the two worst windows tested.
+
+The shipped L2–15 is therefore the right window for a reason the paper does
+not give. Table 15 already showed the paper's stated L2–13 is equivalent to
+it (±0.42) — both early, both work. The diagnostic argument for *why* those
+layers is what r14 removes.
+
+**What this does not say.** It does not say early layers are special to
+*Fox*; the obvious alternative is that any logit perturbation applied early
+propagates further, which would make this a depth effect of the model rather
+than a property of the method. Separating those needs a position sweep at
+matched width, which is r15.
+
+---
+
 ## V9 — Is the fusion GATE doing the work the intervention is not?
 
 `--fuse-strategy fixed` and `dynamic` against the released hybrid rule, on
@@ -897,6 +987,54 @@ itself be worth reporting. CHAIR gets the standing three seeds — against a
 measured 5.20-point draw-to-draw drift, three give a direction with an
 interval, and ten would cost 15 h to refine a question 500 images cannot
 answer more precisely anyway.
+
+---
+
+## V10 — Is "early" a property of Fox, or just of depth?
+
+`--intervention-layers` at nine windows, POPE-adversarial, sampling, seeds
+42/43/44. **24.8 h.** This prediction exists because **V8 failed**, and it
+asks the question that failure opened rather than the one it closed.
+
+r14 established that position is load-bearing: at matched width, L11–24 is
+worse than performing no intervention at all and L13–26 is indistinguishable
+from it, while the shipped L2–15 is +2.59 over it. Two readings survive, and
+they are different claims:
+
+* **depth** — any logit perturbation applied at layer 2 propagates through 30
+  further layers and one applied at layer 26 through six, so earlier is
+  stronger for reasons that have nothing to do with Fox;
+* **selection** — something about the early layers Fox picks.
+
+Two sweeps separate them, both at `k = 0.35`, both leaving every other
+hyperparameter at the released value.
+
+**Position, at fixed width 14** (so the number of requantised layers never
+changes): starts at L0, L4, L8, L16, L18, filling in around the three windows
+already measured (L2, L11, L13).
+
+**Width, from the shipped start** L2: L2–5, L2–9, L2–23, L2–31, against the
+shipped L2–15.
+
+**Prediction: the position curve is monotone decreasing in start layer, with
+no local structure, and L2–5 — four layers — already recovers more than half
+of L2–15's +2.59 over `fox off`.**
+
+Both halves follow from depth rather than from selection. If the mechanism is
+that an early perturbation has more layers left to grow in, then moving the
+window later can only lose, smoothly; and a *narrow* early window should
+retain most of the effect, because the layers doing the work are the first
+few in it.
+
+| outcome | reading |
+|---|---|
+| monotone decay, L2–5 ≥ half of L2–15 | **depth, not selection.** Fox's window is "early" and that is the whole content of it; the diagnostic that selects it is unnecessary, and r13's measurement — that the diagnostic signal peaks at L11–26, where intervening does nothing — becomes the clean statement that the paper's two halves point at different layers |
+| structure in the position curve (a bump away from the earliest start) | **the prediction fails and selection matters.** Some layers would be genuinely better targets than their neighbours, and the next question is whether the diagnostic predicts which — a question r13's per-layer AUCs can answer without new GPU time |
+| width scales the effect, L2–5 ≪ half | the count of requantised layers matters after all, and V2's original position-blind account was closer than r14 suggested. Then L11–24's failure needs a different explanation and this audit has a loose end |
+| L2–31 (every layer) beats L2–15 | the released window is not even a good early window, and nothing about the selection is doing work — the strongest version of the depth reading |
+
+Three seeds at full 3000 resolves roughly 0.9 points here, against effects of
+2 to 3; that is the resolution the question needs.
 
 ---
 

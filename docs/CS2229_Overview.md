@@ -316,11 +316,50 @@ như nhau — nên đây không phải cái bẫy "nói ít nên ảo ít" mà `
 bị gắn cờ. ==Chọn head ngẫu nhiên tái lập con số CHAIR của paper sát hơn chính
 phần chẩn đoán của paper.==
 
-Cái Figure 8 thực sự quét là Δ theo **K**, và ta chỉ có một K. r15 quét
-`k ∈ {0.10, 0.20, 0.45}` — ở k = 0.10 chỉ 3 head bị sửa, nơi thứ hạng phải
-quan trọng nhất nếu nó quan trọng ở đâu cả.
+Cái Figure 8 thực sự quét là Δ theo **K**, và ta chỉ có một K. **r14 đã quét
+xong** `k ∈ {0.10, 0.20, 0.45}`, 3 seed, full 3000:
 
-### 5.6 Cái cổng JSD — nửa còn lại, và nó đã đo được một phần
+| K | head bị sửa | chẩn đoán | ngẫu nhiên | chênh [90 %] |
+|---|---|---|---|---|
+| 0.10 | 3 | 79.40 | 79.14 | **+0.26 [−0.20, +0.71]** — không phân biệt được với 0 |
+| 0.20 | 6 | 81.16 | 79.79 | +1.37 [+0.91, +1.80] |
+| 0.45 | 14 | 82.28 | 81.49 | +0.79 [+0.36, +1.22] |
+
+Ở k = 0.10 — ba head, nơi chọn đúng ba cái phải quan trọng nhất — thứ hạng
+**không đáng gì**. Và so với baseline: ngẫu nhiên ở k = 0.45 (+4.77) **ăn
+đứt** chẩn đoán ở k = 0.20 (+4.43). ==Hiệu ứng mua bằng **số lượng** head bị
+sửa, không phải bằng việc sửa head nào.==
+
+### 5.6 Cửa sổ layer — dự đoán của nhóm **sai**, và cái sai mới là phát hiện
+
+V8 dự đoán cửa sổ không quan trọng (±0.5). Đo ra ngược hẳn, cùng độ rộng 14
+layer nên số layer bị làm tròn là như nhau:
+
+| cửa sổ | accuracy | vs L2–15 | vs `fox off` (không can thiệp gì) |
+|---|---|---|---|
+| **L2–15** (code ship) | 81.56 | — | **+2.59 [+2.09, +3.09]** |
+| L11–24 (mạnh nhất cho `H_vis`) | 78.49 | **−3.07** | −0.48 — **tệ hơn không làm gì** |
+| L13–26 (mạnh nhất cho `m_sys`) | 79.31 | **−2.24** | +0.34, p = 0.18 — **bằng không làm gì** |
+
+Cột cuối mới là chỗ sắc. Chuyển cửa sổ sang giữa-cuối thì toàn bộ +2.59 của
+phần can thiệp **biến mất**. Nó phải xảy ra **sớm**.
+
+Điều này sửa lời giải thích của chính nhóm theo một hướng, và siết paper theo
+hướng khác:
+
+- **Chống lại nhóm:** cách hiểu "requantisation" cũ coi vị trí là không quan
+  trọng. Sai. Sửa ở layer 2 còn 30 layer phía sau để khuếch đại, sửa ở layer
+  26 chỉ còn 6.
+- **Chống lại paper, nặng hơn:** r13 đo tín hiệu chẩn đoán theo tiêu chí của
+  chính paper và nó **mạnh nhất ở L11–26** — đúng chỗ can thiệp vô dụng.
+  ==Chỗ paper chẩn đoán và chỗ can thiệp có tác dụng là **hai chỗ khác
+  nhau**.==
+
+Chưa kết luận được: "sớm" là tính chất của **độ sâu** (perturbation nào sớm
+cũng mạnh hơn) hay của **lựa chọn** của Fox. r15/V10 quét vị trí cửa sổ ở độ
+rộng cố định để tách hai cái.
+
+### 5.7 Cái cổng JSD — nửa còn lại, và nó đã đo được một phần
 
 Mọi phép đo ở trên đều nhắm vào **phần chẩn đoán**. Nhưng cái còn lại để giải
 thích Fox là **luật hợp nhất**: `fox off` giữ nguyên dual pass và fusion, tắt
@@ -350,13 +389,16 @@ stack này, bỏ λ là bỏ luôn phương pháp. Một trong hai cách giải 
 
 ## 6. Tình trạng hiện tại
 
-- **241/277 job đã chạy.** Round **r15** vừa đóng băng: 36 job, 36.6 GPU-h, **6 session cân bằng** (6.1 h mỗi cái) — V7 (quét K của Figure 8), V8 (cửa sổ can thiệp mà r13 đo được là mạnh nhất) và V9 (Table 14 + Figure 19, luật hợp nhất).
-- Chia 6 session thay vì 3 là để **chạy song song**, không phải để tiết kiệm:
-  hàng đợi của bot giữ session chưa có chỗ ở trạng thái `pending` và tự đẩy
-  khi có account trống, nên gửi hết vào một round là an toàn. Trần cứng là 12
-  session một round (`MAX_SESSIONS` của bot).
-- Gate kiểm chứng: **18 đúng / 1 sai** (cái sai là dự đoán của nhóm về
-  `cf_blind`, không phải bug — xem 5.3).
+- **265/304 job đã chạy.** **r14 xong** (24 job, 3 session, 3 tài khoản, 3 ✅) — V7 và V8 đều đã chấm, xem 5.5 và 5.6.
+- Round **r15** vừa đóng băng: 39 job, 39.3 GPU-h, **10 session cân bằng** (≤ 4.3 h mỗi cái) — V9 (Table 14 + Figure 19, luật hợp nhất) và V10 (quét vị trí cửa sổ, vì V8 sai).
+- Chia 10 session là để **chạy song song** và **cố ý nhiều hơn số chỗ trống**:
+  hàng đợi của bot giữ session chưa có chỗ ở trạng thái `pending` rồi tự đẩy
+  khi có account trống. Nhánh đó mới chỉ kiểm trên notebook CPU, `r15` là lần
+  đầu đi qua nó trên GPU thật — KIRZEA đã hết quota tới 14/11 07:00 nên chắc
+  chắn có session phải chờ. Trần cứng là 12 session một round.
+- Gate kiểm chứng: **19 đúng / 2 sai**. Hai cái sai đều là dự đoán của nhóm,
+  không phải bug: `cf_blind` (5.3) và **V8** (5.6) — và V8 sai mới là kết quả
+  có giá trị nhất của r14.
 - Mọi **baseline** POPE khớp paper trong 0.05 điểm → harness, dữ liệu, protocol
   đều đúng. Những gì đo được là về phương pháp, không phải về setup.
 

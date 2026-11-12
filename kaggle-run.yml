@@ -7,11 +7,11 @@
 # quota. tests/test_plan.py::TestTheKaggleCiManifest giữ hai file này đồng bộ,
 # nên đóng băng plan lại là phải sửa cả đây.
 notebook: ml-fox-ci
-sessions: 6
+sessions: 10
 accelerator: gpu
 internet: true
 budget_hours: 10
-est_hours: 6.1
+est_hours: 4.3
 
 # Rỗng có chủ ý. run_kaggle_fox.sh tự `pip install -e .`, chặn host không có
 # GPU, kiểm tra checkpoint đã convert và tải ảnh mà đúng session này cần.

@@ -973,6 +973,48 @@ def _build_plan() -> List[Job]:
                 note=f"V8: {why}, against the shipped 2-15",
             ))
 
+    # ---- Round 15, part 1: where the intervention has to happen ---------- #
+    # V10 in docs/VALIDATION.md, and it exists because V8 FAILED.
+    #
+    # V8 predicted the window would not matter and measured the opposite: at
+    # matched width, L11-24 scores 3.07 BELOW the shipped L2-15 and is worse
+    # than not intervening at all, while L13-26 is statistically identical to
+    # not intervening. All +2.59 of the intervention needs to happen early.
+    #
+    # Two readings survive that, and they are not the same claim:
+    #   (a) a DEPTH effect of the model -- any logit perturbation applied at
+    #       layer 2 propagates through 30 more layers and one at layer 26
+    #       through six, so earlier is stronger for reasons that have nothing
+    #       to do with Fox;
+    #   (b) something specific to the early layers Fox selects.
+    # A sweep over window POSITION at fixed width separates them: (a) predicts
+    # a smooth monotone decay in start layer, (b) predicts structure.
+    #
+    # Width 14 throughout, so the number of requantised layers is constant and
+    # position is the only variable. L2-15 and L11-24 and L13-26 are already
+    # run, so these five fill in the curve.
+    for start in (0, 4, 8, 16, 18):
+        layers = f"{start}-{start + 13}"
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "fig7_window", "fox", "pope", "adversarial", seed=seed,
+                intervention_layers=layers,
+                note=f"V10: window position sweep, width 14, start L{start}",
+            ))
+
+    # The other half of the same question: is it EARLY, or is it MANY? Fix the
+    # start at the shipped layer 2 and vary the width. If the effect is depth
+    # of propagation, four early layers should already buy most of it; if it
+    # is the count of requantised layers, it should scale with width.
+    for end in (5, 9, 23, 31):
+        layers = f"2-{end}"
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "fig7_window", "fox", "pope", "adversarial", seed=seed,
+                intervention_layers=layers,
+                note=f"V10: width sweep from the shipped start, L2-{end}",
+            ))
+
     # ---- Round 15, part 2: the gate, which is the half that survives ------ #
     # V9 in docs/VALIDATION.md. Every arm above interrogates the DIAGNOSIS.
     # This one interrogates the other component -- and it is the component
