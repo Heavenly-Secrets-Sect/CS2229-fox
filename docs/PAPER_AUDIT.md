@@ -165,12 +165,35 @@ released window's own width of 14 layers, L2–15 scores 0.0305 for H_vis and
 below the best equal-width window (L11–24 / L13–26). There is no contiguous
 early-to-mid run above threshold to keep: the signal is mid-to-late.
 
-### Figure 8 — diagnosis-driven vs random head selection — **RUNNABLE, high value**
+### Figure 8 — diagnosis-driven vs random head selection — **DONE at the released K; sweep in r14**
 
 The paper's own validation that the diagnosis does something: Fox against
-random head selection at matched budget K. This is the claim our finding most
-directly challenges — if the effect is requantisation, random heads at the
-same budget should do as well, and the paper says they do not.
+random head selection at matched budget K. The claim our finding most directly
+challenges — if the effect is requantisation, random heads at the same budget
+should do as well, and the paper says they do not.
+
+**They very nearly do.** `fox random_heads` ran ten POPE seeds and three CHAIR
+seeds in **r6** and went unscored until r13; the arms were in `plan list`
+under `controls` the whole time. At the released ratio 0.35:
+
+- POPE-adversarial, sampling, 10 paired seeds: random heads score **+4.54**
+  against the baseline where diagnosed heads score **+5.03**. Replacing the
+  diagnosis with `torch.randperm` costs **0.49 of 5.03 points** — the gap is
+  real (90% CI [−0.816, −0.164] excludes zero) and it is 10% of the arm.
+- CHAIR, 3 paired seeds: random heads are **better** — CHAIR_S 42.27 vs 48.47,
+  CHAIR_I 12.11 vs 13.89 — at **unchanged recall** (76.11 vs 75.79, 1187 vs
+  1182 correct objects, 94.6 vs 96.3 words), so this is not the
+  name-less-hallucinate-less trade the report flags `vcd_fox_fusion` for. They
+  also land closer to the paper's own 46.40 / 12.90 than our diagnosed run.
+
+Figure 8 is therefore not false; it is a true statement about a sub-point
+effect, plotted as validation of a causal story that the other 4.54 points do
+not support.
+
+What it has not answered is the axis the figure actually sweeps — Δ against K.
+r14 runs `k ∈ {0.10, 0.20, 0.45}` × {diagnosed, random} × 3 seeds at full
+3000, pre-registered as **V7**. `k = 0.10` edits three heads, where the ranking
+should matter most if it matters anywhere.
 
 ### Figure 9 — k, τ_JS, β sensitivity — **PARTIAL**
 
@@ -273,9 +296,9 @@ Reachable and not yet run, in descending value:
 | item | why it matters | rough cost |
 |---|---|---|
 | VCD + ICD, both benchmarks | the paper's own comparison, and its code cannot produce it | ~60 h |
-| Figure 8, random-head control | directly tests whether the diagnosis does anything | ~10 h |
+| ~~Figure 8, random-head control~~ | **done at K=0.35** from r6's archive — the diagnosis is worth 0.49 of 5.03 pts on POPE and *loses* on CHAIR. The K sweep is r14/V7 | ~22 h (with V8) |
 | Table 14 + Figure 19, fusion rule | isolates the gate inside the component carrying 44% of the effect | ~6 h |
-| Table 15, L2–13 vs L2–15 | settles which window produced the paper's 81.93 | ~3 h |
+| ~~Table 15, L2–13 vs L2–15~~ | **done** — equivalent at ±0.42. r14/V8 asks the same question against L11–24 and L13–26, the windows r13 measured as strongest | in r14 |
 | Tables 4/12, query positions | measures the cost of the released `tail_n = 1` | ~12 h |
 | Table 7, α = 0 and 3 | completes the sweep; α=0 is a sanity check on our fusion | ~5 h |
 | ~~Table 13, Figure 3, Figure 7~~ | **done, r13** — 0.71 s/sample, 35 min for 3000 | ~~~1 h~~ |

@@ -282,9 +282,47 @@ hallucination==, và nó gần như hiển nhiên khi `m_sys` là số lớn nh�
 trung bình. Khẳng định định tính mà nó được đưa ra để chống lưng thì **đúng**,
 và đúng mạnh: 73 % khối lượng chú ý nằm trên system prefix.
 
+### 5.5 Về Figure 8 — chọn head ngẫu nhiên giữ được 90 % hiệu ứng
+
+Figure 8 là phép tự-kiểm của chính paper: Fox so với chọn head **ngẫu nhiên** ở
+cùng ngân sách K, và paper kết luận *"targeting specific risky mediators is
+superior to stochastic head suppression"*.
+
+Arm `random_heads` đã chạy từ **r6** — 10 seed POPE, 3 seed CHAIR — và **nằm
+trong archive không ai chấm** cho đến r13. Ở K = 0.35 (11/32 head):
+
+| arm | accuracy | so baseline | so `fox` (CI 90 %) |
+|---|---|---|---|
+| `fox` | 81.75 | **+5.03** | — |
+| `fox random_heads` | 81.27 | **+4.54** | **−0.490** [−0.816, −0.164] |
+| `fox off` | 78.92 | +2.21 | −2.827 |
+
+Thay toàn bộ phần chẩn đoán nhân quả bằng `torch.randperm` mất **0.49 trong
+5.03 điểm**. Khoảng tin cậy không chứa 0, nên Figure 8 **không sai** — nó là
+một phát biểu đúng về một hiệu ứng dưới một điểm, được vẽ như bằng chứng cho
+câu chuyện nhân quả mà 4.54 điểm còn lại không chống lưng.
+
+Trên CHAIR thì head ngẫu nhiên **tốt hơn**, và ở recall không đổi:
+
+| | `fox` | `random_heads` | paper |
+|---|---|---|---|
+| CHAIR_S | 48.47 | **42.27** | 46.40 |
+| CHAIR_I | 13.89 | **12.11** | 12.90 |
+| recall | 75.79 | 76.11 | — |
+| object đúng | 1182 | 1187 | — |
+
+Recall **không** tụt (76.11 vs 75.79), số object đúng không đổi, caption dài
+như nhau — nên đây không phải cái bẫy "nói ít nên ảo ít" mà `vcd_fox_fusion`
+bị gắn cờ. ==Chọn head ngẫu nhiên tái lập con số CHAIR của paper sát hơn chính
+phần chẩn đoán của paper.==
+
+Cái Figure 8 thực sự quét là Δ theo **K**, và ta chỉ có một K. r14 quét
+`k ∈ {0.10, 0.20, 0.45}` — ở k = 0.10 chỉ 3 head bị sửa, nơi thứ hạng phải
+quan trọng nhất nếu nó quan trọng ở đâu cả.
+
 ## 6. Tình trạng hiện tại
 
-- **241/241 job trong plan đã chạy.** Plan rỗng. Job cuối là `diagnostics` của r13 (2026-11-12), chạy qua CI.
+- **241/265 job đã chạy.** Round **r14** vừa đóng băng: 24 job, 22.0 GPU-h, 3 session — V7 (quét K của Figure 8) và V8 (cửa sổ can thiệp mà r13 đo được là mạnh nhất).
 - Gate kiểm chứng: **18 đúng / 1 sai** (cái sai là dự đoán của nhóm về
   `cf_blind`, không phải bug — xem 5.3).
 - Mọi **baseline** POPE khớp paper trong 0.05 điểm → harness, dữ liệu, protocol
@@ -381,8 +419,28 @@ Ba quy tắc rút ra từ việc mất GPU-h thật:
 
 ## 8. Còn lại gì — việc có thể nhận
 
-Plan hiện tại đã cạn. Những mục dưới đây **chưa** nằm trong plan; đánh giá chi
-phí lấy từ [`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
+**r14 đã đóng băng** (24 job, 22.0 GPU-h, 3 session) — V7 quét K của Figure 8
+và V8 thử cửa sổ can thiệp mà r13 đo được là mạnh nhất. Những mục còn lại dưới
+đây **chưa** nằm trong plan; đánh giá chi phí lấy từ
+[`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
+
+Thứ tự đề xuất, theo "cần code mới" tăng dần — vì phần không cần code thì chạy
+được ngay, phần cần code thì viết trước rồi mới xin quota:
+
+1. **r14** (đang mở, không cần code mới) — V7 + V8.
+2. **r15** — Table 14 + Figure 19 (thêm tham số `strategy` vào `fuse()`), rồi
+   Table 4 / 12 (bộ chọn anchor).
+3. **r16+** — MME, MMBench, MathVista (mỗi cái một harness mới).
+4. **r17+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
+
+Không tái lập được, có lý do, **không phải lỗi implementation**:
+
+| mục | vì sao |
+|---|---|
+| CHAIR tuyệt đối | `chair_eval.py` lấy `os.listdir` của một thư mục chưa publish, shuffle rồi giữ 500 ảnh — tập ảnh của paper **không phục hồi được kể cả về nguyên tắc**. Ta đo được khoảng dịch **5.20 điểm** qua năm lần rút, nên con số tuyệt đối không so được; so sánh *giữa hai arm của ta* trên cùng tập ảnh thì vẫn chắc |
+| Figure 6 / Table 5 (GPT-4V judge) | API trả phí, n=50, và model judge đã **deprecated** — không ai tái lập được, kể cả tác giả |
+| Figure 16/17/21/22 | InstructBLIP / Shikra, nằm ngoài phạm vi đã chốt |
+| Figure 10/11/20 | ví dụ định tính, không có gì để tái lập |
 
 | việc | GPU-h | cần code mới? | giá trị |
 |---|---|---|---|
@@ -395,9 +453,8 @@ phí lấy từ [`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
 | **Backbone mới** (Qwen3-VL-8B, InternVL3-8B) | ~20 | có: tổng quát hoá loader; `locate_image_span` đang hard-code 576 token | cao nhưng đắt |
 | **GPT-4V judge** | 0 GPU, tốn API | có | đang hoãn |
 
-Ngoài ra: **`docs/PAPER_AUDIT.md` đang lỗi thời** — vẫn ghi SID/CausalMM là
-BLOCKED (giờ đã implement xong) và đánh giá thấp tính khả thi của MME/MMBench.
-Cần viết lại. Việc này không tốn GPU.
+`docs/PAPER_AUDIT.md` đã được cập nhật ở r13 (SID/CausalMM không còn ghi
+BLOCKED, Table 13/15 và Figure 3/7/8 đã có kết quả).
 
 ## 9. Bản đồ tài liệu
 
@@ -444,6 +501,7 @@ Mỗi dòng dưới đây đã tốn thời gian thật và giờ đều có tes
 | `hash()` của Python cho seed theo sample | `hash()` trên `str` bị salt theo tiến trình, nên cùng một lệnh không tái lập được token của chính nó → giờ dùng `zlib.crc32` |
 | Quên `@torch.inference_mode()` | graph autograd giữ KV buffer; job 10-token OOM ngay sample đầu |
 | Đo token-identity dưới **sampling** | một lần rút multinomial lật bất cứ khi nào logit nhích, nên hai arm có cùng phân phối vẫn khác nhau từng token. Test identity **phải** chạy greedy |
+| **Chạy arm rồi không chấm** | `fox random_heads` — phép tự-kiểm quan trọng nhất của paper — chạy từ r6, nằm trong `plan list`, trong mọi zip, và **không tài liệu nào nhắc đến nó suốt 7 round**. Chấm nó mất 0 GPU-h và cho ra phát hiện 5.5. Sinh job và chấm job là hai việc khác nhau; `plan list` nói cái gì đã *chạy*, không nói cái gì đã được *đọc* |
 | Chạy `plan plan` khi plan đã cạn | ghi đè `scripts/run_plan.json` thành plan rỗng `round: r1, n_sessions: 0`, xoá luôn bản ghi round vừa chạy. Tệ hơn: nếu sửa `kaggle-run.yml` thành `sessions: 0` cho khớp thì publish release sẽ chạy **không gì cả, im lặng**. Hai test guard chặn đúng chỗ này — **thêm job trước, đóng băng sau** |
 | Chia cho một tổng có dấu | xem 5.4(a): mẫu số của Eq. 13 là phần dư ~4 % của 1024 số hạng triệt tiêu nhau, nên dấu của nó — chứ không phải cơ chế nào — quyết định AUC là 0.13 hay 0.87. Khi một công thức chuẩn hoá bằng `Σ x`, hỏi ngay `Σ x` có thể bằng 0 hay đổi dấu không |
 

@@ -653,6 +653,79 @@ its role as the dominant prior source"* — invites it to be read as diagnostic
 power. The qualitative claim it is offered for does hold, and strongly: 73 %
 of attention mass sits on the system prefix.
 
+### Figure 8, scored from the archive: the diagnosis is worth 0.49 of 5.03 points
+
+Also not pre-registered, and worse than that — **this one was sitting in the
+archive unscored.** `fox random_heads` ran ten POPE seeds and three CHAIR seeds
+back in r6; `plan list` counted them under `controls`, every zip carried them,
+and no document in this repo mentioned them until now. `select_heads(select=
+"random")` and `mode="random_heads"` have been implemented the whole time, and
+a stale comment in `plan.py` still said Figure 8 "needs a random-head
+selection mode".
+
+Figure 8 is the paper's own validation that the diagnosis does something:
+*"the performance gains of Fox over a random-intervention baseline across
+different intervention ratios K … consistently validate that targeting
+specific risky mediators is superior to stochastic head suppression."*
+
+At the released K (ratio 0.35 → 11 of 32 heads), POPE-adversarial, sampling,
+ten seeds, paired:
+
+| arm | accuracy | vs baseline | vs `fox` (90% CI) | TOST p (±0.5) |
+|---|---|---|---|---|
+| `fox` | 81.75 | **+5.03** | — | — |
+| `fox random_heads` | 81.27 | **+4.54** | **−0.490** [−0.816, −0.164] | 0.478 |
+| `fox off` (no intervention) | 78.92 | +2.21 | −2.827 [−3.044, −2.610] | 1.000 |
+| `sampling` baseline | 76.72 | — | −5.033 | — |
+
+**The paper's direction holds and its magnitude does not matter.** Replacing
+the entire causal diagnosis with `torch.randperm` costs **0.49 of 5.03
+points** — the selection is worth 10 % of the arm's gain, and 90 % survives
+choosing the heads at random. The gap is distinguishable from zero (the
+interval excludes it), so Figure 8 is not *wrong*; it is a true statement
+about a 0.49-point effect, plotted as a validation of the causal story that
+the other 4.54 points are attributed to.
+
+That 4.54 is accounted for elsewhere in this document: `fox off` gives +2.21
+from fusion alone, and `fox ulp_control` — rounding and nothing else — is
+**equivalent to `fox`** at ±0.38. So the intervention's ~2.8 points are the
+fp16 requantisation, and requantisation does not care which heads it is
+applied to.
+
+**On CHAIR, random heads are better, and closer to the paper.** Three matched
+seeds:
+
+| | `fox` | `fox random_heads` | paper |
+|---|---|---|---|
+| CHAIR_S | 48.47 | **42.27** | 46.40 |
+| CHAIR_I | 13.89 | **12.11** | 12.90 |
+| recall | 75.79 | **76.11** | — |
+| correct objects | 1182 | 1187 | — |
+| mentions | 3820 | 3790 | — |
+| mean words | 96.3 | 94.6 | — |
+
+Paired difference −6.20 CHAIR_S [−11.47, −0.93] in random's favour. This
+project's own pitfall applies here and clears it: CHAIR_S falls while
+**recall does not** (76.11 vs 75.79), correct objects are flat (1187 vs 1182),
+and captions are the same length (94.6 vs 96.3 words). That is the opposite of
+`vcd_fox_fusion`, which the report flags for buying CHAIR_S with recall
+(66.35 against 76.09). Random head selection hallucinates less while naming
+just as much.
+
+So on the benchmark the paper leads with, stochastic head suppression is not
+merely as good as the diagnosis — it **reproduces the paper's own reported
+CHAIR numbers more closely than the diagnosis does** (42.27/12.11 against the
+paper's 46.40/12.90, where our diagnosed run gives 48.47/13.89).
+
+Two caveats, both real. The CHAIR arm has three seeds, so its interval is
+wide. And the CHAIR image set is the unrecoverable part of this reproduction
+(§3.8, 5.20 points of draw-to-draw drift), so the comparison **to the paper**
+is weak — but the comparison between our two arms is on identical images and
+identical seeds, and that is the one carrying the claim.
+
+What is not yet answered is the axis Figure 8 actually sweeps. The paper plots
+Δ against K, and this is one K. V7 below runs the sweep.
+
 ### Cost
 
 Measured 2119.1 s for 3000 samples = **0.71 s/sample**, against the 1.2 s
@@ -680,6 +753,74 @@ from the observational branch's.
 SID additionally records `sid_n_kept` per step, and CausalMM records
 `cf_gain_mean` / `cf_gain_std`, so a run whose mechanism silently degraded
 mid-way is visible in the record rather than only in the score.
+
+---
+
+## V7 — Does the diagnosis matter more when fewer heads are edited?
+
+`--mode random_heads` against the default `as_implemented`, at
+`k ∈ {0.10, 0.20, 0.45}`, POPE-adversarial, sampling, seeds 42/43/44, full
+3000. The released `k = 0.35` already has ten seeds of each (Figure 8 above).
+**16.2 h.**
+
+This is the axis Figure 8 sweeps, and the one reading that could still rescue
+the paper's account. At `k = 0.35` the diagnosis is worth 0.49 of 5.03 points
+— but 11 of 32 heads is a third of them, and with a third of the heads edited
+*any* selection catches some high-score heads by chance. `k = 0.10` edits
+**3 heads**, where picking the right three should matter most if the ranking
+means anything. `k = 0.45` is the ratio the **paper** states, versus the 0.35
+the code ships.
+
+**Prediction: the gap stays under 1 accuracy point at every K, and does not
+grow as K shrinks.** Concretely: `|Δ(random − diagnosed)| < 1.0` at all three
+ratios, with no monotone increase toward small K.
+
+The reasoning is V2's result, not a guess. The intervention's ~2.8 points are
+an fp16 requantisation of the attention logits (`ulp_control` ≡ `fox` at
+±0.38, `ld=fp32` kills the effect entirely). Requantisation is indifferent to
+*which* logits it rounds, so the arm's size should track **how many** heads
+are edited, not which — falling for both arms together as K falls, while the
+gap between them stays small.
+
+| outcome | reading |
+|---|---|
+| gap < 1 pt at every K, flat | Figure 8 plots a real but small effect as validation of a causal story that the rest of the gain does not support. The requantisation account survives its sharpest test |
+| gap > 2 pts at `k = 0.10` | **the prediction fails and the diagnosis is doing real work** that `k = 0.35` masked by editing enough heads to make selection nearly irrelevant. The requantisation account would then be incomplete, not wrong — it would explain the magnitude but not the localisation |
+| both arms collapse to `fox off` at `k = 0.10` | the effect is purely the *number* of heads, and even 3-head requantisation is too little to move POPE. Consistent with the prediction and a cleaner demonstration of it |
+
+Three seeds resolves a gap of roughly 1.0 point here, which is the resolution
+the question needs — whether the gap is small or large, not its third digit.
+`k = 0.35` carries ten seeds for the precise estimate.
+
+---
+
+## V8 — Does the intervention window matter at all?
+
+`--intervention-layers` at `11-24` and `13-26` against the shipped `2-15`,
+POPE-adversarial, sampling, seeds 42/43/44. **5.4 h.**
+
+r13 measured the per-layer diagnostic strength the paper's own automatic rule
+is defined on, and the shipped window loses on it: mean |AUC − 0.5| over
+L2–15 is 0.0305 for `H_vis` and 0.0458 for `m_sys`, against all-layer averages
+of 0.0373 and 0.0762. The best 14-layer windows — same width, so the budget
+matches — are **L11–24** for `H_vis` (0.0571) and **L13–26** for `m_sys`
+(0.1075). Table 15 already showed the paper's stated `2-13` is equivalent to
+the code's `2-15` (±0.42), but both of those are inside the same weak region;
+this asks the question against the region r13 says the signal is actually in.
+
+**Prediction: both measured windows are equivalent to `2-15` at ±0.5.**
+
+Same reasoning as V7: 14 layers of requantisation is 14 layers of
+requantisation wherever they sit.
+
+| outcome | reading |
+|---|---|
+| equivalent | the window is not load-bearing, and the paper's automatic rule selects a window whose choice does not matter. Three of three components of `S = m_sys · H_vis` over L2–15 then have a measurement against them |
+| `11-24` or `13-26` **beats** `2-15` by > 0.5 | **the prediction fails, and constructively.** The diagnosis would be localising something real, and the released code would be shipping the wrong window — the paper's method would work *better* than the paper's implementation. That is a finding worth more than a confirmation |
+| the measured windows are **worse** | layer position matters and the diagnosis points the wrong way, which would be the first evidence that the window choice is load-bearing *against* the paper |
+
+This is the one prediction in the suite whose failure would partly rescue the
+paper, which is the reason to run it.
 
 ---
 

@@ -22,7 +22,8 @@ Table 3 (recent backbones)             Qwen3-VL-8B and InternVL3-8B are both
 Figures 3, 7, 12, 13, 14               diagnostic only -- one forward pass per
                                        sample, no generation, so cheap
 Figure 1a                              same data as Figure 12
-Figure 8 (random vs diagnosed heads)   needs a random-head selection mode
+Figure 8 (random vs diagnosed heads)   ran in r6 at the released K; r14
+                                       sweeps K, which is the figure's axis
 Figure 9 (k / tau_JS / beta)           500 COCO samples, as the paper states
 Figure 19 (JSD gating)                 mode=off vs always-intervene
 Tables 4, 13, 14, 15                   temporal anchors, prior source, fusion
@@ -921,6 +922,46 @@ def _build_plan() -> List[Job]:
         jobs.append(Job("table2_methods", "vcd_fox_fusion", "chair",
                         "val2014_500", seed=seed,
                         note="VCD's noise in Fox's fusion"))
+
+    # ---- Round 14: the two axes the diagnosis is defended on ------------- #
+    # V7 and V8 in docs/VALIDATION.md. Both ask whether the DIAGNOSIS does
+    # work, as opposed to the edit it triggers -- which r6's `random_heads`
+    # seeds and r13's per-layer measurement both put in doubt.
+
+    # V7. Figure 8's actual axis. The paper plots the Fox-over-random gain
+    #     across intervention ratios K and reads a consistent gain as proof
+    #     that "targeting specific risky mediators is superior to stochastic
+    #     head suppression". At the released K = 0.35 that gain is 0.49 of
+    #     5.03 points. k = 0.10 edits THREE heads, where the ranking should
+    #     matter most if it matters at all; k = 0.45 is the ratio the paper
+    #     states against the 0.35 the code ships.
+    #
+    #     Full 3000, not the 500 fig9 used for its sweeps: the quantity is a
+    #     sub-point difference and 500 samples cannot see one.
+    for ratio in (0.10, 0.20, 0.45):
+        for mode in ("as_implemented", "random_heads"):
+            for seed in SEEDS_BREADTH:
+                jobs.append(Job(
+                    "fig8", "fox", "pope", "adversarial", seed=seed,
+                    k=ratio, mode=mode,
+                    note=f"Figure 8 sweep: k={ratio:g}, {mode}",
+                ))
+
+    # V8. The window, asked against the region r13 says the signal is in.
+    #     Table 15 compared the paper's stated 2-13 with the code's 2-15 and
+    #     found them equivalent, but both sit inside the same weak band: mean
+    #     |AUC-0.5| over 2-15 is 0.0305 for H_vis against an all-layer 0.0373.
+    #     These two are the best 14-layer windows r13 measured -- same width,
+    #     so the number of requantised layers matches and only their POSITION
+    #     differs.
+    for layers, why in (("11-24", "best 14-layer window for H_vis"),
+                        ("13-26", "best 14-layer window for m_sys")):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "fig8", "fox", "pope", "adversarial", seed=seed,
+                intervention_layers=layers,
+                note=f"V8: {why}, against the shipped 2-15",
+            ))
 
     return jobs
 
