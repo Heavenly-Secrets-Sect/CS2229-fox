@@ -38,6 +38,26 @@ after it completes adds the new records rather than replacing the file.
 The live run directory (`foxrepro.storage.Paths.runs_root`) stays outside the
 repo and gitignored: it is working state, and on Kaggle it is ephemeral.
 
+## One run is deliberately **not** here: r13's diagnostic
+
+`m-diagnose__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl`
+is **234 MB** and lives only in the runs root. The compression argument above
+does not apply to it: its payload is 1024 distinct floats per sample per
+statistic, not provenance repeated 3000 times, so it does not shrink. GitHub
+also rejects any single file over 100 MB outright, which would make the commit
+unpushable — so `plan archive` now refuses it by name rather than staging it
+(`GITHUB_FILE_LIMIT_BYTES`).
+
+What stands in for it:
+
+- `docs/VALIDATION.md` §"Results, round 13" — every claim drawn from it.
+- `scripts/analyse_diagnostics.py` — recomputes all of them from the file.
+- the file itself, in the runs root and in `fox_runs_fox_r13_s1.zip`. **Back
+  those up outside the repo deliberately**; nothing in git carries them.
+
+Re-running the job costs ~35 min on 2×T4 (0.71 s/sample, 3000 samples), so this
+is the one archive gap that is cheap to refill.
+
 ## Two rounds of session 1 are archived, on purpose
 
 The variant hash in each filename is derived from the fields that change the

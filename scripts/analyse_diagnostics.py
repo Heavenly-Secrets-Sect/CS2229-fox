@@ -137,14 +137,28 @@ def delta_auc(series, ids, hall) -> Dict[Tuple[int, int], float]:
     return out
 
 
-def sample_scores(series, ids, d) -> Tuple[List[float], float]:
-    """Equation 13, with its own denominator returned so it can be inspected."""
-    denom = sum(d.values())
+def sample_scores(series, ids, d, *, absolute: bool = False
+                  ) -> Tuple[List[float], float]:
+    """Equation 13, with its own denominator returned so it can be inspected.
+
+    ``absolute`` divides by sum|dAUC| instead of sum(dAUC). The numerator is
+    untouched, so this changes nothing but the scale -- unless sum(dAUC) is
+    negative, in which case the published form reverses the ranking and the
+    resulting AUC becomes 1 - AUC. Equation 13 as written has no term that
+    pins that sign down, so both are reported.
+    """
+    denom = sum(abs(v) for v in d.values()) if absolute else sum(d.values())
     scores = []
     for i, _ in enumerate(ids):
         num = sum(series[k][i] * d[k] for k in d)
         scores.append(num / denom if denom else float("nan"))
     return scores, denom
+
+
+def auc_of(scores: Sequence[float], ids: Sequence[str],
+           hall: Dict[str, bool]) -> Optional[float]:
+    return auc([s for s, i in zip(scores, ids) if hall[i]],
+               [s for s, i in zip(scores, ids) if not hall[i]])
 
 
 def say(label: str, value, note: str = "") -> None:
@@ -206,11 +220,28 @@ def main(argv=None) -> int:
         ser = head_series(rows, ids, f"m_sys_t{tail}", n_layers, n_heads)
         d = delta_auc(ser, ids, hall)
         scores, denom = sample_scores(ser, ids, d)
-        a = auc([s for s, i in zip(scores, ids) if hall[i]],
-                [s for s, i in zip(scores, ids) if not hall[i]])
+        a = auc_of(scores, ids, hall)
         say(f"tail={tail}  in-sample AUC", a, f"(paper {paper})")
+
+        # The denominator is a sum of ~1024 roughly symmetric terms, so it is a
+        # residual, and its SIGN decides whether the published score ranks
+        # hallucination up or down. Print what it is a residual of.
+        mag = sum(abs(v) for v in d.values())
+        n_up = sum(1 for v in d.values() if v > 0)
         say(f"tail={tail}  sum(dAUC) denominator", denom,
-            "-- Eq. 13 divides by this, not by sum|dAUC|")
+            f"-- Eq. 13 divides by this; sum|dAUC| = {mag:.4f}, so the "
+            f"denominator is a {abs(denom) / mag:.1%} residual")
+        say(f"tail={tail}  heads with dAUC > 0", f"{n_up}/{len(d)}",
+            "-- near-balanced, which is why the residual is small")
+        sc_abs, _ = sample_scores(ser, ids, d, absolute=True)
+        say(f"tail={tail}  AUC dividing by sum|dAUC|", auc_of(sc_abs, ids, hall),
+            "-- same numerator, sign-safe scale")
+
+        # Control: does the MAGNITUDE of system attention predict anything, or
+        # is all the signal in the fitted per-head dAUC weights?
+        flat = [sum(ser[k][i] for k in ser) / len(ser) for i, _ in enumerate(ids)]
+        say(f"tail={tail}  unweighted mean m_sys AUC", auc_of(flat, ids, hall),
+            "-- no Eq. 12 weights at all")
         # Held out: fit the weights on half, score the other half.
         half = len(ids) // 2
         fit_ids, test_ids = ids[:half], ids[half:]
@@ -223,30 +254,62 @@ def main(argv=None) -> int:
                         [s for s, i in zip(sc, test_ids) if not hall[i]])
             say(f"tail={tail}  held-out AUC", a_out,
                 "-- weights fitted on the other half")
-            report[f"auc_tail{tail}"] = {"in_sample": a, "held_out": a_out,
-                                         "denominator": denom}
+            report[f"auc_tail{tail}"] = {
+                "in_sample": a, "held_out": a_out, "denominator": denom,
+                "sum_abs_dauc": mag, "heads_dauc_positive": n_up,
+                "auc_abs_denominator": auc_of(sc_abs, ids, hall),
+                "auc_unweighted": auc_of(flat, ids, hall)}
     print()
 
-    print("Figure 7 -- |AUC - 0.5| for H_vis per layer (tail=1)")
-    per_layer = []
-    for l in range(n_layers):
-        vals = [sum(rows[s][str(l)]["h_vis_t1"]) / n_heads for s in ids]
-        a = auc([v for v, s in zip(vals, ids) if hall[s]],
-                [v for v, s in zip(vals, ids) if not hall[s]])
-        per_layer.append(None if a is None else abs(a - 0.5))
-    report["figure7_abs_auc_minus_half"] = per_layer
-    for l, v in enumerate(per_layer):
-        bar = "#" * int(round((v or 0) * 200))
-        print(f"  L{l:<3d} {0.0 if v is None else v:.4f}  {bar}")
-    best = max((v for v in per_layer if v is not None), default=0.0)
-    thr = best / 2.0
-    window = [l for l, v in enumerate(per_layer) if v is not None and v >= thr]
-    print(f"\n  strongest layer L{per_layer.index(best)} at {best:.4f}; "
-          f"layers at or above half of it: {window}")
-    print("  (the paper's rule keeps the contiguous early-to-mid run above a "
-          "threshold it does not state; released code ships L2-15, the "
-          "appendix says the manual window is L2-13)")
-    report["figure7_window_at_half_max"] = window
+    # Figure 7 is the input to Table 15's automatic window rule, so run the
+    # rule on BOTH halves of the joint score S = m_sys * H_vis, not just H_vis:
+    # the window the rule picks is only interesting next to the one the code
+    # ships. Signed, because the sign is the mechanism claim.
+    for stat, label in (("h_vis_t1", "H_vis"), ("m_sys_t1", "m_sys")):
+        print(f"Figure 7 -- per-layer AUC for {label} (tail=1), "
+              f"heads averaged within the layer")
+        signed = []
+        for l in range(n_layers):
+            vals = [sum(rows[s][str(l)][stat]) / n_heads for s in ids]
+            a = auc_of(vals, ids, hall)
+            signed.append(None if a is None else a - 0.5)
+        for l, v in enumerate(signed):
+            v = 0.0 if v is None else v
+            bar = "#" * int(round(abs(v) * 200))
+            arrow = "up  " if v > 0 else ("down" if v < 0 else "    ")
+            print(f"  L{l:<3d} {v:+.4f} {arrow} {bar}")
+
+        mag = [0.0 if v is None else abs(v) for v in signed]
+        peak = max(range(n_layers), key=lambda l: mag[l])
+        up = [l for l, v in enumerate(signed) if v is not None and v > 0]
+        print(f"\n  hallucination RAISES {label} in {len(up)}/{n_layers} "
+              f"layers: {up}")
+        print(f"  strongest layer L{peak} at {signed[peak]:+.4f}")
+
+        def wmean(a: int, b: int) -> float:
+            return sum(mag[a:b + 1]) / (b - a + 1)
+
+        w = 14  # the released window's width, so the comparison is fair
+        best_a = max(range(n_layers - w + 1), key=lambda a: wmean(a, a + w - 1))
+        rows_out = [("released code, L2-15", wmean(2, 15)),
+                    ("appendix manual, L2-13", wmean(2, 13)),
+                    (f"best {w}-layer window, L{best_a}-{best_a + w - 1}",
+                     wmean(best_a, best_a + w - 1)),
+                    ("every layer, L0-31", wmean(0, n_layers - 1))]
+        print(f"  mean |AUC-0.5| over a window -- what the rule maximises:")
+        for name, v in rows_out:
+            print(f"    {name:<34s} {v:.4f}")
+        report[f"figure7_{stat}"] = {
+            "signed_auc_minus_half": signed,
+            "peak_layer": peak,
+            "layers_raised_by_hallucination": up,
+            "window_means": {name: v for name, v in rows_out}}
+        print()
+
+    print("  The rule is stated as keeping the contiguous early-to-mid run "
+          "above a threshold the paper never gives.")
+    print("  Released code ships L2-15; the appendix says the manual window "
+          "is L2-13 and that the rule selects L3-15.")
 
     if args.json:
         args.json.write_text(json.dumps(report, indent=2))

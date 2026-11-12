@@ -1,0 +1,112 @@
+# Diagnostics from m-diagnose__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl
+# Labels from      m-sampling__b-pope__s-adversarial__seed-42__dt-fp16__v-greedy-0b099584.jsonl
+# 3000 samples, 32 layers x 32 heads, 459 hallucinated (15.3%)
+
+Table 13 -- mean diagnostic score per token group (tail=1)
+  m_vis                                          0.1057  (paper 0.57)
+  m_txt                                          0.1602  (paper 0.62)
+  m_sys                                          0.7341  (paper 0.82)
+  sum of the three                               1.0000  -- they partition the keys; the paper's sums to 2.01
+
+Figure 3 / 13 -- ROC-AUC of the Eq. 13 sample score
+  tail=1  in-sample AUC                          0.1310  (paper 0.8226)
+  tail=1  sum(dAUC) denominator                  -2.8821  -- Eq. 13 divides by this; sum|dAUC| = 74.5528, so the denominator is a 3.9% residual
+  tail=1  heads with dAUC > 0                    504/1024  -- near-balanced, which is why the residual is small
+  tail=1  AUC dividing by sum|dAUC|              0.8690  -- same numerator, sign-safe scale
+  tail=1  unweighted mean m_sys AUC              0.4626  -- no Eq. 12 weights at all
+  tail=1  held-out AUC                           0.8735  -- weights fitted on the other half
+  tail=32  in-sample AUC                         0.6568  (paper 0.7626)
+  tail=32  sum(dAUC) denominator                 0.7769  -- Eq. 13 divides by this; sum|dAUC| = 24.6462, so the denominator is a 3.2% residual
+  tail=32  heads with dAUC > 0                   550/1024  -- near-balanced, which is why the residual is small
+  tail=32  AUC dividing by sum|dAUC|             0.6568  -- same numerator, sign-safe scale
+  tail=32  unweighted mean m_sys AUC             0.4924  -- no Eq. 12 weights at all
+  tail=32  held-out AUC                          0.6645  -- weights fitted on the other half
+
+Figure 7 -- per-layer AUC for H_vis (tail=1), heads averaged within the layer
+  L0   +0.0272 up   #####
+  L1   +0.0043 up   #
+  L2   +0.0280 up   ######
+  L3   +0.0217 up   ####
+  L4   +0.0164 up   ###
+  L5   +0.0095 up   ##
+  L6   -0.0023 down 
+  L7   +0.0085 up   ##
+  L8   +0.0229 up   #####
+  L9   -0.0123 down ##
+  L10  +0.0261 up   #####
+  L11  +0.0387 up   ########
+  L12  +0.0621 up   ############
+  L13  +0.0909 up   ##################
+  L14  -0.0337 down #######
+  L15  +0.0541 up   ###########
+  L16  +0.0725 up   ##############
+  L17  -0.0043 down #
+  L18  +0.0208 up   ####
+  L19  -0.0300 down ######
+  L20  +0.0296 up   ######
+  L21  +0.0865 up   #################
+  L22  +0.1005 up   ####################
+  L23  +0.1077 up   ######################
+  L24  +0.0685 up   ##############
+  L25  +0.0363 up   #######
+  L26  +0.0571 up   ###########
+  L27  +0.0193 up   ####
+  L28  +0.0165 up   ###
+  L29  -0.0137 down ###
+  L30  -0.0602 down ############
+  L31  -0.0110 down ##
+
+  hallucination RAISES H_vis in 24/32 layers: [0, 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 15, 16, 18, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+  strongest layer L23 at +0.1077
+  mean |AUC-0.5| over a window -- what the rule maximises:
+    released code, L2-15               0.0305
+    appendix manual, L2-13             0.0283
+    best 14-layer window, L11-24       0.0571
+    every layer, L0-31                 0.0373
+
+Figure 7 -- per-layer AUC for m_sys (tail=1), heads averaged within the layer
+  L0   +0.0736 up   ###############
+  L1   -0.0424 down ########
+  L2   -0.0052 down #
+  L3   +0.0044 up   #
+  L4   -0.0027 down #
+  L5   +0.0288 up   ######
+  L6   +0.0255 up   #####
+  L7   -0.0109 down ##
+  L8   -0.0644 down #############
+  L9   +0.1066 up   #####################
+  L10  -0.0176 down ####
+  L11  -0.0694 down ##############
+  L12  -0.0171 down ###
+  L13  -0.1299 down ##########################
+  L14  +0.1050 up   #####################
+  L15  -0.0537 down ###########
+  L16  +0.1142 up   #######################
+  L17  +0.1295 up   ##########################
+  L18  -0.0140 down ###
+  L19  -0.0153 down ###
+  L20  -0.0134 down ###
+  L21  -0.1575 down ################################
+  L22  -0.2009 down ########################################
+  L23  -0.2626 down #####################################################
+  L24  -0.0671 down #############
+  L25  -0.0828 down #################
+  L26  -0.1591 down ################################
+  L27  -0.0835 down #################
+  L28  -0.0169 down ###
+  L29  +0.0569 up   ###########
+  L30  +0.2272 up   #############################################
+  L31  +0.0795 up   ################
+
+  hallucination RAISES m_sys in 11/32 layers: [0, 3, 5, 6, 9, 14, 16, 17, 29, 30, 31]
+  strongest layer L23 at -0.2626
+  mean |AUC-0.5| over a window -- what the rule maximises:
+    released code, L2-15               0.0458
+    appendix manual, L2-13             0.0402
+    best 14-layer window, L13-26       0.1075
+    every layer, L0-31                 0.0762
+
+  The rule is stated as keeping the contiguous early-to-mid run above a threshold the paper never gives.
+  Released code ships L2-15; the appendix says the manual window is L2-13 and that the rule selects L3-15.
+
+[wrote] reports/diagnostics_r13.json

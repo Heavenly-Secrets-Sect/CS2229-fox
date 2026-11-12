@@ -193,9 +193,98 @@ greedy **79.03**. Dưới sampling nó *thắng* (+1.13), dưới greedy nó *th
 Phần lợi của nó phụ thuộc vào mặt nạ plausibility và phép rút ngẫu nhiên, không
 phải vào contrast.
 
+### 5.4 Về phần chẩn đoán — đo trực tiếp các con số paper công bố
+
+Ba mục 5.1–5.3 nói về phần **can thiệp**. Round 13 đo phần **chẩn đoán** — thứ
+mà toàn bộ bài báo dựa vào để biện minh cho can thiệp. Một pass forward-only,
+3000 câu POPE-adversarial, không sinh text, 0.71 s/câu. Chạy lại bằng
+`python scripts/analyse_diagnostics.py`.
+
+**Khác với 5.1–5.3, mục này không phải dự đoán tiền-đăng ký.** Gate vẫn là
+18 đúng / 1 sai. Đây là phép đo, không phải phép xác nhận — script phân tích
+được viết trước khi chạy, nhưng không ai đặt cược vào con số nào trước.
+
+**(a) Mẫu số của Eq. 13 có dấu mà không gì quyết định.** Eq. 13 là
+`s_n = Σ m_sys(n)·ΔAUC / Σ ΔAUC`. Mẫu số là một **vô hướng toàn cục**, nên nếu
+nó âm thì nó không làm méo thứ hạng — nó **đảo** thứ hạng, và AUC thành
+`1 − AUC`.
+
+| | tail=1 | tail=32 |
+|---|---|---|
+| Eq. 13 đúng như viết | **0.1310** | 0.6568 |
+| paper | 0.8226 | 0.7626 |
+| mẫu số Σ ΔAUC | **−2.8821** | +0.7769 |
+| độ lớn nó cộng, Σ\|ΔAUC\| | 74.5528 | 24.6462 |
+| ⇒ mẫu số chỉ là phần dư | **3.9 %** | 3.2 % |
+| chia cho Σ\|ΔAUC\| | **0.8690** | 0.6568 |
+| held-out | **0.8735** | 0.6645 |
+
+Dấu đó là phần dư của 1024 số hạng gần như triệt tiêu nhau (504 dương, 520 âm).
+Paper công bố hai số đều > 0.5, nghĩa là phần dư của họ dương hai lần; của
+chúng ta âm ở tail=1. **Tín hiệu là thật và mạnh hơn paper nói** — sửa mẫu số
+thì được 0.8690 in-sample, 0.8735 held-out. Đây không phải tái lập thất bại:
+đây là tái lập được hiệu ứng, cộng với một lỗi ở công thức báo cáo nó.
+
+**(b) Và hướng thì ngược.** Caption Figure 13 của paper nói rõ: *điểm cao hơn
+= dựa vào system token nhiều hơn*, hallucination là lớp dương. Nhưng:
+
+- `m_sys` lấy trung bình trên cả 1024 head dự đoán hallucination **ở mức ngẫu
+  nhiên** (AUC 0.4626). Toàn bộ 0.87 đến từ trọng số ΔAUC từng head.
+- Tính theo layer, hallucination làm **tăng** `m_sys` ở chỉ **11/32** layer. Năm
+  layer có tín hiệu mạnh nhất đều chạy ngược: L23 **0.237**, L22 0.299,
+  L26 0.341, L21 0.343, L13 0.370.
+
+Nói cách khác: cái phân biệt được là ==**head nào** dồn chú ý vào system prompt,
+không phải **bao nhiêu**==. Và ở các layer giữa-cuối, nhiều chú ý system đi với
+**ít** hallucination hơn. Một probe đọc dấu vân 1024 chiều không phải bằng
+chứng cho "đường tắt nhân quả"; nó là bằng chứng rằng forward lúc hallucinate
+có *hình dạng* khác.
+
+`H_vis` là nửa tiền đề **đúng**: hallucination làm tăng entropy chú ý thị giác
+ở 24/32 layer, mạnh nhất L23 (+0.1077). Đúng hướng, nhưng yếu.
+
+**(c) Quy tắc chọn cửa sổ của Figure 7 không chọn ra cửa sổ mà code ship.**
+Trung bình |AUC−0.5| trên một cửa sổ là thứ quy tắc đó cực đại hoá. So ở đúng
+độ rộng 14 layer của cửa sổ đã ship:
+
+| cửa sổ | `H_vis` | `m_sys` |
+|---|---|---|
+| code đã ship, L2–15 | 0.0305 | 0.0458 |
+| appendix (thủ công), L2–13 | 0.0283 | 0.0402 |
+| **cửa sổ 14-layer tốt nhất** | **0.0571** (L11–24) | **0.1075** (L13–26) |
+| toàn bộ 32 layer | 0.0373 | 0.0762 |
+
+Cửa sổ đã ship **thấp hơn mức trung bình của toàn bộ layer** trên cả hai thống
+kê. Quy tắc được phát biểu là "giữ đoạn liền mạch early-to-mid vượt ngưỡng" và
+paper không đưa ngưỡng; ở mức nửa đỉnh, các đoạn liền mạch là {12,13}, {15,16},
+{21–24}, {26}, {30} — **không có đoạn early-to-mid nào để giữ**, tín hiệu nằm ở
+giữa-cuối.
+
+**Ba điều này khép lại một vòng.** Fox can thiệp lên `S = m_sys · H_vis` tại
+L2–15. Giờ cả ba lựa chọn đó đều có một phép đo chống lại: `m_sys` ngược hướng
+ở nơi nó mạnh nhất, `H_vis` đúng hướng nhưng yếu, và L2–15 là cửa sổ dưới trung
+bình theo đúng tiêu chí của paper. Ba lý do độc lập để can thiệp **không** nên
+hoạt động như mô tả — và 5.1 đã cho thấy nó hoạt động bằng thứ khác: phép cast
+logit fp16.
+
+**(d) Table 13 báo một đại lượng không được định nghĩa.** Đo được
+0.1057 / 0.1602 / 0.7341, tổng **1.0000**. Eq. 11 định nghĩa mỗi `m` là khối
+lượng chú ý trên một dải khoá, ba dải phân hoạch toàn bộ khoá nên tổng buộc
+phải bằng 1. Paper ghi tổng 2.01 ⇒ ba số đó **không** phải thứ Eq. 11 định
+nghĩa, và paper không đưa định nghĩa nào khác.
+
+Còn "Tail ROC-AUC 1.00"? Caption nói nó *"treats system-token responses as the
+positive class"* — nó phân biệt **nhóm token**, không phải hallucinated vs
+faithful. Chúng ta tái lập **đúng**: 1.0000 ở mức sample (min `m_sys` 0.7113 vs
+max của hai cái kia 0.1731), 0.9381 ở mức từng head. Tức là ==con số duy nhất
+trong Table 13 mà ta tái lập đến từng chữ số là con số không nói gì về
+hallucination==, và nó gần như hiển nhiên khi `m_sys` là số lớn nhất trong ba
+trung bình. Khẳng định định tính mà nó được đưa ra để chống lưng thì **đúng**,
+và đúng mạnh: 73 % khối lượng chú ý nằm trên system prefix.
+
 ## 6. Tình trạng hiện tại
 
-- **240/240 job trong plan đã chạy.** Plan rỗng.
+- **241/241 job trong plan đã chạy.** Plan rỗng. Job cuối là `diagnostics` của r13 (2026-11-12), chạy qua CI.
 - Gate kiểm chứng: **18 đúng / 1 sai** (cái sai là dự đoán của nhóm về
   `cf_blind`, không phải bug — xem 5.3).
 - Mọi **baseline** POPE khớp paper trong 0.05 điểm → harness, dữ liệu, protocol
@@ -297,7 +386,7 @@ phí lấy từ [`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
 
 | việc | GPU-h | cần code mới? | giá trị |
 |---|---|---|---|
-| **Table 13 + Figure 3, 7, 1a** — chẩn đoán | ~1 | có: một pass forward-only, không sinh text | cao: paper khai báo ROC-AUC **đúng 1.00**, đáng kiểm tra trực tiếp; đồng thời là input cho quy tắc tự động của Table 15 |
+| ~~**Table 13 + Figure 3, 7, 1a**~~ — **đã chạy r13 (2026-11-12)** | 0.6 thực đo | xong | ba phát hiện, xem `VALIDATION.md` §r13: mẫu số của Eq. 13 là phần dư ~4 %, dấu của nó quyết định AUC là 0.13 hay 0.87; `m_sys` **ngược hướng** paper ở các layer mạnh nhất; cửa sổ L2–15 mà code ship **dưới mức trung bình** theo đúng tiêu chí chọn cửa sổ của paper |
 | **Table 14 + Figure 19** — quy tắc hợp nhất | ~5 | ít: hai dòng trong `reference_fuse` | cao: arm `off` cho thấy riêng phần hợp nhất mang +2.21 trong +5.03 của Fox; mục này tách quy tắc gating bên trong nó |
 | **Table 4 / 12** — vị trí truy vấn | ~17 (hoặc ~5 nếu chỉ POPE-adv) | có: bộ chọn anchor | trung bình-cao: code gốc dùng `tail_n = 1`, một vị trí, **không phải** hai anchor như paper mô tả. Mục này đo cái giá của lựa chọn đó |
 | **MME harness** | ~4 | có, viết từ đầu | trung bình: release không có script MME |
@@ -355,7 +444,9 @@ Mỗi dòng dưới đây đã tốn thời gian thật và giờ đều có tes
 | `hash()` của Python cho seed theo sample | `hash()` trên `str` bị salt theo tiến trình, nên cùng một lệnh không tái lập được token của chính nó → giờ dùng `zlib.crc32` |
 | Quên `@torch.inference_mode()` | graph autograd giữ KV buffer; job 10-token OOM ngay sample đầu |
 | Đo token-identity dưới **sampling** | một lần rút multinomial lật bất cứ khi nào logit nhích, nên hai arm có cùng phân phối vẫn khác nhau từng token. Test identity **phải** chạy greedy |
+| Chạy `plan plan` khi plan đã cạn | ghi đè `scripts/run_plan.json` thành plan rỗng `round: r1, n_sessions: 0`, xoá luôn bản ghi round vừa chạy. Tệ hơn: nếu sửa `kaggle-run.yml` thành `sessions: 0` cho khớp thì publish release sẽ chạy **không gì cả, im lặng**. Hai test guard chặn đúng chỗ này — **thêm job trước, đóng băng sau** |
+| Chia cho một tổng có dấu | xem 5.4(a): mẫu số của Eq. 13 là phần dư ~4 % của 1024 số hạng triệt tiêu nhau, nên dấu của nó — chứ không phải cơ chế nào — quyết định AUC là 0.13 hay 0.87. Khi một công thức chuẩn hoá bằng `Σ x`, hỏi ngay `Σ x` có thể bằng 0 hay đổi dấu không |
 
-Hai dòng cuối là bài học tổng quát nhất: **một thí nghiệm có thể trả lời sai
+Dòng `token-identity` và dòng `plan plan` là bài học tổng quát nhất: **một thí nghiệm có thể trả lời sai
 câu hỏi mà vẫn chạy trót lọt.** Khi thiết kế arm mới, hỏi trước: nếu cơ chế này
 hoàn toàn không hoạt động, arm này có cho ra kết quả khác không?

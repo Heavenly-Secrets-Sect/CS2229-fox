@@ -802,6 +802,34 @@ class TestArchive(unittest.TestCase):
         self.assertEqual(rep["copied"], 1)
         self.assertEqual(len(list(self.archive.glob("*.jsonl"))), 1)
 
+    def test_a_file_too_large_for_github_is_refused_not_copied(self) -> None:
+        """GitHub rejects any single file over 100 MB, and the rejection lands
+        at ``git push`` -- long after ``archive`` said it succeeded.
+
+        A diagnostic run is the one shape that reaches that size here: its
+        payload is 1024 distinct floats per sample per statistic, so it does
+        not compress the ~23x that makes the generation archive cheap. r13's
+        came to 234 MB against a 4.8 MB largest generation run. Naming it and
+        leaving it is the only honest option -- copying it stages an unpushable
+        commit, and silently dropping it loses a GPU-hour without saying so.
+        """
+        from foxrepro.bench.plan import archive_runs, GITHUB_FILE_LIMIT_BYTES
+
+        small = self._run_file(PLAN[0], 5, self.live)
+        big = self.live / "m-diagnose__b-pope__s-adversarial__huge.jsonl"
+        big.write_bytes(b"x" * (GITHUB_FILE_LIMIT_BYTES + 1))
+
+        rep = archive_runs(self.live, self.archive)
+
+        self.assertEqual(rep["copied"], 1, "the small run should still archive")
+        self.assertIn(small.name, [p.name for p in self.archive.glob("*.jsonl")])
+        self.assertNotIn(big.name, [p.name for p in self.archive.glob("*.jsonl")],
+                         "a file over the GitHub limit must not enter the archive")
+        self.assertIn("refused_oversize", rep,
+                      "refusing silently loses the run without saying so")
+        self.assertTrue(any(big.name in line for line in rep["refused_oversize"]),
+                        f"the refusal must name the file: {rep.get('refused_oversize')}")
+
     def test_a_job_finished_later_merges_rather_than_replaces(self) -> None:
         """Half done in one session, finished in the next; both halves count."""
         from foxrepro.bench.plan import archive_runs

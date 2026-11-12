@@ -120,23 +120,50 @@ appendix says the headline number came from 2–13 while the code ships 2–15 �
 and 2–15 is what the automatic rule is said to select, scoring 0.66 lower.
 Running both windows settles which produced 81.93.
 
-### Table 13 — prior-source diagnostic — **CHEAP, no generation**
+### Table 13 — prior-source diagnostic — **DONE, r13**
 
 Claims mean diagnostic score m_vis ≈ 0.57, m_txt ≈ 0.62, m_sys ≈ 0.82, and a
 tail ROC-AUC of **1.00**.
 
-Pure measurement over attention statistics — no decoding, so it costs one
-forward pass per sample. A reported AUC of exactly 1.00 (perfect separation)
-is the kind of claim worth checking directly.
+Measured 0.1057 / 0.1602 / 0.7341, summing to 1.0000. Eq. 11 bounds each in
+[0, 1] over spans that partition the keys, so the sum is forced; the paper's
+2.01 means the table reports something Eq. 11 does not define, and it defines
+no alternative.
 
-### Figure 3 — ROC of the joint risk score, AUC = 0.818 — **CHEAP**
+The AUC of 1.00 turns out not to be a hallucination AUC at all — the caption
+says it "treats system-token responses as the positive class", i.e. it asks
+whether `m` can tell a system token from a visual or text one. That reproduces
+exactly (1.0000 at the sample level, 0.9381 per head) and is near-tautological
+once m_sys is the largest of the three. The suspicion this entry was written
+with — that perfect separation is worth checking — was right for the wrong
+reason: the number is sound and carries no information about hallucination.
 
-Same shape as Table 13: attention statistics only.
+Full numbers in `VALIDATION.md` §"Results, round 13".
 
-### Figure 7 — layer-wise diagnostic strength of H_vis — **CHEAP**
+### Figure 3 / 13 — ROC of the system-reliance score — **DONE, r13**
 
-Per-layer |AUC − 0.5|. This is also the input to Table 15's automatic rule, so
-both come from one measurement pass.
+Eq. 13 as written gives **0.1310** at tail = 1 against the paper's 0.8226,
+because its denominator Σ ΔAUC came out **negative** (−2.88 against Σ|ΔAUC| =
+74.55, a 3.9 % residual of 1024 near-cancelling terms) and a negative global
+scalar reverses the ranking. Dividing by Σ|ΔAUC| gives 0.8690 in sample and
+0.8735 held out — better than the paper reports. The signal is real; the
+scalar that publishes it has a sign nothing in the construction pins down.
+
+Two controls, in the same section: unweighted mean m_sys is at **chance**
+(0.4626), and per layer hallucination *raises* m_sys in only 11 of 32 layers
+with all five strongest layers running the other way. The probe reads which
+heads attend to the system prefix, not how much — which is not the claim.
+
+### Figure 7 — layer-wise diagnostic strength of H_vis — **DONE, r13**
+
+Per-layer |AUC − 0.5|, and the input to Table 15's automatic rule.
+
+H_vis reproduces in direction: hallucination raises it in 24 of 32 layers,
+peak L23 (+0.1077). The rule does **not** reproduce the shipped window. At the
+released window's own width of 14 layers, L2–15 scores 0.0305 for H_vis and
+0.0458 for m_sys, below the all-layer averages (0.0373 / 0.0762) and 1.9×/2.3×
+below the best equal-width window (L11–24 / L13–26). There is no contiguous
+early-to-mid run above threshold to keep: the signal is mid-to-late.
 
 ### Figure 8 — diagnosis-driven vs random head selection — **RUNNABLE, high value**
 
@@ -196,24 +223,33 @@ VCD and ICD share this fusion and differ only in the negative branch:
 
 Both are implementable on the dual-branch decode loop already in
 `fox/attention.py`. **Our existing `vcd` arm is not VCD** — it is VCD's noised
-image inside Fox's additive fusion, labelled `vcd-noise-fox-fusion`, and must
-be renamed once real VCD exists beside it.
+image inside Fox's additive fusion. It now carries the label
+`vcd_fox_fusion`; `scripts/relabel_vcd_fox_fusion.py` renamed the archived
+records, and real VCD with the subtractive fusion runs beside it.
 
-### OPERA — **RUNNABLE but large**
+### OPERA — **DONE** (was: runnable but large)
 
-Beam search with an over-trust penalty and rollback. Needs its own decode
-loop, and the paper evaluates it under `num_beams=5`, outside the shared
-sampling protocol. A separate project-sized piece of work.
+Beam search with an over-trust penalty and rollback. Needed its own decode
+loop (`fox/opera.py`), and the paper evaluates it under `num_beams=5`, outside
+the shared sampling protocol. Built, with the rollback deliberately left out
+(`DEVIATIONS.md` §3.13). V5 then decomposed it: at OPERA's own 10-token
+protocol the penalty, the restriction and plain beam search all score 81.47,
+p = 1.0 — **the POPE gain is the beam search**.
 
-### SID — **BLOCKED**
+### SID — **no reference implementation; ours is from the paper**
 
-No CLI flag. Shares the `use_cd` code path, and a leftover author log path
-points at `/home/kdzlys/sid2/`, suggesting it was run from a SID-derived
-checkout not published here.
+No CLI flag in the released repo. Shares the `use_cd` code path, and a
+leftover author log path points at `/home/kdzlys/sid2/`, suggesting it was run
+from a SID-derived checkout not published here. So there is no oracle to
+assert bit-equality against, which is why V3 exists: it checks that our
+selection does work and points the direction SID's paper claims.
 
-### CausalMM — **BLOCKED**
+### CausalMM — **no reference implementation; ours is from the paper**
 
-Appears nowhere in the released repository.
+Appears nowhere in the released repository. Implemented from its own paper and
+checked by V4, which found the vision counterfactual inert (a permutation
+cannot move a mean) and the image-blind variant **better** than the method as
+specified — `shuffle` 76.67 vs `cf_blind` 77.53, p = 1.6e-4.
 
 ---
 
@@ -242,4 +278,4 @@ Reachable and not yet run, in descending value:
 | Table 15, L2–13 vs L2–15 | settles which window produced the paper's 81.93 | ~3 h |
 | Tables 4/12, query positions | measures the cost of the released `tail_n = 1` | ~12 h |
 | Table 7, α = 0 and 3 | completes the sweep; α=0 is a sanity check on our fusion | ~5 h |
-| Table 13, Figure 3, Figure 7 | diagnostics, no decoding — one forward pass per sample | ~1 h |
+| ~~Table 13, Figure 3, Figure 7~~ | **done, r13** — 0.71 s/sample, 35 min for 3000 | ~~~1 h~~ |

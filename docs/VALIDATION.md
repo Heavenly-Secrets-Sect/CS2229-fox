@@ -496,6 +496,173 @@ anyway.
 differ, 12–12. The restriction changes *which* tokens come out without
 changing whether they are right.
 
+## Results, round 13 (2026-11-12) — the diagnosis, measured directly
+
+**These were not pre-registered.** V1–V6 ask whether *our* implementations are
+the methods their papers describe. This round asks a different question — do
+the paper's own published diagnostic numbers reproduce — so there is no arm to
+predict and nothing to score against the gate. The gate stands at **18 held, 1
+failed**. Read what follows as measurement, not as confirmation: the analysis
+was written before the run (`scripts/analyse_diagnostics.py`, committed in
+`a48c207`), but the quantities below were not bet on in advance.
+
+One forward pass per sample, no generation, 3000 POPE-adversarial questions,
+greedy, 32 layers × 32 heads, 459 hallucinated (15.3 %). Labels join from the
+archived greedy baseline on `sample_id`; a hallucination is a false **yes**
+only (§`load_labels`). Reproduce the whole section with:
+
+```bash
+python scripts/analyse_diagnostics.py
+```
+
+### Eq. 13 publishes a real signal through a denominator whose sign is free
+
+| | tail = 1 | tail = 32 |
+|---|---|---|
+| **Eq. 13 exactly as written** | **0.1310** | **0.6568** |
+| paper | 0.8226 | 0.7626 |
+| its denominator, Σ ΔAUC | **−2.8821** | +0.7769 |
+| the magnitude it aggregates, Σ\|ΔAUC\| | 74.5528 | 24.6462 |
+| so the denominator is a residual of | **3.9 %** | 3.2 % |
+| heads with ΔAUC > 0 | 504/1024 | 550/1024 |
+| dividing by Σ\|ΔAUC\| instead | **0.8690** | 0.6568 |
+| held out (weights fitted on the other half) | **0.8735** | 0.6645 |
+
+Eq. 13 is `s_n = Σ m_sys(n)·ΔAUC / Σ ΔAUC`. The denominator is one global
+scalar, so a negative one does not distort the ranking — it **reverses** it,
+and the AUC comes out at exactly `1 − AUC`. That is the whole of the
+0.1310: 1 − 0.1310 = 0.8690, which is what the sign-safe denominator gives.
+
+The sign is not a property of the mechanism. It is the residual of 1024
+near-cancelling terms — 504 up, 520 down, mean ΔAUC = −0.0028 — and it comes
+to under 4 % of the magnitude being summed, in both windows. Nothing in the
+construction holds it positive. The paper reports 0.8226 and 0.7626, both
+above 0.5, which means its residual landed positive twice; ours landed
+negative at tail = 1 and positive at tail = 32, from the same 1024 heads.
+
+**The signal itself is real, and stronger than the paper claims.** Fix the
+denominator and tail = 1 gives 0.8690 in sample and **0.8735 held out** — the
+weights generalise, so this is not the 1024 free parameters fitting 459
+positives. Both windows also keep the paper's ordering (tail = 1 above
+tail = 32) and its reading that instantaneous decision steps separate better.
+
+So this is not a failure to reproduce. It is a reproduction of the effect
+plus a defect in the scalar that reports it, and the defect is invisible as
+long as the residual happens to come out positive.
+
+### What the probe reads is *which* heads, not *how much* — and the direction is backwards
+
+Two controls settle what is doing the work.
+
+| | tail = 1 | tail = 32 |
+|---|---|---|
+| unweighted mean `m_sys`, no Eq. 12 weights at all | **0.4626** | 0.4924 |
+| best single head | 0.1964 (L27H16) | 0.6241 (L27H27) |
+
+Averaging `m_sys` over all 1024 heads predicts hallucination **at chance**.
+Every bit of the 0.87 comes from the per-head ΔAUC weights. The paper's
+Figure 13 caption is explicit about the direction — *"a higher score indicates
+stronger reliance on system/prefix tokens"*, hallucination positive — so the
+claim is that hallucinating samples put **more** mass on the system prompt.
+Per layer, heads averaged within the layer:
+
+| | |
+|---|---|
+| layers where hallucination **raises** `m_sys` | **11 of 32** (L0, 3, 5, 6, 9, 14, 16, 17, 29, 30, 31) |
+| the five strongest layer signals | L23 **0.237** · L22 **0.299** · L26 **0.341** · L21 **0.343** · L13 **0.370** |
+
+All five run the other way: where the signal is strongest, hallucination comes
+with **less** system attention, not more. The one strong same-direction layer
+is L30 (0.727). This is also why Σ ΔAUC came out negative at tail = 1 — the
+negative sign is not bad luck, it is the dominant direction showing up in the
+sum.
+
+What survives is weaker and differently shaped than the paper's claim: the
+*pattern* of which heads attend to the system prompt is a strong hallucination
+probe (held out 0.87), while the *magnitude* of system attention is
+uninformative, and in the mid-to-late layers it moves opposite to the
+"pathological shortcut" story. A probe that reads a 1024-dimensional
+fingerprint is not evidence of a causal shortcut; it is evidence that
+hallucinating and faithful forwards are differently shaped.
+
+`H_vis` is the half of the premise that does hold: hallucination **raises**
+visual-attention entropy in **24 of 32** layers, peaking at L23 (+0.1077).
+Diffuse visual attention does go with hallucination. It is just weak — the
+largest per-layer effect is 0.11 of AUC.
+
+### Figure 7's rule does not select the window the code ships
+
+Mean |AUC − 0.5| over a window is what the rule maximises. At the released
+window's own width of 14 layers:
+
+| window | `H_vis` | `m_sys` |
+|---|---|---|
+| released code, L2–15 | 0.0305 | 0.0458 |
+| appendix manual, L2–13 | 0.0283 | 0.0402 |
+| **best 14-layer window** | **0.0571** (L11–24) | **0.1075** (L13–26) |
+| every layer, L0–31 | 0.0373 | 0.0762 |
+
+The shipped window scores **below the all-layer average on both statistics**,
+and 1.9×/2.3× below the best window of equal width. The rule is stated as
+keeping *"the contiguous early-to-mid window above the selection threshold"*,
+and no threshold is given; at half of the peak the contiguous runs are
+{12, 13}, {15, 16}, {21–24}, {26}, {30}. There is no early-to-mid run to
+keep — the signal is **mid-to-late**, and the earliest qualifying run starts
+at L12.
+
+This closes a loop. Fox intervenes on `S = m_sys · H_vis` over L2–15, and
+all three of those choices now have a measurement against them: `m_sys`
+points the wrong way where it is strongest, `H_vis` points the right way but
+weakly, and L2–15 is a below-average window by the paper's own criterion.
+Three independent reasons the intervention should not work as described — and
+V2 already showed it works by something else entirely, the fp16 logit cast.
+
+### Table 13 reports an undefined quantity, and its one reproducible number is the uninformative one
+
+| | measured | paper |
+|---|---|---|
+| `m_vis` | 0.1057 | ≈ 0.57 |
+| `m_txt` | 0.1602 | ≈ 0.62 |
+| `m_sys` | **0.7341** | ≈ 0.82 |
+| sum | **1.0000** | **2.01** |
+
+Eq. 11 defines `m_sys,tail` as attention mass on `I_sys = [0, s_img)`, bounded
+in [0, 1]. The three spans partition the keys, so the three masses sum to one —
+asserted in `tests/test_diagnose.py`, and measured at 1.0000 here. The
+paper's three sum to 2.01, so **they are not the masses Eq. 11 defines**, and
+the paper gives no other definition. Earlier drafts of ours called Table 13
+arithmetically impossible; that was too strong. The right statement is that
+the table reports a quantity it never defines under symbols defined elsewhere
+to mean something else.
+
+The caption offers a hint: *"the tail ROC-AUC treats system-token responses as
+the positive class"*. That AUC separates **token groups**, not hallucinated
+from faithful samples — can `m` tell a system token from a visual or text one.
+We reproduce it exactly:
+
+| | |
+|---|---|
+| sample level, heads averaged — paper's 1.00 | **1.0000** (min `m_sys` 0.7113 vs max of the other two 0.1731) |
+| per (sample, layer, head) | 0.9381 |
+
+So Table 13's one number we reproduce to the digit is the one that says
+**nothing about hallucination**. It is near-tautological once `m_sys` is the
+largest of three means, and the surrounding text — *"has the largest mean
+score and is perfectly separated in the reported tail diagnostic, supporting
+its role as the dominant prior source"* — invites it to be read as diagnostic
+power. The qualitative claim it is offered for does hold, and strongly: 73 %
+of attention mass sits on the system prefix.
+
+### Cost
+
+Measured 2119.1 s for 3000 samples = **0.71 s/sample**, against the 1.2 s
+estimate in `COST_S`. The estimate reasoned that eager attention's
+`[1, 32, Q, Q]` fp32 materialisation would roughly double the 0.55 s SDPA
+prefill; it adds 28 %, because at Q ≈ 620 the quadratic term is still small
+next to the projections and the MLP. 1.7× high, in the safe direction — but
+this is the second hand-reasoned multiplier in that table to be wrong by more
+than half, after `BEAM_COST_S` at 2.2×. `COST_S` now carries the measurement.
+
 ## V6 — Does each rule change any decision? (no extra run)
 
 Recorded on **every** paired run: `n_diverged` and `diverged_frac`, the

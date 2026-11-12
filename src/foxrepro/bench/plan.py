@@ -118,14 +118,20 @@ COST_S: Dict[Tuple[str, str], float] = {
     # scales with the generation length, so it is not a flat per-sample
     # number -- see BEAM_COST_S and Job.est_seconds.
     #
-    # ESTIMATED, not measured, like BEAM_COST_S once was -- and that one was
-    # 2.2x wrong at a length it had never been measured at, so treat this the
-    # same way and re-run `plan plan --calibrate` once the first diagnostic
-    # session comes back. Reasoning: a single-branch POPE prefill is 0.56 s
-    # under SDPA; eager attention on all 32 layers adds a [1, 32, Q, Q] fp32
-    # materialisation and a second fp32 softmax per layer, so roughly double.
-    ("pope", "diagnose"): 1.2,
-    ("chair", "diagnose"): 1.2,
+    # MEASURED, r13 session 1: 3000 samples in 2119.1 s. The estimate here was
+    # 1.2 s, reasoning that eager attention's [1, 32, Q, Q] fp32 materialisation
+    # and extra fp32 softmax per layer would roughly double the 0.55 s SDPA
+    # prefill. Eager actually costs 28% more, not 100% -- at Q ~ 620 the
+    # quadratic term is still small next to the projections and the MLP. The
+    # estimate was 1.7x high, which is the safe direction, but it is the second
+    # time a hand-reasoned multiplier on this table has been wrong by more than
+    # half (see BEAM_COST_S), so prefer one cheap measured job over arithmetic.
+    ("pope", "diagnose"): 0.71,    # 35.3 min / 3000
+    # Still unmeasured. A diagnose pass generates nothing, so the bill is one
+    # prefill and the 576 image tokens dominate Q in both benchmarks; CHAIR's
+    # prompt is the only difference and it is a few tokens. Hence POPE's number
+    # rather than CHAIR's 8.2 s, which is almost entirely generation.
+    ("chair", "diagnose"): 0.71,
 }
 
 #: OPERA's cost, split because it is the only arm where ``max_new_tokens``
@@ -1230,6 +1236,7 @@ def _compatible_records(existing, incoming):
 def ingest_runs(
     sources: Sequence[Path] = (), dest: Optional[Path] = None,
     dry_run: bool = False, inbox: Optional[Path] = None,
+    skip: Sequence[str] = (),
 ) -> Dict[str, object]:
     """Merge run files produced by independent sessions into one directory.
 
@@ -1240,6 +1247,10 @@ def ingest_runs(
     sessions may hold partial files for the SAME job. Those are merged by
     sample_id union rather than one overwriting the other, since both halves
     are real work.
+
+    ``skip`` names files to leave alone entirely, by basename. Used by
+    :func:`archive_runs` to keep a file too large for git out of the archive
+    without pretending it does not exist.
     """
     from foxrepro.bench.generate import scan_run_file
 
@@ -1315,6 +1326,9 @@ def ingest_runs(
     for src_dir in sources:
         # rglob: a zip may have nested members even though pack_runs.sh is flat.
         for src in sorted(Path(src_dir).rglob("*.jsonl")):
+            if src.name in set(skip):
+                report["skipped"] = int(report["skipped"]) + 1
+                continue
             target = dest / src.name
             why = _mislabelled(src, _records(src))
             if why is not None:
@@ -1589,6 +1603,11 @@ def render_plan(budget_hours: float = 9.0, runs_root: Optional[Path] = None) -> 
     return "\n".join(lines)
 
 
+#: GitHub's hard per-file ceiling on a push. Not a warning threshold -- the
+#: push is rejected, so a file over this cannot live in the archive at all.
+GITHUB_FILE_LIMIT_BYTES = 100_000_000
+
+
 def archive_runs(
     runs_root: Optional[Path] = None, dest: Optional[Path] = None,
     dry_run: bool = False,
@@ -1605,7 +1624,29 @@ def archive_runs(
     if not runs_root.is_dir():
         return {"dest": str(dest), "copied": 0, "merged": 0, "skipped": 0,
                 "files": [], "note": f"no live run directory at {runs_root}"}
-    return ingest_runs([runs_root], dest, dry_run=dry_run, inbox=dest)
+
+    # GitHub rejects any single file over 100 MB outright, so archiving one
+    # would stage a commit that cannot be pushed -- and the failure surfaces at
+    # `git push`, long after `archive` reported success. The archive's whole
+    # argument for living in git (results/runs/README.md) is that these files
+    # compress ~23x because most of each record is repeated provenance; a
+    # diagnostic run breaks that, because its payload is 1024 distinct floats
+    # per sample per statistic. r13's is 234 MB against a 4.8 MB largest
+    # generation run. Such a file is named here and left to a deliberate
+    # decision rather than copied.
+    oversize = sorted(
+        (f.name, f.stat().st_size) for f in runs_root.glob("*.jsonl")
+        if f.stat().st_size > GITHUB_FILE_LIMIT_BYTES
+    )
+    out = ingest_runs([runs_root], dest, dry_run=dry_run, inbox=dest,
+                      skip=[n for n, _ in oversize])
+    if oversize:
+        out["refused_oversize"] = [
+            f"{n} ({sz / 1e6:.0f} MB, over the {GITHUB_FILE_LIMIT_BYTES / 1e6:.0f} "
+            f"MB GitHub limit; back it up outside the repo)"
+            for n, sz in oversize
+        ]
+    return out
 
 
 def freeze_plan(
