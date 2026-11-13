@@ -231,6 +231,58 @@ class TestReadRun(unittest.TestCase):
         with self.assertRaises(ValueError):
             read_run(self.path, strict=True)
 
+    def test_a_field_added_after_archiving_is_superseded_not_failed(self) -> None:
+        """A permanently red exit code is a status nobody reads.
+
+        Six archived runs predate `wrapper_id` entering PROVENANCE_FIELDS.
+        No re-run can repair them -- the runs are history -- so treating them
+        as failures would make `evaluate` exit non-zero forever, and the next
+        REAL failure would arrive looking exactly like the noise everyone had
+        learned to ignore.
+        """
+        from foxrepro.bench.evaluate import LegacyProvenance
+
+        recs = [_record("a", "yes", "Yes"), _record("b", "no", "No")]
+        for r in recs:
+            r.pop("wrapper_id", None)
+        self._write(recs)
+        with self.assertRaises(LegacyProvenance):
+            read_run(self.path, strict=True)
+
+    def test_any_other_missing_field_still_fails_hard(self) -> None:
+        """The allowlist must not become a blanket amnesty.
+
+        `generate.py` asserts every provenance field per record, so a FRESH
+        run cannot lack one. A missing field outside the documented legacy
+        set is therefore a real fault and must not be downgraded.
+        """
+        from foxrepro.bench.evaluate import (
+            LEGACY_PROVENANCE_FIELDS, LegacyProvenance,
+        )
+        from foxrepro.storage import PROVENANCE_FIELDS
+
+        for field in PROVENANCE_FIELDS:
+            if field in LEGACY_PROVENANCE_FIELDS or field in ("sample_id",):
+                continue
+            with self.subTest(field=field):
+                recs = [_record("a", "yes", "Yes"), _record("b", "no", "No")]
+                for r in recs:
+                    r.pop(field, None)
+                self._write(recs)
+                with self.assertRaises(ValueError) as ctx:
+                    read_run(self.path, strict=True)
+                self.assertNotIsInstance(
+                    ctx.exception, LegacyProvenance,
+                    f"{field} was downgraded to a superseded skip")
+
+    def test_the_legacy_list_stays_short(self) -> None:
+        """Each entry silences a real check, so growth needs a reason."""
+        from foxrepro.bench.evaluate import LEGACY_PROVENANCE_FIELDS
+        from foxrepro.storage import PROVENANCE_FIELDS
+
+        self.assertLessEqual(len(LEGACY_PROVENANCE_FIELDS), 2)
+        self.assertTrue(set(LEGACY_PROVENANCE_FIELDS) <= set(PROVENANCE_FIELDS))
+
     def test_trailing_partial_line_is_ignored(self) -> None:
         self._write([_record("a", "yes", "Yes")], tail='{"sample_id": "b')
         records, meta = read_run(self.path)

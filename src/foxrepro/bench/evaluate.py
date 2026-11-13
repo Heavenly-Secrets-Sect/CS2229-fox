@@ -57,6 +57,31 @@ from foxrepro.storage import (  # noqa: E402
     OPTIONAL_VARIANT_FIELDS, PROVENANCE_FIELDS, VARIANT_FIELDS, paths,
 )
 
+
+class LegacyProvenance(ValueError):
+    """A run archived before one of today's provenance fields existed.
+
+    Distinct from a missing field in a FRESH run, which is a real fault:
+    ``generate.py`` asserts every field per record, so a new file cannot lack
+    one. These are historical records in ``results/runs`` whose runs happened
+    at commits that predate the field, and no re-run can repair them without
+    spending the GPU hours again.
+    """
+
+
+#: Provenance fields added after records were already being archived, and
+#: whose absence therefore dates a file rather than indicting it.
+#:
+#: Keep this list SHORT and justified. Each entry is a field the evaluator
+#: will tolerate missing, so a field listed here by mistake turns a real
+#: regression into a silent skip. Everything not listed still fails hard.
+#:
+#: ``wrapper_id`` entered PROVENANCE_FIELDS with the prompt-wrapper ablation;
+#: six runs from commits 3300d76 and ff386a3 predate it. All six are
+#: superseded -- the current plan's equivalent jobs carry different variant
+#: hashes and have been re-run -- so nothing downstream reads them.
+LEGACY_PROVENANCE_FIELDS: frozenset = frozenset({"wrapper_id"})
+
 __all__ = [
     "parse_yes_no", "parse_yes_no_released", "POPE_PARSERS",
     "DEFAULT_POPE_PARSER", "read_run", "evaluate_pope", "evaluate_chair",
@@ -215,6 +240,11 @@ def read_run(path: Path, strict: bool = True) -> Tuple[List[Dict[str, Any]], Dic
     if strict:
         missing = [f for f in PROVENANCE_FIELDS if f not in records[0]]
         if missing:
+            if set(missing) <= LEGACY_PROVENANCE_FIELDS:
+                raise LegacyProvenance(
+                    f"{path}: records predate {sorted(missing)}, which entered "
+                    f"PROVENANCE_FIELDS after this run was archived"
+                )
             raise ValueError(f"{path}: records missing provenance fields {missing}")
 
     # Fields that MUST be constant: anything that changes what was computed.
@@ -702,6 +732,7 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     exit_code = 0
+    n_superseded = 0
     for target in targets:
         try:
             result, rows = evaluate_run_file(
@@ -710,6 +741,15 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
                 pope_parser=args.pope_parser,
                 n_boot=args.n_boot, seed=args.seed, strict=not args.no_strict,
             )
+        except LegacyProvenance as exc:
+            # Not a failure: a run archived before a provenance field existed.
+            # No re-run can fix it, because the run is history -- so letting it
+            # set the exit code would make a red exit PERMANENT, and a status
+            # that is always red is a status nobody reads. Reported, counted,
+            # and deliberately not fatal. Anything else missing still is.
+            print(f"[evaluate] SUPERSEDED {target.name}: {exc}", file=sys.stderr)
+            n_superseded += 1
+            continue
         except Exception as exc:
             print(f"[evaluate] FAILED {target.name}: {exc}", file=sys.stderr)
             exit_code = 1
@@ -726,6 +766,10 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         if args.format in ("markdown", "both"):
             print()
             print(_format_markdown(result))
+    if n_superseded:
+        print(f"[evaluate] {n_superseded} run file(s) skipped as superseded "
+              f"(archived before a provenance field existed); not a failure",
+              file=sys.stderr)
     return exit_code
 
 
