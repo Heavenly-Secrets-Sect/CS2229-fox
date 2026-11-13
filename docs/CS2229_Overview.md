@@ -566,9 +566,27 @@ Ba quy tắc rút ra từ việc mất GPU-h thật:
 
 ## 8. Còn lại gì — việc có thể nhận
 
-**r15 đã chạy xong và plan rỗng — 304/304 job.** Mọi mục còn lại đều **cần
-code mới trước khi xin quota**; đánh giá chi phí lấy từ
-[`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
+**r16 đã đóng băng**: 54 job, 49.5 GPU-h, **6 session, thứ tự `priority`**.
+
+| session | nội dung | h |
+|---|---|---|
+| 1–3 | **V11** — vách đá layer, mỗi session **một seed trọn vẹn của đường cong** | 9.17 mỗi cái |
+| 4–6 | Table 1, hai split còn thiếu cho VCD / ICD / SID / CausalMM | 7.33 mỗi cái |
+
+==Dùng `--order priority` chứ không phải `balanced`, và đây là lựa chọn có
+chủ ý.== r15 drain trong nửa ngày vì hai account còn đầy quota; round này
+lập khi quota gần cạn nên session có thể nằm chờ nhiều ngày. `balanced` rải
+đều các tầng nên **không tiền tố nào của các session trả lời được gì** — sai
+hẳn khi không biết mấy session sẽ chạy trước khi hết cửa sổ quota. `priority`
+đặt việc quyết định vào session 1, và hàng đợi của bot là FIFO theo số
+session nên session 1 cũng là cái được phóng đầu tiên.
+
+Thêm một tính chất của cách nhóm job: mỗi session cliff là **một seed đủ 10
+window**, nên mất một session là mất một seed ở mọi điểm, chứ không phải mất
+mọi seed ở vài điểm. Dừng sau session 2 vẫn còn đường cong 2 seed đọc được.
+
+Sau r16, mọi mục còn lại đều **cần code mới trước khi xin quota**; đánh giá
+chi phí lấy từ [`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
 
 > [!warning] Plan rỗng thì đừng chạy `plan plan`
 > `plan plan` trên một plan đã cạn sẽ ghi đè `scripts/run_plan.json` thành
@@ -576,19 +594,20 @@ code mới trước khi xin quota**; đánh giá chi phí lấy từ
 
 Thứ tự đề xuất, theo "cần code mới" tăng dần:
 
-1. **r16** — Table 4 / 12 (bộ chọn anchor), mục duy nhất còn lại chạm trực
+1. **r17** — Table 4 / 12 (bộ chọn anchor), mục duy nhất còn lại chạm trực
    tiếp vào một bảng của paper. "x_last only" và "mean-pool all tokens" cần
    query vector của các vị trí **trước** bước hiện tại, mà KV cache chỉ giữ K
    và V, không giữ Q. Phải thêm chỗ lưu Q theo từng bước — máy móc mới, không
    phải một tham số.
-2. **r17+** — MME, MMBench, MathVista (mỗi cái một harness mới).
-3. **r18+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
+2. **r18+** — MME, MMBench, MathVista (mỗi cái một harness mới).
+3. **r19+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
 
-Và một câu hỏi **mới**, do chính r15 đẻ ra, chưa có trong kế hoạch nào: vách
-đá ở layer 9–10 là gì? Không phải lan truyền theo độ sâu (nếu vậy phải giảm
-dần, không phải rơi vực rồi phẳng). Rẻ để hỏi — `intervention_layers` đã là
-field sẵn có, nên quét từng layer một (L4–4, L5–5, …) chỉ tốn ~0.9 h mỗi
-layer và **không cần code mới**.
+Câu hỏi vách đá layer 9–10 **đã vào r16** (V11). Lưu ý về thiết kế: quét
+**tích luỹ** `L2-k` chứ không phải từng layer một. Một layer đơn lẻ đáng
+khoảng 0.35–0.45 điểm trong khi 3 seed trên 3000 sample chỉ phân giải được
+~0.4 — quét từng layer sẽ **thiếu lực thống kê đúng chỗ cần sắc nhất**, và
+trả về một đường cong nhiễu trông như có cấu trúc. Mỗi điểm tích luỹ đo
+0.9–2.6 điểm, rồi lấy hiệu hai điểm liền nhau mới ra đóng góp từng layer.
 
 Không tái lập được, có lý do, **không phải lỗi implementation**:
 

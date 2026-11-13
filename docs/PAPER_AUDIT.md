@@ -27,13 +27,17 @@ a configuration change. Every row below is the LLaVA-1.5 column unless stated.
 | | adversarial | popular | random |
 |---|---|---|---|
 | `sampling`, `fox` | 10 seeds | 3 seeds | 3 seeds |
-| VCD, ICD, SID, CausalMM, OPERA | 3 seeds | **missing** | **missing** |
+| OPERA | 1 run (greedy) | 1 run | 1 run |
+| VCD, ICD, SID, CausalMM | 3 seeds | **missing** | **missing** |
 
-So the table is complete down one column and two rows. Filling the other two
-columns needs **no new code** — 30 jobs, but 53 h, of which OPERA alone is 31
-because beam search costs 2.55 s/sample against 1.08 for a dual-branch arm.
-Backbones beyond LLaVA-1.5 are a separate axis; see the loader note at the
-end.
+**OPERA is already complete**: it runs greedy, which is deterministic, so one
+run per split is the whole measurement and seeds do not apply. A first pass at
+this table costed it at 31 h for "two missing splits × three seeds" and both
+halves of that were wrong.
+
+What is actually missing is 4 methods × 2 splits × 3 seeds = **24 jobs, 22 h,
+no new code**. Scheduled as r16. Backbones beyond LLaVA-1.5 are a separate
+axis; see the loader note at the end.
 
 ### Table 2 — CHAIR, 7 methods — **PARTIAL**
 

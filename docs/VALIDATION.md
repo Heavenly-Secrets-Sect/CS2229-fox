@@ -1203,6 +1203,53 @@ have an account of it. Naming it is honest; claiming otherwise would not be.
 
 ---
 
+## V11 — What is the cliff at layer 9?
+
+`--intervention-layers` at cumulative windows `L2-k` for every k from 2 to 14,
+POPE-adversarial, sampling, seeds 42/43/44. **27.5 h.** This is the one
+question in this document that neither the paper's account nor ours answers.
+
+r15 established that 89 % of the intervention's contribution comes from
+layers 4–9, that starts at 0, 2 and 4 are interchangeable, and that starts at
+8 or later are worth nothing. Neither story survives that:
+
+* **the paper's** — the diagnostic signal peaks at L11–26, which is the inert
+  half;
+* **ours** — "depth of propagation" predicts a decay, and a decay does not
+  look like a step with a flat floor after it.
+
+**The design is cumulative, not per-layer, and that is the point.** A single
+layer is worth roughly 0.35–0.45 points and three seeds on 3000 samples
+resolve about 0.4, so a single-layer sweep would be under-powered exactly
+where it must be sharp — and would return a curve of noise with the shape of
+structure. Each cumulative point measures 0.9 to 2.6 points instead, and
+consecutive differences recover the per-layer contributions from
+well-powered measurements. k = 5, 9, 13 and 15 are already on the curve from
+r15 and Table 15, so they anchor it for free.
+
+**Prediction: the curve is flat from k = 2 to k = 3, rises roughly linearly
+from k = 4 to k = 9 at 0.3–0.5 points per layer, and is flat from k = 10
+onward. No single layer contributes more than 0.8 points.**
+
+That is the shape the three points already measured imply if the band is
+uniform: layers 2–3 are worth +0.02 together, layers 4–5 are worth +0.92,
+layers 6–9 are worth +1.38 (0.35 each), layers 10–15 are worth +0.27 in
+total.
+
+| outcome | reading |
+|---|---|
+| flat, linear, flat, no layer above 0.8 | the live band is a **contiguous region**, not a privileged layer. "Which layers" then has no finer answer than "the early-middle ones", and the diagnosis cannot be rescued by pointing at a particular layer it ranks well |
+| one layer contributes **> 1.0** | **the prediction fails, and interestingly.** A privileged layer would be a real localisation, and the next question is free: r13's per-layer AUCs already exist, so whether the diagnosis ranks that layer highly can be answered with no further GPU time |
+| the rise continues past k = 10 | r15's width sweep was aliased by its coarse spacing (5, 9, 15), and the band is wider than six layers. The "89 % in layers 4–9" figure would need restating |
+| no structure anywhere — every k within noise | three seeds are too few even cumulatively, and the honest move is to say so rather than read a curve out of it |
+
+The fourth row is a real possibility and is why the prediction names a
+resolution. If consecutive differences are all inside ±0.4 the curve will not
+support per-layer claims, and this document should say the cliff is located
+between k = 9 and k = 15 and no more precisely.
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

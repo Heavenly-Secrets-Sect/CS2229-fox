@@ -1052,6 +1052,64 @@ def _build_plan() -> List[Job]:
                 note=f"Table 14 / Figure 19: lambda is always {strategy}",
             ))
 
+    # ---- Round 16, in PRIORITY order --------------------------------------
+    # This round is frozen with --order priority rather than --order balanced,
+    # and the reason is the queue. r15 drained in half a day because two
+    # accounts had full quota; this one is planned against accounts that will
+    # mostly be empty, so sessions may sit pending for days. Balanced order
+    # scatters the tiers, so no prefix of the sessions answers anything --
+    # exactly the wrong property when you do not know how many sessions will
+    # run before the quota window closes. Priority order puts the decisive
+    # work in session 1, and the bot's queue is FIFO by session number, so
+    # session 1 is also the first thing launched.
+    #
+    # Hence the order below is deliberate and is the plan's priority order.
+
+    # -- 1st: the cliff. Our open question, and nobody's account explains it --
+    # V11 in docs/VALIDATION.md. r15 found 89% of the effect in layers 4-9 and
+    # nothing after 9, which is neither the paper's story nor ours.
+    #
+    # CUMULATIVE windows from the shipped start, not single layers. A single
+    # layer is worth roughly 0.35-0.45 points, and three seeds on 3000 samples
+    # resolve about 0.4 -- so a single-layer sweep would be under-powered
+    # exactly where it needs to be sharp, and would produce a curve of noise
+    # that looks like structure. Each cumulative point instead measures an
+    # effect of 0.9 to 2.6 points, and consecutive differences recover the
+    # per-layer contributions from well-powered measurements.
+    #
+    # k = 5, 9 and 15 already ran in r15, so they anchor the curve for free.
+    # 13 is absent too: Table 15's paper-window arm is L2-13 at these same
+    # three seeds, so that point is already on the curve. Adding it here
+    # would give one run file two job ids.
+    for end in (2, 3, 4, 6, 7, 8, 10, 11, 12, 14):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "layer_cliff", "fox", "pope", "adversarial", seed=seed,
+                intervention_layers=f"2-{end}",
+                note=f"V11: cumulative window L2-{end}, one layer at a time",
+            ))
+
+    # -- 2nd: Table 1's missing columns, for the four cheap baselines --------
+    # The paper's Table 1 is three POPE splits x seven methods. Ours is
+    # complete down the adversarial column and along the `sampling` and `fox`
+    # rows; the five compared methods exist on adversarial only. These four
+    # are 0.9 h per job. OPERA is not, and goes last.
+    for seed in SEEDS_BREADTH:
+        for split in ("popular", "random"):
+            for method in ("vcd", "icd", "sid", "causalmm"):
+                jobs.append(Job(
+                    "table1_methods", method, "pope", split, seed=seed,
+                    note=f"Table 1, {split} split -- completes the column",
+                ))
+
+    # OPERA needs nothing here, which cost an hour of planning to notice.
+    # It already has all three splits -- the loop over `_pope_splits()`
+    # above covers them -- and it runs GREEDY, so one run per split is
+    # complete and seeds do not apply. A first estimate costed it at 31 h
+    # for "two missing splits x three seeds"; both halves of that were
+    # wrong. Deterministic arms are complete at n=1, and the plan already
+    # said so.
+
     return jobs
 
 
