@@ -98,7 +98,7 @@ Runnable, and it bears directly on a finding of ours: the released code uses
 `tail_n = 1`, a single query position, not the two anchors the paper
 describes. These rows would measure what that choice costs.
 
-### Table 14 — fusion-strategy ablation — **PRE-REGISTERED as V9, r15**
+### Table 14 — fusion-strategy ablation — **DONE, r15. The ordering inverts**
 
 | strategy | CHAIR_S | CHAIR_I | F1 |
 |---|---|---|---|
@@ -122,6 +122,22 @@ CHAIR (mean `d_t` 0.1285, mean λ 1.3848). So `fixed` and `hybrid` are nearly
 the same run on POPE, and `dynamic` should remove the method there. The paper
 reports `fixed` as the *worse* of its two non-hybrid rows, which is the
 opposite ordering. See V9 in docs/VALIDATION.md.
+
+**Measured.** On POPE the gate does nothing: `fixed` is +0.36 over `hybrid`
+(p = 0.17, indistinguishable) and `dynamic` is **+0.02 over the baseline** —
+removing the consensus floor removes the method entirely. On CHAIR the
+paper's ordering inverts:
+
+| | best | middle | worst |
+|---|---|---|---|
+| Table 14 | hybrid 46.40 | dynamic 47.68 | **fixed 49.20** |
+| measured | **fixed 32.20** | hybrid 48.47 | dynamic 49.47 |
+
+Our `hybrid` (48.47) is inside the 5.20-point image-set drift of the paper's
+46.40. `fixed` at 32.20 against their 49.20 is 17 points outside it. The row
+the paper ranks last is first here by sixteen points — at a real but smaller
+cost: CHAIR_I falls 27 % relative while recall falls 6.7 %, and the captions
+get *longer*, so it is not the shorter-caption artefact.
 
 ### Table 15 — manual vs automatic layer window — **RUNNABLE**
 
@@ -178,7 +194,16 @@ released window's own width of 14 layers, L2–15 scores 0.0305 for H_vis and
 below the best equal-width window (L11–24 / L13–26). There is no contiguous
 early-to-mid run above threshold to keep: the signal is mid-to-late.
 
-**r14 then intervened on those two windows, and they do not work.** L11–24 is
+**r15 then swept window position at matched width, and the curve is a
+cliff.** Starts at L0, L2 and L4 are mutually indistinguishable and all give
+the full +2.6 over `fox off`; starts at L8 and later give nothing
+distinguishable from not intervening, flat to the end of the model.
+Differencing against a width sweep localises **89 % of the effect to layers
+4–9**. Since Figure 7's signal peaks at L11–26 — inside the inert region —
+the quantity this figure plots does not predict where intervening helps.
+
+**r14 first intervened on the two windows this figure's rule selects, and
+they do not work.** L11–24 is
 3.07 points below the shipped L2–15 and *worse than performing no
 intervention at all*; L13–26 is 2.24 below and statistically identical to no
 intervention. So the diagnostic signal peaks where intervening is worthless,
@@ -221,11 +246,13 @@ should matter most if it matters anywhere.
 
 We have k ∈ {0.25, 0.45} and τ_JS ∈ {0.1, 0.2} at n=500. β is untouched.
 
-### Figure 19 — the role of JSD gating — **PRE-REGISTERED as V9, r15**
+### Figure 19 — the role of JSD gating — **DONE, r15, and it contradicts the figure**
 
 Overlaps Table 14; the "always apply the intervention" arm is the
 `always fixed` row, so `--fuse-strategy fixed` produces both and the sweep is
-costed once.
+costed once. That arm is the best of the three on CHAIR and tied with the
+shipped rule on POPE, so "always apply the intervention" is not the ablation
+casualty the figure presents it as.
 
 ---
 
@@ -320,8 +347,8 @@ Reachable and not yet run, in descending value:
 |---|---|---|
 | VCD + ICD, both benchmarks | the paper's own comparison, and its code cannot produce it | ~60 h |
 | ~~Figure 8, random-head control~~ | **done, r6 + r14.** The gap is 0.26 pts at k=0.10 (indistinguishable from zero), 1.37 at k=0.20, 0.79 at k=0.45 — and random heads at k=0.45 beat diagnosed heads at k=0.20. The effect is bought by *how many* heads are edited | ~~22 h~~ spent |
-| Table 14 + Figure 19, fusion rule | isolates the gate inside the component carrying 44% of the effect | in r15, 14.6 h |
+| ~~Table 14 + Figure 19, fusion rule~~ | **done, r15.** The gate does nothing on POPE (`dynamic` is +0.02 over baseline, `fixed` ties `hybrid`) and the CHAIR ordering inverts — `fixed`, which the paper ranks last, is first by 16 points | ~~14.6 h~~ spent |
 | ~~Table 15, L2–13 vs L2–15~~ | **done** — equivalent at ±0.42, and r14/V8 explains why: both are early. L11–24 and L13–26, the windows r13 measured as strongest, are 3.07 and 2.24 points **worse**, and no better than not intervening at all. r15/V10 sweeps position at matched width | done; V10 in r15 |
-| Tables 4/12, query positions | measures the cost of the released `tail_n = 1` | ~12 h |
+| Tables 4/12, query positions | measures the cost of the released `tail_n = 1`; needs cached query vectors across decode steps, which the KV cache does not keep | ~12 h |
 | Table 7, α = 0 and 3 | completes the sweep; α=0 is a sanity check on our fusion | ~5 h |
 | ~~Table 13, Figure 3, Figure 7~~ | **done, r13** — 0.71 s/sample, 35 min for 3000 | ~~~1 h~~ |

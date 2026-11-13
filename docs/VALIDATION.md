@@ -1038,6 +1038,171 @@ Three seeds at full 3000 resolves roughly 0.9 points here, against effects of
 
 ---
 
+## Results, round 15 (2026-11-13) — the effect lives in six layers
+
+39 jobs, 10 sessions on two Kaggle accounts, all green — six of the ten
+waited in the bot's queue and were launched by cron as slots freed, which is
+the first time that path has run on GPU.
+
+**All three predictions were pre-registered** in `556b699`, before the jobs
+existed. V9 holds on POPE and misses on CHAIR's direction; V10 fails on both
+clauses, and the failure localises the effect better than the prediction
+would have. Gate moves to **20 held, 3 failed**.
+
+POPE-adversarial, sampling, seeds 42/43/44,
+full 3000, paired bootstrap at 90 % over 9000 pairs. Anchors unchanged:
+`sampling` 76.72, `fox off` 78.97, `fox` (L2–15) 81.56.
+
+### V10a — the position curve is a cliff, not a slope
+
+| start | window | accuracy | vs L2–15 | vs `fox off` |
+|---|---|---|---|---|
+| 0 | L0–13 | 81.61 | +0.06 [−0.37, +0.48] | **+2.64** |
+| 2 | **L2–15** (shipped) | 81.56 | — | **+2.59** |
+| 4 | L4–17 | 81.53 | −0.02 [−0.44, +0.40] | **+2.57** |
+| 8 | L8–21 | 79.29 | −2.27 | +0.32, p = 0.23 |
+| 11 | L11–24 | 78.49 | −3.07 | −0.48 |
+| 13 | L13–26 | 79.31 | −2.24 | +0.34, p = 0.18 |
+| 16 | L16–29 | 79.38 | −2.18 | +0.41, p = 0.10 |
+| 18 | L18–31 | 79.43 | −2.12 | +0.47, p = 0.07 |
+
+**The prediction fails on its shape.** It said monotone decay in start layer.
+What the sweep shows is a **step**: starts at 0, 2 and 4 are mutually
+indistinguishable and all deliver the full ≈ +2.6; starts at 8 and beyond
+deliver nothing distinguishable from not intervening, and are flat from there
+to the end of the model. There is no slope to speak of in either region.
+
+### V10b — and the width sweep says which layers
+
+| window | layers edited | accuracy | vs `fox off` | share of L2–15's gain |
+|---|---|---|---|---|
+| L2–5 | 4 | 79.91 | +0.94 | 0.36 |
+| L2–9 | 8 | 81.29 | +2.32 | **0.90** |
+| **L2–15** | 14 | 81.56 | +2.59 | 1.00 |
+| L2–23 | 22 | 81.53 | +2.57 | 0.99 |
+| L2–31 | 30 | 81.30 | +2.33 | 0.90 |
+
+Differencing the two sweeps localises the effect to six layers:
+
+| band | contribution | from |
+|---|---|---|
+| layers 2–3 | **+0.02** | L2–15 minus L4–17 |
+| layers 4–5 | +0.92 | L2–5 minus the above |
+| layers 6–9 | **+1.38** | L2–9 minus L2–5 |
+| layers 10–15 | +0.27 | L2–15 minus L2–9 |
+| layers 16–23 | −0.02 | L2–23 minus L2–15 |
+| layers 24–31 | −0.24 | L2–31 minus L2–23 |
+
+The two sweeps cross-check independently: L8–21 retains only layers 8 and 9
+of the live band and scores +0.32, the size the width sweep implies for that
+tail. **Roughly 89 % of the intervention's contribution comes from layers
+4–9.** Everything else in the shipped 14-layer window is inert, and editing
+past layer 15 is slightly harmful.
+
+The second clause of the prediction also fails, narrowly: L2–5 recovers
+**0.36** of L2–15's gain, not the "more than half" predicted. It fails for a
+locatable reason — the peak band is 6–9, and L2–5 stops one layer short of
+it.
+
+### V9 — the gate is a floor on POPE, and a liability on CHAIR
+
+POPE-adversarial, same three seeds:
+
+| strategy | accuracy | vs hybrid | vs `sampling` | POPE F1 |
+|---|---|---|---|---|
+| **hybrid** (Eq. 7, shipped) | 81.56 | — | +4.84 | 81.98 |
+| `fixed` (λ = α always) | 81.91 | **+0.36 [−0.07, +0.77]**, p = 0.17 | +5.19 | 82.22 |
+| `dynamic` (λ = d_t always) | 76.74 | **−4.81 [−5.47, −4.15]** | **+0.02** | 78.87 |
+
+**Both POPE clauses hold.** `fixed` is within 0.5 of `hybrid` as predicted —
+indistinguishable, in fact. `dynamic` loses more than a point as predicted,
+and the magnitude is the striking part: at +0.02 over the baseline it has
+**no effect at all**. Removing the consensus floor removes the method.
+
+That is the pre-registered "floor, not a gate" outcome, and it follows from
+the measurement made before the run: the gate sits in its consensus branch on
+99.8 % of POPE samples, so `hybrid` is `fixed` almost everywhere, and
+`dynamic` replaces λ = 2 with λ ≈ 0.016. Eq. 7's threshold — one of the
+paper's two named contributions in the fusion — does nothing on the benchmark
+that carries its headline accuracy numbers.
+
+CHAIR, where the gate actually fires, with the recall guard this project
+requires:
+
+| arm | CHAIR_S | CHAIR_I | recall | distinct objects | words |
+|---|---|---|---|---|---|
+| `sampling` | 54.40 | 16.90 | 75.64 | 1180 | 102.1 |
+| `fox off` | 49.20 | 14.05 | 78.57 | 1226 | 99.2 |
+| **hybrid** | 48.47 | 13.89 | 75.79 | 1182 | 96.3 |
+| `fixed` | **32.20** | **10.12** | 70.73 | 1103 | 102.8 |
+| `dynamic` | 49.47 | 14.77 | 76.84 | 1199 | 99.5 |
+
+**The paper's ordering does not reproduce — it inverts.**
+
+| | best | middle | worst |
+|---|---|---|---|
+| Table 14 | hybrid 46.40 | dynamic 47.68 | **fixed 49.20** |
+| measured | **fixed 32.20** | hybrid 48.47 | dynamic 49.47 |
+
+Our `hybrid` at 48.47 against the paper's 46.40 sits inside the 5.20-point
+image-set drift, so that row is consistent. `fixed` at 32.20 against the
+paper's 49.20 is a **17-point** gap, far outside it. The paper ranks "always
+apply the intervention" last; here it is first by sixteen points.
+
+**The recall guard, applied honestly.** This is not free, and it is not the
+trap either. `fixed` cuts CHAIR_I by 27 % relative (13.89 → 10.12) while
+recall falls 6.7 % relative (75.79 → 70.73) and distinct correct objects fall
+from 1182 to 1103. A favourable trade, not a clean win — and notably **not**
+the "shorter caption" artefact the project has been caught by before:
+`fixed`'s captions are the **longest** of any arm at 102.8 words. It writes
+more and names fewer objects, rather than writing less.
+
+One more row deserves reading: `fox off` reaches CHAIR_S 49.20 at the
+**highest recall of any arm** (78.57, 1226 objects). The full method scores
+48.47 at 75.79. On CHAIR the intervention buys 0.73 points of CHAIR_S for 2.8
+points of recall, which is close to no trade at all.
+
+**The CHAIR clause of the prediction fails.** It said `dynamic` would move
+further than `fixed`. `dynamic` barely moves (+1.00 CHAIR_S); `fixed` moves
+16 points. The reasoning was that λ already averages 1.38 on CHAIR so the
+distance to α = 2 is short — true, but it treated the two directions as
+symmetric in effect, and they are not.
+
+Gate: **20 held, 3 failed.** V9 held on both POPE clauses and missed the
+CHAIR direction; V10 failed on both of its clauses.
+
+### What this settles, and what it costs each side
+
+The pre-registered reading for "monotone decay" was *depth, not selection*.
+The cliff supports the same conclusion by a sharper mechanism, so the
+conclusion survives its prediction failing:
+
+* **Position within the live band does not matter.** L0–13, L2–15 and L4–17
+  are indistinguishable. Whatever the paper's automatic rule selects, any
+  early start in 0–4 gives the same number;
+* **Width does not matter either**, past layer 9. Fourteen layers, twenty-two
+  layers and the first eight are all within 0.27 of each other;
+* **So nothing in Fox's window selection is doing work.** The only thing that
+  matters is whether the window covers layers 4–9, and every early window
+  does.
+
+Against the paper that is the strongest statement this suite has produced.
+r13 measured the diagnostic signal — the quantity Figure 7 plots and the
+automatic rule consumes — as peaking at **L11–26**. That range is now
+measured to be **entirely inert**: every window starting at 8 or later is
+statistically indistinguishable from performing no intervention. The
+diagnosis points at layers where intervening does nothing, and the
+intervention works at layers the diagnosis ranks weakest.
+
+**What it costs us.** r14 put "depth of propagation" into the requantisation
+account. The cliff does not support a propagation-depth story either: under
+propagation, layer 10 should be worth a little less than layer 9, not nothing
+at all, and layers 16–31 should still be worth something. A step at 9–10 with
+a flat floor after it is a different phenomenon, and this document does not
+have an account of it. Naming it is honest; claiming otherwise would not be.
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

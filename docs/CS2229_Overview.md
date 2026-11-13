@@ -355,9 +355,46 @@ hướng khác:
   ==Chỗ paper chẩn đoán và chỗ can thiệp có tác dụng là **hai chỗ khác
   nhau**.==
 
-Chưa kết luận được: "sớm" là tính chất của **độ sâu** (perturbation nào sớm
-cũng mạnh hơn) hay của **lựa chọn** của Fox. r15/V10 quét vị trí cửa sổ ở độ
-rộng cố định để tách hai cái.
+**r15 đã quét xong, và đường cong là một vách đá, không phải dốc.** Cùng độ
+rộng 14 layer, chỉ đổi vị trí bắt đầu:
+
+| start | cửa sổ | acc | vs `fox off` |
+|---|---|---|---|
+| 0 | L0–13 | 81.61 | +2.64 |
+| 2 | **L2–15** (ship) | 81.56 | +2.59 |
+| 4 | L4–17 | 81.53 | +2.57 |
+| 8 | L8–21 | 79.29 | +0.32, p = 0.23 |
+| 11 | L11–24 | 78.49 | −0.48 |
+| 13–18 | … | 79.3–79.4 | +0.34 … +0.47 |
+
+Bắt đầu ở 0, 2, 4 → **không phân biệt được với nhau**, đều cho đủ +2.6. Bắt
+đầu từ 8 trở đi → **bằng không can thiệp**, và phẳng tới hết mô hình.
+
+Quét thêm độ rộng từ L2 rồi lấy hiệu, định vị được hiệu ứng nằm ở đâu:
+
+| dải layer | đóng góp |
+|---|---|
+| 2–3 | +0.02 |
+| 4–5 | +0.92 |
+| **6–9** | **+1.38** |
+| 10–15 | +0.27 |
+| 16–23 | −0.02 |
+| 24–31 | −0.24 |
+
+==**89 % hiệu ứng nằm ở layer 4–9.**== Tám layer còn lại trong cửa sổ đang
+ship là trơ, và sửa quá layer 15 thì hơi có hại. Hai sweep kiểm chéo nhau:
+L8–21 chỉ giữ được layer 8, 9 của dải sống và cho đúng +0.32.
+
+Hệ quả: **không có gì trong việc chọn cửa sổ của Fox là có tác dụng.** Chỉ
+cần cửa sổ phủ layer 4–9, mà cửa sổ sớm nào cũng phủ. Và r13 đo tín hiệu chẩn
+đoán mạnh nhất ở **L11–26** — toàn bộ nằm trong vùng trơ.
+
+> [!warning] Lời giải thích của nhóm cũng chưa đủ
+> r14 thêm "độ sâu lan truyền" vào cách hiểu requantisation. Vách đá **không**
+> ủng hộ cách hiểu đó: nếu là lan truyền thì layer 10 phải đáng giá hơi ít hơn
+> layer 9, chứ không phải bằng 0, và layer 16–31 vẫn phải đáng giá chút ít.
+> Một bậc thang ở 9–10 rồi phẳng là hiện tượng khác, và tài liệu này **chưa có
+> lời giải thích cho nó**.
 
 ### 5.7 Cái cổng JSD — nửa còn lại, và nó đã đo được một phần
 
@@ -382,23 +419,59 @@ dưới ngưỡng. Vậy trên POPE, `fixed` và `hybrid` **là cùng một run*
 mọi caption đều vượt ngưỡng ở đâu đó. ==Một trục, hai chế độ hoàn toàn khác
 nhau, nên V9 chạy cả hai benchmark.==
 
-Và paper báo **thứ tự ngược lại**: Table 14 cho `fixed` (49.20 CHAIR_S) *tệ
-hơn* `dynamic` (47.68) — tức luật nâng λ gây hại nhiều hơn luật bỏ λ. Trên
-stack này, bỏ λ là bỏ luôn phương pháp. Một trong hai cách giải thích sai, và
-14.6 GPU-h phân định.
+**r15 đã chạy, và cả hai phần đều rõ.**
+
+Trên POPE, cổng **không làm gì**:
+
+| luật | acc | vs `hybrid` | vs baseline |
+|---|---|---|---|
+| `hybrid` (Eq. 7, ship) | 81.56 | — | +4.84 |
+| `fixed` (λ = α luôn) | 81.91 | +0.36, p = 0.17 | +5.19 |
+| `dynamic` (λ = d_t luôn) | 76.74 | **−4.81** | **+0.02** |
+
+==Bỏ sàn λ là bỏ luôn phương pháp== — `dynamic` hơn baseline đúng 0.02 điểm.
+Còn `fixed` thì **bằng** `hybrid`. Tức ngưỡng của Eq. 7 không đóng góp gì
+trên chính benchmark mang con số accuracy đầu bảng của paper.
+
+Trên CHAIR — nơi cổng thật sự mở — **thứ tự của paper bị đảo ngược**:
+
+| arm | CHAIR_S | CHAIR_I | recall | object đúng | words |
+|---|---|---|---|---|---|
+| `sampling` | 54.40 | 16.90 | 75.64 | 1180 | 102.1 |
+| `fox off` | 49.20 | 14.05 | **78.57** | 1226 | 99.2 |
+| `hybrid` | 48.47 | 13.89 | 75.79 | 1182 | 96.3 |
+| **`fixed`** | **32.20** | **10.12** | 70.73 | 1103 | 102.8 |
+| `dynamic` | 49.47 | 14.77 | 76.84 | 1199 | 99.5 |
+
+| | tốt nhất | giữa | tệ nhất |
+|---|---|---|---|
+| Table 14 | hybrid 46.40 | dynamic 47.68 | **fixed 49.20** |
+| đo được | **fixed 32.20** | hybrid 48.47 | dynamic 49.47 |
+
+`hybrid` của ta (48.47) nằm trong khoảng dịch 5.20 điểm của tập ảnh so với
+46.40 của paper — khớp. Nhưng `fixed` 32.20 so với 49.20 là lệch **17 điểm**,
+ngoài xa khoảng đó. ==Dòng paper xếp bét lại đứng đầu, cách 16 điểm.==
+
+**Kiểm recall trước khi mừng**, theo đúng cạm bẫy của chính project: `fixed`
+giảm CHAIR_I 27 % tương đối (13.89 → 10.12) trong khi recall giảm 6.7 %
+(75.79 → 70.73). Đánh đổi có lợi, **không phải thắng không công** — nhưng
+cũng **không** phải cái bẫy "nói ít nên ảo ít": caption của `fixed` là **dài
+nhất** trong mọi arm (102.8 từ). Nó viết nhiều hơn mà gọi tên ít object hơn.
+
+Và một dòng nữa đáng đọc: `fox off` đạt CHAIR_S 49.20 ở **recall cao nhất**
+(78.57). Phương pháp đầy đủ được 48.47 ở recall 75.79 — tức trên CHAIR, phần
+can thiệp mua 0.73 điểm CHAIR_S bằng 2.8 điểm recall.
 
 ## 6. Tình trạng hiện tại
 
-- **265/304 job đã chạy.** **r14 xong** (24 job, 3 session, 3 tài khoản, 3 ✅) — V7 và V8 đều đã chấm, xem 5.5 và 5.6.
-- Round **r15** vừa đóng băng: 39 job, 39.3 GPU-h, **10 session cân bằng** (≤ 4.3 h mỗi cái) — V9 (Table 14 + Figure 19, luật hợp nhất) và V10 (quét vị trí cửa sổ, vì V8 sai).
-- Chia 10 session là để **chạy song song** và **cố ý nhiều hơn số chỗ trống**:
-  hàng đợi của bot giữ session chưa có chỗ ở trạng thái `pending` rồi tự đẩy
-  khi có account trống. Nhánh đó mới chỉ kiểm trên notebook CPU, `r15` là lần
-  đầu đi qua nó trên GPU thật — KIRZEA đã hết quota tới 14/11 07:00 nên chắc
-  chắn có session phải chờ. Trần cứng là 12 session một round.
-- Gate kiểm chứng: **19 đúng / 2 sai**. Hai cái sai đều là dự đoán của nhóm,
-  không phải bug: `cf_blind` (5.3) và **V8** (5.6) — và V8 sai mới là kết quả
-  có giá trị nhất của r14.
+- **304/304 job đã chạy — plan rỗng.** r15 xong (39 job, 10 session, 0 lỗi); V9 và V10 đã chấm, xem 5.6 và 5.7.
+- Hàng đợi `pending` của bot **đã chạy qua trên GPU thật**: 10 session khai
+  báo, 4 chạy ngay (2 account còn quota × trần 2 session), **6 xếp hàng** và
+  được cron đẩy dần khi có chỗ. Cả 10 đều xong, 0 lỗi. Trước đó nhánh này mới
+  chỉ kiểm ở độ sâu 1 trên notebook CPU. Xem [[kaggle-ci-pipeline]].
+- Gate kiểm chứng: **20 đúng / 3 sai**. Cả ba cái sai đều là dự đoán của
+  nhóm, không phải bug: `cf_blind` (5.3), **V8** và **V10** (5.6) — và hai
+  cái sau mới là các kết quả có giá trị nhất.
 - Mọi **baseline** POPE khớp paper trong 0.05 điểm → harness, dữ liệu, protocol
   đều đúng. Những gì đo được là về phương pháp, không phải về setup.
 
@@ -493,22 +566,29 @@ Ba quy tắc rút ra từ việc mất GPU-h thật:
 
 ## 8. Còn lại gì — việc có thể nhận
 
-**r15 đã đóng băng** (36 job, 36.6 GPU-h, 6 session cân bằng) — V7 quét K của
-Figure 8, V8 thử cửa sổ can thiệp mà r13 đo được là mạnh nhất, V9 là Table 14
-+ Figure 19. Sau r15, **mọi job trong plan đã chạy hết**: những mục còn lại
-dưới đây đều cần code mới trước khi xin quota. Đánh giá chi phí lấy từ
+**r15 đã chạy xong và plan rỗng — 304/304 job.** Mọi mục còn lại đều **cần
+code mới trước khi xin quota**; đánh giá chi phí lấy từ
 [`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
+
+> [!warning] Plan rỗng thì đừng chạy `plan plan`
+> `plan plan` trên một plan đã cạn sẽ ghi đè `scripts/run_plan.json` thành
+> `round: r1, n_sessions: 0`. **Thêm job trước, đóng băng sau.**
 
 Thứ tự đề xuất, theo "cần code mới" tăng dần:
 
-1. **r15** (đang mở) — V7 + V8 không cần code mới; V9 cần `--fuse-strategy`,
-   đã viết và đã test (`tests/test_fuse_strategy.py`, 19 test).
-2. **r16** — Table 4 / 12 (bộ chọn anchor). Đây là mục *không* gộp được vào
-   r15: "x_last only" và "mean-pool all tokens" cần query vector của các vị
-   trí **trước** bước hiện tại, mà KV cache chỉ giữ K và V, không giữ Q. Phải
-   thêm chỗ lưu Q theo từng bước — máy móc mới, không phải một tham số.
-3. **r17+** — MME, MMBench, MathVista (mỗi cái một harness mới).
-4. **r18+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
+1. **r16** — Table 4 / 12 (bộ chọn anchor), mục duy nhất còn lại chạm trực
+   tiếp vào một bảng của paper. "x_last only" và "mean-pool all tokens" cần
+   query vector của các vị trí **trước** bước hiện tại, mà KV cache chỉ giữ K
+   và V, không giữ Q. Phải thêm chỗ lưu Q theo từng bước — máy móc mới, không
+   phải một tham số.
+2. **r17+** — MME, MMBench, MathVista (mỗi cái một harness mới).
+3. **r18+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
+
+Và một câu hỏi **mới**, do chính r15 đẻ ra, chưa có trong kế hoạch nào: vách
+đá ở layer 9–10 là gì? Không phải lan truyền theo độ sâu (nếu vậy phải giảm
+dần, không phải rơi vực rồi phẳng). Rẻ để hỏi — `intervention_layers` đã là
+field sẵn có, nên quét từng layer một (L4–4, L5–5, …) chỉ tốn ~0.9 h mỗi
+layer và **không cần code mới**.
 
 Không tái lập được, có lý do, **không phải lỗi implementation**:
 
