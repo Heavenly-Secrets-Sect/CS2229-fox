@@ -24,9 +24,16 @@ a configuration change. Every row below is the LLaVA-1.5 column unless stated.
 
 ### Table 1 — POPE accuracy, 3 splits x 7 methods, 3 backbones — **PARTIAL**
 
-Our LLaVA-1.5 rows for `sampling` and `fox` are done at 10 seeds
-(adversarial) and 3 seeds (random, popular). The other five method rows are
-not: see **Compared methods** below.
+| | adversarial | popular | random |
+|---|---|---|---|
+| `sampling`, `fox` | 10 seeds | 3 seeds | 3 seeds |
+| VCD, ICD, SID, CausalMM, OPERA | 3 seeds | **missing** | **missing** |
+
+So the table is complete down one column and two rows. Filling the other two
+columns needs **no new code** — 30 jobs, but 53 h, of which OPERA alone is 31
+because beam search costs 2.55 s/sample against 1.08 for a dual-branch arm.
+Backbones beyond LLaVA-1.5 are a separate axis; see the loader note at the
+end.
 
 ### Table 2 — CHAIR, 7 methods — **PARTIAL**
 
@@ -62,11 +69,21 @@ the paper for 1-token generation and would need OPERA implemented.
 
 ## Ablations — the part not yet touched
 
-### Table 7 — sensitivity of α — **CHEAP**, 2 of 4 values done
+### Table 7 — sensitivity of α — **DONE**, all four values
 
 Paper: α ∈ {0, 1, 2, 3} → mean POPE accuracy 81.75 / 85.33 / 85.97 / 85.98.
-We have α ∈ {1, 2, 4}. Missing α=0 and α=3. "Mean Acc" is the average over the
-three POPE splits, so completing this needs all three splits per α.
+Measured on POPE-adversarial, greedy, seed 42:
+
+| α | 0 | 1 | 2 (default) | 3 | 4 |
+|---|---|---|---|---|---|
+| ours | 79.10 | 81.83 | 82.37 | 82.37 | 82.37 |
+| paper (mean of 3 splits) | 81.75 | 85.33 | 85.97 | 85.98 | — |
+
+**The shape reproduces and then saturates.** α = 0 drops to near the baseline
+as it must; the climb from 0 to 1 is most of the effect; and α ∈ {2, 3, 4} are
+identical to two decimals. The paper's own 85.97 → 85.98 across α ∈ {2, 3}
+says the same thing. Note "Mean Acc" there averages three POPE splits while
+this is adversarial alone, so only the shape is comparable, not the level.
 
 Worth noting: **α=0 should be the baseline**. Setting the amplification of the
 interventional branch to zero leaves `z_final = z_obs`, so the only remaining
@@ -139,7 +156,7 @@ the paper ranks last is first here by sixteen points — at a real but smaller
 cost: CHAIR_I falls 27 % relative while recall falls 6.7 %, and the captions
 get *longer*, so it is not the shorter-caption artefact.
 
-### Table 15 — manual vs automatic layer window — **RUNNABLE**
+### Table 15 — manual vs automatic layer window — **DONE**
 
 States the LLaVA-1.5 manual window as **L2–13** with POPE-adversarial 81.93,
 and an automatic rule selecting L3–15 for 81.27.
@@ -147,7 +164,20 @@ and an automatic rule selecting L3–15 for 81.27.
 This contradicts the released code, which runs **L2–15**. So the paper's own
 appendix says the headline number came from 2–13 while the code ships 2–15 —
 and 2–15 is what the automatic rule is said to select, scoring 0.66 lower.
-Running both windows settles which produced 81.93.
+
+**Measured: the two windows are equivalent**, which means the appendix's
+0.66 gap does not reproduce and the question of "which produced 81.93" has no
+answer — either would.
+
+| | L2–13 (paper) | L2–15 (code) |
+|---|---|---|
+| POPE-adv, greedy | 82.20 | 82.37 |
+| POPE-adv, sampling, 3 seeds | 81.53 | 81.56 |
+| CHAIR_S, greedy | 42.80 (recall 76.09) | 46.20 (recall 77.82) |
+
+r15/V10 explains why: both windows cover layers 4–9, which carry 89 % of the
+effect, so trimming two layers off the far end changes nothing. The CHAIR
+difference runs the other way and comes with 1.7 points less recall.
 
 ### Table 13 — prior-source diagnostic — **DONE, r13**
 
@@ -242,9 +272,21 @@ r14 ran `k ∈ {0.10, 0.20, 0.45}` × {diagnosed, random} × 3 seeds at full
 3000, pre-registered as **V7**. `k = 0.10` edits three heads, where the ranking
 should matter most if it matters anywhere.
 
-### Figure 9 — k, τ_JS, β sensitivity — **PARTIAL**
+### Figure 9 — k, τ_JS, β sensitivity — **DONE**, all three axes
 
-We have k ∈ {0.25, 0.45} and τ_JS ∈ {0.1, 0.2} at n=500. β is untouched.
+POPE-adversarial, greedy, n = 500, seed 42. Released values are k = 0.35,
+τ_JS = 0.15, β = 0.1.
+
+| axis | values | accuracy |
+|---|---|---|
+| k | 0.25 / 0.45 | 81.60 / 81.80 |
+| τ_JS | 0.1 / 0.2 | 82.20 / 82.80 |
+| β | 0.05 / 0.2 | 82.60 / 82.60 |
+
+Flat on every axis at this resolution — β is **identical** at both values, and
+the k and τ_JS spreads are inside what 500 samples resolve. r15's V9 explains
+why τ_JS looks flat: the gate it controls almost never fires on POPE, so
+moving the threshold moves nothing.
 
 ### Figure 19 — the role of JSD gating — **DONE, r15, and it contradicts the figure**
 
@@ -260,7 +302,7 @@ casualty the figure presents it as.
 
 The paper compares against five: ICD, VCD, OPERA, SID, CausalMM.
 
-### VCD and ICD — **RUNNABLE, and the released code cannot do it**
+### VCD and ICD — **DONE on adversarial, and the released code cannot do it**
 
 Both flags in the released harness are dead:
 
@@ -274,6 +316,10 @@ Both flags in the released harness are dead:
 
 So the published code cannot reproduce its own VCD and ICD rows. Where those
 numbers came from is not determinable from what was released.
+
+Ours are implemented from the formula below rather than from that dead
+branch, and run on POPE-adversarial and CHAIR at 3 seeds. The two other POPE
+splits are the gap in Table 1 above.
 
 The correct formula is nevertheless present, in that dead branch
 (`vcd_sample.py:254-259`):
