@@ -710,6 +710,13 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--gt-source", choices=("both", "instances", "captions"),
                     default="both")
     ap.add_argument("--tokenizer", choices=("regex", "nltk"), default="regex")
+    ap.add_argument(
+        "--only-stale", action="store_true",
+        help="skip run files whose .metrics.json is newer than the run. The "
+             "fast path after ingesting a round. NOT the default and not "
+             "safe after a scorer change, which leaves every run file "
+             "untouched and every metric wrong.",
+    )
     ap.add_argument("--no-strict", action="store_true",
                     help="tolerate runs whose provenance fields are not constant")
     args = ap.parse_args(argv)
@@ -733,7 +740,21 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     exit_code = 0
     n_superseded = 0
+    n_skipped = 0
     for target in targets:
+        if args.only_stale:
+            # Opt-in, never the default. Skipping by mtime is right when the
+            # RUN changed and wrong when the SCORER did -- a new CHAIR
+            # synonym list or a parser fix leaves every run file untouched
+            # and every metric wrong. So the canonical pass stays a full
+            # pass, and this is the fast path for "I just ingested a round".
+            m = args.out_dir / f"{target.name[:-len('.jsonl')]}.metrics.json"
+            try:
+                if m.is_file() and m.stat().st_mtime >= target.stat().st_mtime:
+                    n_skipped += 1
+                    continue
+            except OSError:
+                pass
         try:
             result, rows = evaluate_run_file(
                 target, scorer_factory=scorer_factory, pope_dir=args.pope_dir,
@@ -766,6 +787,10 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         if args.format in ("markdown", "both"):
             print()
             print(_format_markdown(result))
+    if n_skipped:
+        print(f"[evaluate] {n_skipped} run file(s) skipped as already scored "
+              f"(--only-stale); a scorer change needs a full pass",
+              file=sys.stderr)
     if n_superseded:
         print(f"[evaluate] {n_superseded} run file(s) skipped as superseded "
               f"(archived before a provenance field existed); not a failure",

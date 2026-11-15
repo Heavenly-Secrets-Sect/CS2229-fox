@@ -283,6 +283,51 @@ class TestReadRun(unittest.TestCase):
         self.assertLessEqual(len(LEGACY_PROVENANCE_FIELDS), 2)
         self.assertTrue(set(LEGACY_PROVENANCE_FIELDS) <= set(PROVENANCE_FIELDS))
 
+    def test_only_stale_skips_scored_runs_and_rescoring_a_changed_one(self) -> None:
+        """The full archive outgrew a 30-minute budget; this is the fast path.
+
+        It is opt-in on purpose. Skipping by mtime is right when the RUN
+        changed and wrong when the SCORER did -- a new CHAIR synonym list or
+        a parser fix leaves every run file untouched and every metric wrong
+        -- so the canonical pass stays a full pass.
+        """
+        import os
+        import tempfile
+        import time
+        from foxrepro.bench.evaluate import _main
+
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        runs, out = Path(td.name) / "runs", Path(td.name) / "rep"
+        runs.mkdir()
+        self.path = runs / "m-echo__b-pope__s-adversarial__seed-42__dt-fp16__v-x.jsonl"
+        self._write([_record("a", "yes", "Yes"), _record("b", "no", "No")])
+
+        argv = ["--runs-dir", str(runs), "--out-dir", str(out), "--format", "json"]
+        self.assertEqual(_main(argv + ["--only-stale"]), 0)
+        metrics = out / (self.path.stem + ".metrics.json")
+        self.assertTrue(metrics.is_file(), "a never-scored run must be scored")
+
+        # Unchanged: skipped, so the metrics file is not rewritten.
+        before = metrics.stat().st_mtime_ns
+        time.sleep(0.01)
+        self.assertEqual(_main(argv + ["--only-stale"]), 0)
+        self.assertEqual(metrics.stat().st_mtime_ns, before, "rescored a run "
+                         "that had not changed")
+
+        # Changed after scoring: must be scored again.
+        os.utime(self.path, (time.time() + 10, time.time() + 10))
+        self.assertEqual(_main(argv + ["--only-stale"]), 0)
+        self.assertGreater(metrics.stat().st_mtime_ns, before,
+                           "a run modified after scoring was skipped")
+
+        # And the default still rescores everything.
+        mid = metrics.stat().st_mtime_ns
+        time.sleep(0.01)
+        self.assertEqual(_main(argv), 0)
+        self.assertGreater(metrics.stat().st_mtime_ns, mid,
+                           "--only-stale leaked into the default")
+
     def test_trailing_partial_line_is_ignored(self) -> None:
         self._write([_record("a", "yes", "Yes")], tail='{"sample_id": "b')
         records, meta = read_run(self.path)
