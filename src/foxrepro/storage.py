@@ -151,6 +151,11 @@ INTERVENTION_MODES = (
 #: reject a valid run or let two different fusion rules share a run file.
 FUSE_STRATEGIES = ("hybrid", "fixed", "dynamic")
 
+#: Tables 4 and 12: which query position the per-head score is read from.
+#: Mirrors ``fox.kernel.ANCHORS``, asserted equal in tests for the same
+#: reason FUSE_STRATEGIES is. ``y_prev`` is what the released code does.
+ANCHORS = ("y_prev", "x_last", "both", "mean_all", "random")
+
 #: Prompt arms. The strings themselves live in ``bench.methods``, which cannot
 #: be imported here (it imports ``bench.generate``, which imports this module),
 #: so the *names* live here and ``methods`` asserts its dicts match. Keeping
@@ -236,7 +241,8 @@ VARIANT_FIELDS: tuple[str, ...] = (
 #: `fuse_strategy` is Table 14's axis, and is optional for exactly the same
 #: reason: 241 runs already exist with the released hybrid rule, and spelling
 #: it into their keys would rename every one of them.
-OPTIONAL_VARIANT_FIELDS: tuple[str, ...] = ("control", "fuse_strategy")
+OPTIONAL_VARIANT_FIELDS: tuple[str, ...] = ("control", "fuse_strategy",
+                                            "anchor")
 
 #: Every legal value of `control`, with what it is for.
 #:

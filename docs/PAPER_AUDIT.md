@@ -98,7 +98,7 @@ A second note: Table 7 gives α=2 as 85.97 while Table 4 gives the same
 configuration as 85.99. A 0.02 discrepancy between two tables describing one
 run.
 
-### Tables 4 and 12 — temporal-anchor / query-position ablation — **RUNNABLE**
+### Tables 4 and 12 — temporal-anchor / query-position ablation — **IMPLEMENTED, running in r18**
 
 **These are the same table printed twice** — identical five rows, identical
 numbers, once in the main text as "temporal-anchor" and once in the appendix
@@ -417,7 +417,7 @@ Reachable and not yet run, in descending value:
 | ~~Figure 8, random-head control~~ | **done, r6 + r14.** The gap is 0.26 pts at k=0.10 (indistinguishable from zero), 1.37 at k=0.20, 0.79 at k=0.45 — and random heads at k=0.45 beat diagnosed heads at k=0.20. The effect is bought by *how many* heads are edited | ~~22 h~~ spent |
 | ~~Table 14 + Figure 19, fusion rule~~ | **done, r15.** The gate does nothing on POPE (`dynamic` is +0.02 over baseline, `fixed` ties `hybrid`) and the CHAIR ordering inverts — `fixed`, which the paper ranks last, is first by 16 points | ~~14.6 h~~ spent |
 | ~~Table 15, L2–13 vs L2–15~~ | **done** — equivalent at ±0.42, and r14/V8 explains why: both are early. L11–24 and L13–26, the windows r13 measured as strongest, are 3.07 and 2.24 points **worse**, and no better than not intervening at all. r15/V10 sweeps position at matched width | done; V10 in r15 |
-| Tables 4/12, query positions | measures the cost of the released `tail_n = 1`; needs cached query vectors across decode steps, which the KV cache does not keep | ~12 h |
+| Tables 4/12, query positions | measures the cost of the released `tail_n = 1`. **The "needs cached query vectors" note here was wrong about the mechanism** — `head_scores` reduces a query row to two scalars per head and prefill carries every prompt row in one pass, so an anchor is a few floats per layer, not a second KV cache | in r18, 29.2 h |
 | ~~Table 7, α = 0 and 3~~ | **done** — the shape reproduces then saturates: 79.10 / 81.83 / 82.37 / 82.37 / 82.37 for α = 0,1,2,3,4 | ~~5 h~~ spent |
 | ~~Figure 9, β axis~~ | **done** — β is *identical* at 0.05 and 0.2, and r15/V9 says why τ_JS is flat too: its gate almost never fires on POPE | spent |
 | Layer cliff: where the live region ends, and whether layer identity matters | not a paper artefact — a question r15 and r16 opened and nobody has answered | in r17 |

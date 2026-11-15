@@ -65,6 +65,7 @@ def cfg_from_command(cmd: str) -> GenConfig:
         control=str(args["control"]) if args.get("control") else None,
         fuse_strategy=(str(args["fuse_strategy"])
                        if args.get("fuse_strategy") else None),
+        anchor=str(args["anchor"]) if args.get("anchor") else None,
         decoding=str(args["decoding"]),
         system_prompt_id=str(args["system_prompt"]),
         wrapper_id=str(args.get("wrapper") or "released"),

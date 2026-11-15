@@ -124,6 +124,146 @@ def quantize_to_grid(x: torch.Tensor, step: float) -> torch.Tensor:
 # --------------------------------------------------------------------------- #
 # diagnosis: the per-head risk score
 # --------------------------------------------------------------------------- #
+#: Tables 4 and 12: which QUERY POSITION the per-head score is read from.
+#:
+#: The paper calls these "temporal anchors" in the main text and "query
+#: positions" in the appendix; the two tables are identical. The released
+#: code implements exactly one of them -- ``tail_n = 1``, the last query --
+#: which during generation is ``y_prev`` and never ``x_last``.
+#:
+#: * ``y_prev``   -- the last query row. The released behaviour, and the
+#:                   default, which must stay bit-identical.
+#: * ``x_last``   -- the final PROMPT token, captured once at prefill and
+#:                   held for the rest of the generation.
+#: * ``both``     -- the mean of the two. The paper's stated main
+#:                   configuration, and the row Table 4 reports as best.
+#: * ``mean_all`` -- the mean over every query position seen so far.
+#: * ``random``   -- one query position, reservoir-sampled.
+#:
+#: None of these needs the query VECTORS cached. ``head_scores`` reduces a
+#: query row to two scalars per head, and prefill carries every prompt row in
+#: one pass, so an anchor is a handful of floats per layer rather than a
+#: second KV cache. The project's own audit estimated this the other way.
+ANCHORS: Tuple[str, ...] = ("y_prev", "x_last", "both", "mean_all", "random")
+
+
+class AnchorState:
+    """Per-layer accumulator for the non-default anchors.
+
+    Holds only ``[B, H]`` statistics, never attention rows or query vectors.
+    One instance per generation; ``reset()`` between samples or the second
+    sample inherits the first one's prompt.
+    """
+
+    __slots__ = ("x_last", "total", "count", "picked", "seen", "_gen")
+
+    def __init__(self, generator: Optional[torch.Generator] = None) -> None:
+        self._gen = generator
+        self.reset()
+
+    def reset(self) -> None:
+        self.x_last: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
+        self.total: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
+        self.count: Dict[int, int] = {}
+        self.picked: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
+        self.seen: Dict[int, int] = {}
+
+    def observe(self, layer: int, rows: Tuple[torch.Tensor, torch.Tensor],
+                n_rows: int, is_prefill: bool) -> None:
+        """Record one forward's worth of statistics for ``layer``.
+
+        ``rows`` is the per-row mean already reduced to ``[B, H]`` plus the
+        last row's own value; ``n_rows`` is how many query positions that
+        mean covers, so a prefill of 600 tokens weighs 600 and a decode step
+        weighs 1.
+        """
+        mean_rows, last_row = rows
+        if is_prefill:
+            self.x_last[layer] = last_row
+        if layer in self.total:
+            tm, th = self.total[layer]
+            self.total[layer] = (tm + mean_rows[0] * n_rows,
+                                 th + mean_rows[1] * n_rows)
+            self.count[layer] += n_rows
+        else:
+            self.total[layer] = (mean_rows[0] * n_rows, mean_rows[1] * n_rows)
+            self.count[layer] = n_rows
+        # Reservoir sampling over query POSITIONS, so a 600-token prefill is
+        # 600 chances rather than one. Uses the run's seeded generator, so a
+        # resumed sample reproduces its own choice.
+        self.seen[layer] = self.seen.get(layer, 0) + n_rows
+        if layer not in self.picked:
+            self.picked[layer] = last_row
+        else:
+            r = torch.rand(1, generator=self._gen).item()
+            if r < n_rows / self.seen[layer]:
+                self.picked[layer] = last_row
+
+    def resolve(self, layer: int, anchor: str,
+                last_row: Tuple[torch.Tensor, torch.Tensor]):
+        """The ``(m_sys, h_vis)`` the intervention should score with."""
+        if anchor == "y_prev":
+            return last_row
+        if anchor == "x_last":
+            return self.x_last.get(layer, last_row)
+        if anchor == "both":
+            xl = self.x_last.get(layer)
+            if xl is None:
+                return last_row
+            return (0.5 * (xl[0] + last_row[0]), 0.5 * (xl[1] + last_row[1]))
+        if anchor == "mean_all":
+            tot, n = self.total.get(layer), self.count.get(layer, 0)
+            if not tot or not n:
+                return last_row
+            return (tot[0] / n, tot[1] / n)
+        if anchor == "random":
+            return self.picked.get(layer, last_row)
+        raise ValueError(f"anchor={anchor!r} is not one of {ANCHORS}")
+
+
+def head_scores_rows(
+    attn_probs: torch.Tensor,
+    img_start: int,
+    img_end: int,
+    *,
+    eps: float = 1e-12,
+) -> Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor], int]]:
+    """``head_scores`` over EVERY query row, not only the last.
+
+    Returns ``((mean_m, mean_h), (last_m, last_h), n_rows)``.
+
+    Rows whose key set does not yet reach ``img_end`` are dropped from the
+    mean: before the image is fully visible, ``m_sys`` is computed against a
+    truncated span and is not the same quantity. The paper does not say what
+    it does here, so this is a documented choice, not a transcription --
+    see docs/DEVIATIONS.md.
+    """
+    B, H, Q, K = attn_probs.shape
+    v_s = max(0, min(img_start, K))
+    v_e = max(v_s, min(img_end + 1, K)) if img_end >= 0 else 0
+    if v_e <= v_s:
+        return None
+
+    a = attn_probs                                               # [B,H,Q,K]
+    m_sys = a[..., 0:img_start].sum(dim=-1)                      # [B,H,Q]
+    p_v = a[..., v_s:v_e]
+    p_v = p_v / (p_v.sum(dim=-1, keepdim=True) + eps)
+    p_v = p_v / (p_v.sum(dim=-1, keepdim=True) + eps)
+    h_vis = -(p_v * (p_v + eps).log()).sum(dim=-1)               # [B,H,Q]
+
+    last = (m_sys[..., -1], h_vis[..., -1])
+    # During prefill the first rows cannot see the whole image; during decode
+    # Q == 1 and the single row always can.
+    if Q > 1:
+        keep = K - Q                      # absolute index of row 0
+        first = max(0, img_end + 1 - keep)
+        if first >= Q:
+            return (last, last, 1)
+        m_sys, h_vis = m_sys[..., first:], h_vis[..., first:]
+    n_rows = int(m_sys.shape[-1])
+    return ((m_sys.mean(dim=-1), h_vis.mean(dim=-1)), last, n_rows)
+
+
 def head_scores(
     attn_probs: torch.Tensor,
     img_start: int,
@@ -295,6 +435,9 @@ def intervene(
     noise_halfwidth: Optional[float] = None,
     grid_step: Optional[float] = None,
     generator: Optional[torch.Generator] = None,
+    anchor: str = "y_prev",
+    anchor_state: Optional["AnchorState"] = None,
+    layer: int = 0,
     eps: float = 1e-12,
 ) -> Tuple[torch.Tensor, Optional[Dict[str, torch.Tensor]]]:
     """Apply one arm of the Fox intervention to pre-softmax attention logits.
@@ -342,9 +485,23 @@ def intervene(
         )
     with torch.no_grad():
         probs = torch.softmax(base, dim=-1)
-        stats = head_scores(
-            probs, img_start, img_end, use_m_sys=use_m_sys, eps=eps
-        )
+        if anchor == "y_prev" or anchor_state is None:
+            # The released path, untouched. Kept as its own branch so the
+            # default arm runs exactly the code it ran before anchors
+            # existed -- tests/test_kernel_equivalence.py depends on it.
+            stats = head_scores(
+                probs, img_start, img_end, use_m_sys=use_m_sys, eps=eps
+            )
+        else:
+            rows = head_scores_rows(probs, img_start, img_end, eps=eps)
+            if rows is None:
+                return attn_logits, None
+            mean_rows, last_row, n_rows = rows
+            anchor_state.observe(
+                layer, (mean_rows, last_row), n_rows,
+                is_prefill=probs.shape[2] > 1,
+            )
+            stats = anchor_state.resolve(layer, anchor, last_row)
     if stats is None:
         return attn_logits, None
     m_sys, h_vis = stats

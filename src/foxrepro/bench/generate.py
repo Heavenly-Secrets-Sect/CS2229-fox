@@ -67,7 +67,7 @@ from foxrepro.data.loaders import (  # noqa: E402
 )
 from foxrepro.data.loaders import DEFAULT_TEMPLATE_IDS  # noqa: E402
 from foxrepro.storage import (  # noqa: E402
-    BENCHMARK_SPLITS, DTYPES, FUSE_STRATEGIES, INTERVENTION_MODES,
+    ANCHORS, BENCHMARK_SPLITS, DTYPES, FUSE_STRATEGIES, INTERVENTION_MODES,
     LOGIT_DTYPES,
     MAX_NEW_TOKENS_DEFAULT, PROVENANCE_FIELDS, SOFTMAX_DTYPES,
     SYSTEM_PROMPT_IDS, VARIANT_FIELDS, WRAPPER_IDS,
@@ -148,6 +148,8 @@ class GenConfig:
     #: key for the same reason ``control`` is -- every file already in
     #: results/runs/ keeps its name.
     fuse_strategy: Optional[str] = None
+    #: Tables 4 / 12. ``None`` is the released single anchor (`y_prev`).
+    anchor: Optional[str] = None
     # --- sharding (Kaggle T4x2 is the primary host) ----------------------- #
     # A single T4 cannot hold the model in fp16 (13.16 GiB of weights against
     # ~14.3 GiB usable), but two can when the layers are split across them.
@@ -169,6 +171,14 @@ class GenConfig:
             raise ValueError(f"softmax_dtype must be one of {SOFTMAX_DTYPES}")
         if self.mode not in INTERVENTION_MODES:
             raise ValueError(f"mode must be one of {INTERVENTION_MODES}")
+        if self.anchor is not None:
+            if self.anchor not in ANCHORS:
+                raise ValueError(f"anchor must be one of {ANCHORS}")
+            if self.method not in ("fox", "echo"):
+                raise ValueError(
+                    "anchor applies to --method fox only; "
+                    f"{self.method} does not score heads"
+                )
         if self.fuse_strategy is not None:
             if self.fuse_strategy not in FUSE_STRATEGIES:
                 raise ValueError(
@@ -254,6 +264,7 @@ class GenConfig:
             "intervention_layers": self.intervention_layers,
             "control": self.control,
             "fuse_strategy": self.fuse_strategy,
+            "anchor": self.anchor,
             "logit_dtype": self.logit_dtype,
             "softmax_dtype": self.softmax_dtype,
             "mode": self.mode,
@@ -988,6 +999,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--alpha", type=float, default=None, help="Fox consensus gain (2)")
     ap.add_argument("--beta", type=float, default=None, help="Fox truncation ratio (0.1)")
     ap.add_argument(
+        "--anchor", choices=ANCHORS, default=None,
+        help="Tables 4/12: which query position scores the heads. Unset is "
+             "the released single anchor (the last query, y_prev). 'x_last' "
+             "holds the final prompt token; 'both' averages the two, which "
+             "is the configuration the paper DESCRIBES; 'mean_all' and "
+             "'random' are the table's two controls.",
+    )
+    ap.add_argument(
         "--fuse-strategy", choices=FUSE_STRATEGIES, default=None,
         help="Table 14 / Figure 19: how Fox's fusion weight is chosen. "
              "Unset means the released hybrid rule of Eq. 7. 'fixed' holds "
@@ -1097,6 +1116,7 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         allow_cpu=args.allow_cpu,
         control=args.control,
         fuse_strategy=args.fuse_strategy,
+        anchor=args.anchor,
     )
     # Must happen before any model is loaded: cudnn.allow_tf32 defaults to
     # True, and on Ampere+ a TF32 matmul has ~10 mantissa bits, which would

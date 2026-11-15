@@ -1555,6 +1555,68 @@ own hypothesis.
 
 ---
 
+## V14 — Tables 4 and 12: the configuration the paper describes has never been run
+
+`--anchor` at `x_last`, `both`, `mean_all` and `random` against the released
+`y_prev`, on POPE-adversarial and CHAIR, seeds 42/43/44. **29.2 h.** 24 jobs.
+
+This is the last component of the method with no measurement against it. The
+paper prints the table twice — "temporal anchor" in the main text, "query
+position" in the appendix, identical rows — and names five policies:
+
+| row | Acc | CHAIR_S | CHAIR_I |
+|---|---|---|---|
+| random token | 83.45 | 53.42 | 15.94 |
+| mean-pool all tokens | 84.08 | 52.06 | 15.21 |
+| x_last only | 85.02 | 48.63 | 13.88 |
+| y_{t−1} only | 84.91 | 49.12 | 14.07 |
+| **x_last + y_{t−1}** | **85.99** | **46.40** | **12.90** |
+
+The released code implements **one** of them: `tail_n = 1`, which during
+generation is `y_prev` and never `x_last`. So the bottom row — the paper's
+stated main configuration, and the one whose CHAIR numbers are quoted in
+Table 2 — **has never been run by anyone, including the authors' own
+harness.**
+
+### What this costs to run, corrected
+
+This project's audit estimated 12 h and said it "needs cached query vectors
+across decode steps, which the KV cache does not keep". That was wrong about
+the mechanism. `head_scores` reduces a query row to **two scalars per head**,
+and prefill carries every prompt row in a single pass — so `x_last` is a
+`[B, H]` tensor captured once, `mean_all` is a running sum, and `random` is a
+reservoir sample. The whole anchor machinery is a few floats per layer, not a
+second KV cache. Implemented in `tests/test_anchor.py`'s 20 tests, with the
+`y_prev` path kept as its own branch so the default stays bit-identical.
+
+### The prediction, and why it is not a hunch
+
+**All five anchors land within 0.5 points of each other on POPE.**
+
+The anchor changes exactly one thing: which heads the top-k selects, by
+changing the query row `m_sys · H_vis` is read from. And r14 already measured
+what head selection is worth — replacing the entire ranking with
+`torch.randperm` costs **0.26 points at k = 0.10** and 1.37 at its worst.
+An anchor change is a *milder* perturbation of the same ranking than
+replacing it outright, so it cannot be worth more than that.
+
+The paper reports a 1.08-point spread between its best and its `y_prev` row,
+and 2.54 points from `random token` to `x_last + y_{t−1}`. **Both exceed what
+destroying the ranking entirely costs on this stack.** One of the two
+accounts is wrong.
+
+| outcome | reading |
+|---|---|
+| all within 0.5 | the anchor is the **fourth** component measured to not matter, after head selection, window position within the early band, and the JSD gate. The audit would then have a measurement against every part of the method |
+| `both` beats `y_prev` by > 1 point | **the prediction fails**, and the paper's own main configuration is better than its released code — the method would work better than the implementation, which is the second time this suite has found that shape (V8's windows were the first, and went the other way) |
+| `random` is 2.5 points below the rest | head selection matters far more than r14 measured, and r14's random-head result needs re-examining — the two cannot both be true |
+
+Note the third row carefully. `random token` in the paper costs 2.54 points,
+while `random heads` in r14 costs 0.49 at the same k. Those are two ways of
+destroying the same ranking, and they should cost about the same.
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

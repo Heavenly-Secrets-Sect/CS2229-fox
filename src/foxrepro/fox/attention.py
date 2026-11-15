@@ -70,6 +70,7 @@ import torch
 import torch.nn.functional as F
 
 from foxrepro.fox.kernel import (
+    AnchorState as _AnchorState,
     diagnostic_stats, intervene, resolve_logit_dtype,
 )
 
@@ -122,6 +123,13 @@ class FoxState:
     grid_step: Optional[float] = None
     noise_halfwidth: Optional[float] = None
     generator: Optional[torch.Generator] = None
+
+    # ---- Tables 4 and 12: which query position scores the heads ----
+    #: ``"y_prev"`` is the released behaviour and the default. The state
+    #: object is created per generation by ``fox_generate``; leaving it None
+    #: forces the released path, which is what every non-Fox arm wants.
+    anchor: str = "y_prev"
+    anchor_state: Optional[Any] = None
 
     # ---- where the image tokens are (absolute key positions) ----
     img_start: int = -1
@@ -742,6 +750,9 @@ def fox_attention_forward(
         grid_step=FOX.grid_step,
         noise_halfwidth=FOX.noise_halfwidth,
         generator=FOX.generator,
+        anchor=FOX.anchor,
+        anchor_state=FOX.anchor_state,
+        layer=layer_idx if layer_idx is not None else 0,
     )
     if FOX.collect and diag is not None:
         FOX.diagnostics[layer_idx] = {
@@ -1144,6 +1155,7 @@ def fox_generate(
     alpha: float = 2.0,
     beta: float = 0.1,
     fuse_strategy: str = "hybrid",
+    anchor: str = "y_prev",
     logit_dtype: str = "native",
     softmax_dtype: str = "fp32",
     greedy: bool = False,
@@ -1348,6 +1360,11 @@ def fox_generate(
         sid_select=sid_select, sid_generator=gen,
         sid_rows=(perturbed_row,) if sid else None,
         sid_keep=None,
+        anchor=anchor,
+        # One state per generation. Created even for the default so the
+        # field is never stale from a previous sample; the default branch
+        # in `intervene` ignores it.
+        anchor_state=_AnchorState(generator=gen) if anchor != "y_prev" else None,
     ), cf_ctx:
         for step in range(max_new_tokens):
             FOX.reset_diagnostics()

@@ -1,7 +1,7 @@
 {
   "round": "r18",
   "order": "priority",
-  "n_sessions": 2,
+  "n_sessions": 6,
   "budget_hours": 10.0,
   "n_calibrated": 0,
   "in_flight_excluded": [],
@@ -185,6 +185,246 @@
       "run_file": "m-fox__b-pope__s-random__seed-44__dt-fp16__v-sampling-93866aba.jsonl",
       "n_samples": 3000,
       "measured": false
+    },
+    "table4:fox:pope:adversarial:ancx_last": {
+      "id": "table4:fox:pope:adversarial:ancx_last",
+      "target": "table4",
+      "note": "V14: query position = x_last",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor x_last",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-065f3cbd.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancboth": {
+      "id": "table4:fox:pope:adversarial:ancboth",
+      "target": "table4",
+      "note": "V14: query position = both",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor both",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-c5a63744.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancmean_all": {
+      "id": "table4:fox:pope:adversarial:ancmean_all",
+      "target": "table4",
+      "note": "V14: query position = mean_all",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor mean_all",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-f5e7ec76.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancrandom": {
+      "id": "table4:fox:pope:adversarial:ancrandom",
+      "target": "table4",
+      "note": "V14: query position = random",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor random",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-2623fec4.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancx_last:s43": {
+      "id": "table4:fox:pope:adversarial:ancx_last:s43",
+      "target": "table4",
+      "note": "V14: query position = x_last",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor x_last",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-065f3cbd.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancboth:s43": {
+      "id": "table4:fox:pope:adversarial:ancboth:s43",
+      "target": "table4",
+      "note": "V14: query position = both",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor both",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-c5a63744.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancmean_all:s43": {
+      "id": "table4:fox:pope:adversarial:ancmean_all:s43",
+      "target": "table4",
+      "note": "V14: query position = mean_all",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor mean_all",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-f5e7ec76.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancrandom:s43": {
+      "id": "table4:fox:pope:adversarial:ancrandom:s43",
+      "target": "table4",
+      "note": "V14: query position = random",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor random",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-2623fec4.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancx_last:s44": {
+      "id": "table4:fox:pope:adversarial:ancx_last:s44",
+      "target": "table4",
+      "note": "V14: query position = x_last",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor x_last",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-065f3cbd.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancboth:s44": {
+      "id": "table4:fox:pope:adversarial:ancboth:s44",
+      "target": "table4",
+      "note": "V14: query position = both",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor both",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-c5a63744.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancmean_all:s44": {
+      "id": "table4:fox:pope:adversarial:ancmean_all:s44",
+      "target": "table4",
+      "note": "V14: query position = mean_all",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor mean_all",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-f5e7ec76.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:pope:adversarial:ancrandom:s44": {
+      "id": "table4:fox:pope:adversarial:ancrandom:s44",
+      "target": "table4",
+      "note": "V14: query position = random",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --anchor random",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-2623fec4.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancx_last": {
+      "id": "table4:fox:chair:val2014_500:ancx_last",
+      "target": "table4",
+      "note": "V14: query position = x_last, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor x_last",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-1b6102ef.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancboth": {
+      "id": "table4:fox:chair:val2014_500:ancboth",
+      "target": "table4",
+      "note": "V14: query position = both, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor both",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-7f4b4aef.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancmean_all": {
+      "id": "table4:fox:chair:val2014_500:ancmean_all",
+      "target": "table4",
+      "note": "V14: query position = mean_all, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor mean_all",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-5ab189bc.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancrandom": {
+      "id": "table4:fox:chair:val2014_500:ancrandom",
+      "target": "table4",
+      "note": "V14: query position = random, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor random",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-7925b44c.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancx_last:s43": {
+      "id": "table4:fox:chair:val2014_500:ancx_last:s43",
+      "target": "table4",
+      "note": "V14: query position = x_last, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor x_last",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-1b6102ef.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancboth:s43": {
+      "id": "table4:fox:chair:val2014_500:ancboth:s43",
+      "target": "table4",
+      "note": "V14: query position = both, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor both",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-7f4b4aef.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancmean_all:s43": {
+      "id": "table4:fox:chair:val2014_500:ancmean_all:s43",
+      "target": "table4",
+      "note": "V14: query position = mean_all, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor mean_all",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-5ab189bc.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancrandom:s43": {
+      "id": "table4:fox:chair:val2014_500:ancrandom:s43",
+      "target": "table4",
+      "note": "V14: query position = random, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor random",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-7925b44c.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancx_last:s44": {
+      "id": "table4:fox:chair:val2014_500:ancx_last:s44",
+      "target": "table4",
+      "note": "V14: query position = x_last, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor x_last",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-1b6102ef.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancboth:s44": {
+      "id": "table4:fox:chair:val2014_500:ancboth:s44",
+      "target": "table4",
+      "note": "V14: query position = both, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor both",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-7f4b4aef.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancmean_all:s44": {
+      "id": "table4:fox:chair:val2014_500:ancmean_all:s44",
+      "target": "table4",
+      "note": "V14: query position = mean_all, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor mean_all",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-5ab189bc.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table4:fox:chair:val2014_500:ancrandom:s44": {
+      "id": "table4:fox:chair:val2014_500:ancrandom:s44",
+      "target": "table4",
+      "note": "V14: query position = random, CHAIR",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor random",
+      "est_s": 5450.0,
+      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-7925b44c.jsonl",
+      "n_samples": 500,
+      "measured": false
     }
   },
   "sessions": [
@@ -217,6 +457,54 @@
         "layer_identity:fox:pope:random:off:s44"
       ],
       "est_hours": 7.33
+    },
+    {
+      "session": 3,
+      "jobs": [
+        "table4:fox:pope:adversarial:ancx_last",
+        "table4:fox:pope:adversarial:ancboth",
+        "table4:fox:pope:adversarial:ancmean_all",
+        "table4:fox:pope:adversarial:ancrandom",
+        "table4:fox:pope:adversarial:ancx_last:s43",
+        "table4:fox:pope:adversarial:ancboth:s43",
+        "table4:fox:pope:adversarial:ancmean_all:s43",
+        "table4:fox:pope:adversarial:ancrandom:s43"
+      ],
+      "est_hours": 7.33
+    },
+    {
+      "session": 4,
+      "jobs": [
+        "table4:fox:pope:adversarial:ancx_last:s44",
+        "table4:fox:pope:adversarial:ancboth:s44",
+        "table4:fox:pope:adversarial:ancmean_all:s44",
+        "table4:fox:pope:adversarial:ancrandom:s44",
+        "table4:fox:chair:val2014_500:ancx_last",
+        "table4:fox:chair:val2014_500:ancboth",
+        "table4:fox:chair:val2014_500:ancmean_all",
+        "table4:fox:chair:val2014_500:ancrandom"
+      ],
+      "est_hours": 9.72
+    },
+    {
+      "session": 5,
+      "jobs": [
+        "table4:fox:chair:val2014_500:ancx_last:s43",
+        "table4:fox:chair:val2014_500:ancboth:s43",
+        "table4:fox:chair:val2014_500:ancmean_all:s43",
+        "table4:fox:chair:val2014_500:ancrandom:s43"
+      ],
+      "est_hours": 6.06
+    },
+    {
+      "session": 6,
+      "jobs": [
+        "table4:fox:chair:val2014_500:ancx_last:s44",
+        "table4:fox:chair:val2014_500:ancboth:s44",
+        "table4:fox:chair:val2014_500:ancmean_all:s44",
+        "table4:fox:chair:val2014_500:ancrandom:s44"
+      ],
+      "est_hours": 6.06
     }
   ]
 }

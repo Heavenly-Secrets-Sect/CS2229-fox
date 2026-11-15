@@ -519,6 +519,8 @@ class FoxMethod(_LlavaMethod):
             # Table 14 / Figure 19. None means the released rule, so the
             # default arm keeps the kwargs it had before this axis existed.
             "fuse_strategy": c.fuse_strategy or "hybrid",
+            # Tables 4 / 12. None means the released single anchor.
+            "anchor": c.anchor or "y_prev",
         }
 
     def describe(self) -> Dict[str, Any]:

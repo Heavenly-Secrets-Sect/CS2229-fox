@@ -226,6 +226,8 @@ class Job:
     #: this is only ever set to one of the paper's two other rows. Optional
     #: in the run key, so the 241 existing runs keep their file names.
     fuse_strategy: Optional[str] = None
+    #: Tables 4 and 12. None is the released single anchor.
+    anchor: Optional[str] = None
     note: str = ""
 
     def template_id(self) -> str:
@@ -262,6 +264,8 @@ class Job:
             bits.append(f"L{self.intervention_layers}")
         if self.fuse_strategy is not None:
             bits.append(f"fs{self.fuse_strategy}")
+        if self.anchor is not None:
+            bits.append(f"anc{self.anchor}")
         for nm, v in (("g", self.gamma), ("k", self.k),
                       ("t", self.tau_js), ("a", self.alpha),
                       ("b", self.beta)):
@@ -349,6 +353,8 @@ class Job:
             variant["control"] = self.control
         if self.fuse_strategy is not None:
             variant["fuse_strategy"] = self.fuse_strategy
+        if self.anchor is not None:
+            variant["anchor"] = self.anchor
         return RunKey(
             method=self.method, benchmark=self.benchmark, split=self.split,
             seed=self.seed, dtype="fp16", variant_fields=variant,
@@ -382,6 +388,8 @@ class Job:
             parts.append(f"--control {self.control}")
         if self.fuse_strategy is not None:
             parts.append(f"--fuse-strategy {self.fuse_strategy}")
+        if self.anchor is not None:
+            parts.append(f"--anchor {self.anchor}")
         if self.max_new_tokens is not None:
             parts.append(f"--max-new-tokens {self.max_new_tokens}")
         if self.limit:
@@ -1191,6 +1199,31 @@ def _build_plan() -> List[Job]:
                 "layer_identity", "fox", "pope", split, seed=seed,
                 mode="off",
                 note=f"V13: the no-intervention baseline on {split}",
+            ))
+
+    # ---- Tables 4 and 12, the last paper artefact of the method ----------
+    # V14. The paper prints this table twice -- "temporal anchor" in the main
+    # text, "query position" in the appendix, identical rows -- and names five
+    # policies. The released code implements ONE, `tail_n = 1`, which during
+    # generation is y_prev and never x_last. So the configuration the paper
+    # DESCRIBES as its main one, `x_last + y_{t-1}`, has never been run by
+    # anyone, including the authors' own harness.
+    #
+    # y_prev is the default and is already archived, so only four arms are
+    # new. Both benchmarks, because the paper reports accuracy and CHAIR
+    # together and this project has repeatedly found them disagreeing.
+    for anchor in ("x_last", "both", "mean_all", "random"):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "table4", "fox", "pope", "adversarial", seed=seed,
+                anchor=anchor,
+                note=f"V14: query position = {anchor}",
+            ))
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "table4", "fox", "chair", "val2014_500", seed=seed,
+                anchor=anchor,
+                note=f"V14: query position = {anchor}, CHAIR",
             ))
 
     return jobs
