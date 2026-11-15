@@ -176,6 +176,115 @@ class TestTheDefaultPathIsUntouched(unittest.TestCase):
             self.run_one(), self.run_one(anchor="both", anchor_state=None)))
 
 
+class TestItReachesTheKernelThroughGeneration(unittest.TestCase):
+    """The end-to-end check, and the one that earned its keep.
+
+    All 20 of the tests above passed while every non-default anchor raised
+    on the first real forward: the new branch bound its result to a local
+    called `rows`, shadowing `intervene`'s batch-row parameter. The unit
+    tests call `intervene` without batch rows, so none of them could see it.
+
+    It asserts on the per-head SCORES rather than on the generated tokens.
+    The tiny model has two heads per layer, so `ratio` picks one of two and
+    the same head wins whatever the score is -- the output cannot express a
+    difference that the scores plainly have. Asserting on tokens here would
+    be a test that passes for a model with enough heads and silently passes
+    for one without.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        try:
+            import transformers  # noqa: F401
+        except ImportError:  # pragma: no cover
+            raise unittest.SkipTest("transformers is not installed") from None
+        from tests.test_tiny_llava import IMAGE_TOKEN_ID, N_IMG, tiny_llava
+        from foxrepro.fox import attention as A
+
+        cls.A = A
+        cls.model = tiny_llava()
+        A.register()
+        cls.model.set_attn_implementation(
+            {"text_config": A.ATTN_NAME, "vision_config": "sdpa"}
+        )
+        ids = torch.arange(1, 6 + N_IMG + 4 + 1, dtype=torch.long) % 60
+        ids = ids.unsqueeze(0)
+        ids[0, 6:6 + N_IMG] = IMAGE_TOKEN_ID
+        torch.manual_seed(0)
+        cls.inputs = {
+            "input_ids": ids,
+            "attention_mask": torch.ones_like(ids),
+            "pixel_values": torch.randn(1, 3, 336, 336),
+        }
+        cls.layers = frozenset(
+            range(cls.model.config.text_config.num_hidden_layers))
+
+    def run_anchor(self, anchor):
+        """Returns (n_row_reductions, stacked per-head scores)."""
+        import foxrepro.fox.kernel as K
+
+        calls = []
+        scores = []
+        rows_fn, sel_fn = K.head_scores_rows, K.select_heads
+
+        def spy_rows(*a, **kw):
+            calls.append(1)
+            return rows_fn(*a, **kw)
+
+        def spy_sel(score, ratio, **kw):
+            scores.append(score.clone())
+            return sel_fn(score, ratio, **kw)
+
+        K.head_scores_rows, K.select_heads = spy_rows, spy_sel
+        try:
+            self.A.fox_generate(
+                self.model, dict(self.inputs), max_new_tokens=3,
+                mode="as_implemented", ratio=0.5, gamma=1e4, anchor=anchor,
+                seed=0, greedy=True, eager_layers=self.layers,
+            )
+        finally:
+            K.head_scores_rows, K.select_heads = rows_fn, sel_fn
+        return len(calls), torch.stack(scores)
+
+    def test_the_default_never_takes_the_new_branch(self) -> None:
+        n, _ = self.run_anchor("y_prev")
+        self.assertEqual(n, 0, "y_prev must run the released reduction")
+
+    def test_every_other_anchor_does(self) -> None:
+        for a in ("x_last", "both", "mean_all", "random"):
+            with self.subTest(anchor=a):
+                n, _ = self.run_anchor(a)
+                self.assertGreater(n, 0, f"{a} silently fell back to y_prev")
+
+    def test_an_anchor_changes_the_scores_heads_are_ranked_by(self) -> None:
+        """Silent fallback is the dangerous failure, not a crash.
+
+        If the state never populated, every arm would score identically to
+        y_prev, the sweep would find no difference, and V14's prediction
+        would be confirmed for entirely the wrong reason.
+        """
+        _, base = self.run_anchor("y_prev")
+        for a in ("mean_all", "random"):
+            with self.subTest(anchor=a):
+                _, got = self.run_anchor(a)
+                self.assertFalse(
+                    torch.allclose(base, got),
+                    f"{a} produced the same head scores as y_prev")
+
+    def test_x_last_and_both_match_y_prev_on_the_prefill_step_only(self) -> None:
+        """At prefill there is no y_{t-1} yet, so the anchors coincide.
+
+        Stated as a test because it looks like a bug in a trace and is not;
+        divergence can only begin at the first decode step.
+        """
+        _, base = self.run_anchor("y_prev")
+        for a in ("x_last", "both"):
+            with self.subTest(anchor=a):
+                _, got = self.run_anchor(a)
+                n_layers = len(self.layers)
+                self.assertTrue(torch.allclose(base[:n_layers], got[:n_layers]))
+
+
 class TestThePlumbing(unittest.TestCase):
     @staticmethod
     def cfg(**kw):

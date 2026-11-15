@@ -493,10 +493,15 @@ def intervene(
                 probs, img_start, img_end, use_m_sys=use_m_sys, eps=eps
             )
         else:
-            rows = head_scores_rows(probs, img_start, img_end, eps=eps)
-            if rows is None:
+            # NOT `rows` -- that is this function's batch-row parameter, and
+            # shadowing it leaves `row_sel` below trying to build a tensor
+            # out of a tuple of tensors. Cost: every non-default anchor
+            # raised, while all 20 unit tests passed, because they call
+            # `intervene` without batch rows.
+            row_stats = head_scores_rows(probs, img_start, img_end, eps=eps)
+            if row_stats is None:
                 return attn_logits, None
-            mean_rows, last_row, n_rows = rows
+            mean_rows, last_row, n_rows = row_stats
             anchor_state.observe(
                 layer, (mean_rows, last_row), n_rows,
                 is_prefill=probs.shape[2] > 1,
