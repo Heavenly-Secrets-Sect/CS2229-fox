@@ -238,9 +238,21 @@ r16 then walked the window one layer at a time and found the effect is
 **sub-additive**: L4–17 drops layers 2–3 and keeps 99 %, L2–3 drops 4–15 and
 keeps 47 %, and the two together give less than either sum implies by 1.20
 points. **No layer is necessary**; a run of early layers is, and it saturates.
-Since Figure 7's signal peaks at L11–26, and layers 9–15 are measured as
-adding nothing (layer 11 slightly negative), the quantity this figure plots
-still does not predict where intervening helps.
+
+**r17 then settled what that means, and it is worse for this figure than the
+alternative.** Run alone, layers `{3,7,8,12}` give **+1.64** and `{4,5,6,9}`
+give **+0.02** — four chosen layers recover 63 % of what fourteen do, four
+other early layers recover nothing. So the localisation is real. And the
+quantity this figure plots does not find it: on `m_sys`, layer 3 — the single
+most valuable layer — ranks **31st of 32**, while layer 9, worth nothing,
+ranks 9th. Mean rank of the live four against the dead four is 18.8 vs 27.5
+on `H_vis` and 25.2 vs 21.0 on `m_sys`, i.e. the dead layers rank better on
+the paper's own anchor quantity.
+
+Caveat carried with it: the two sets were chosen from r16's step table on the
+same split and seeds V12b ran on, so the localisation is established but its
+specific membership is not yet validated out of sample. r18 tests it on
+POPE-popular and POPE-random.
 
 **r14 first intervened on the two windows this figure's rule selects, and
 they do not work.** L11–24 is

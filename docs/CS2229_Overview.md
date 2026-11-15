@@ -444,8 +444,9 @@ Nói bằng số: L2–3 (+1.22) cộng L4–17 (+2.57) sẽ là +3.79 **nếu c
 > từng layer" là lỗi của tôi, ở commit `f9e0916`.
 >
 > Thứ còn đứng, yếu hơn và khác: **cần một dải layer sớm bắt đầu từ khoảng
-> layer 7 trở về trước, và hiệu ứng bão hoà khi đã đủ.** Layer nào cụ thể thì
-> phần lớn là thay thế được cho nhau.
+> layer 7 trở về trước, và hiệu ứng bão hoà khi đã đủ.** ~~Layer nào cụ thể
+> thì phần lớn là thay thế được cho nhau.~~ — ==câu sau **r17 đã rút lại**==,
+> xem 5.8.
 
 Với ba cách giải thích:
 
@@ -465,7 +466,59 @@ Vẫn **chưa ai giải thích được** vì sao vùng sống kết thúc quanh
 r16 thu hẹp câu hỏi chứ không đóng nó: khoảng chưa đo giờ là start 5, 6, 7 —
 giữa L4–17 (chạy được) và L8–21 (không).
 
-### 5.8 Cái cổng JSD — nửa còn lại, và nó đã đo được một phần
+### 5.8 Danh tính layer **có** ý nghĩa — và phần chẩn đoán không tìm ra nó
+
+r17 chạy riêng hai bộ bốn layer, như cửa sổ **rời rạc**:
+
+| bộ | vs `fox off` |
+|---|---|
+| `{3,7,8,12}` — bốn layer r16 nói "có đóng góp" | **+1.64** [+1.21, +2.10] |
+| `{4,5,6,9}` — bốn layer "không đóng góp" | **+0.02** [−0.40, +0.44] |
+| **chênh lệch** | **+1.62** [+1.30, +1.97], p < 0.0001 |
+
+Tôi dự đoán hai bộ cách nhau dưới 0.5. Đo được **1.62**, và bộ thứ hai đúng
+bằng **không**. Để so: mười bốn layer (L2–15) cho +2.59, nên ==bốn layer chọn
+đúng lấy 63 % của mười bốn, còn bốn layer sớm khác lấy 0==.
+
+> [!warning] Rút lại "layer nào cụ thể thì thay thế được" của r16
+> r16 thấy **không layer nào cần thiết** (L4–17 bỏ layer 3 vẫn giữ 99 %) rồi
+> suy ra là thay thế được. **Hai mệnh đề khác nhau.** Không-cần-thiết đúng,
+> vì nhiều bộ rời nhau cùng đủ; thay-thế-được sai, vì `{4,5,6,9}` không phải
+> một trong các bộ đó. L4–17 chạy được vì nó **chứa 7, 8, 12**.
+
+**Câu hỏi miễn phí đã đăng ký trước:** chẩn đoán có xếp hạng cao bốn layer
+đó không? AUC theo layer của r13 có sẵn, không tốn GPU.
+
+| layer | hạng `H_vis` /32 | hạng `m_sys` /32 | |
+|---|---|---|---|
+| 3 | 20 | **31** | sống |
+| 7 | 29 | 29 | sống |
+| 8 | 19 | 17 | sống |
+| 12 | **7** | 24 | sống |
+| 4 / 5 / 6 | 24 / 28 / 32 | 32 / 21 / 22 | chết |
+| 9 | 26 | **9** | chết |
+
+Hạng trung bình sống vs chết: **18.8 vs 27.5** (`H_vis`), **25.2 vs 21.0**
+(`m_sys`) — trên chính đại lượng neo của paper, ==các layer **chết** xếp hạng
+**tốt hơn**==. Layer 3 mang nhiều hiệu ứng nhất mà xếp **31/32** theo
+`m_sys`; layer 9 không đáng gì mà xếp hạng 9.
+
+Đây là phát biểu sắc nhất của bản kiểm toán, và **sắc hơn cái nó thay thế**.
+Cách đọc cũ: "không gì trong việc chọn cửa sổ quan trọng, nên chẩn đoán là
+trang trí vô hại". Đo được thì tệ hơn cho paper: ==**có một phép định vị
+thật, đáng 1.62 điểm, và phần chẩn đoán chỉ sai chỗ.**==
+
+> [!caution] Điểm yếu của kết quả này, nói thẳng
+> **V12b xác nhận trên chính dữ liệu đã sinh ra giả thuyết** — hai bộ layer
+> chọn từ bảng bước nhảy r16, cùng seed, cùng split, cùng benchmark mà V12b
+> rồi chạy lại. **Không phải kiểm ngoài mẫu.**
+>
+> Cũng không phải đào nhiễu: việc chia làm trên các khoảng **loại trừ 0**, và
+> chênh 1.62 vượt xa thứ chọn lọc trên ước lượng đủ lực tạo ra được. Phát
+> biểu trung thực: **phép định vị đã xác lập; thành phần cụ thể thì chưa.**
+> r18 sửa chỗ đó bằng POPE-popular và POPE-random.
+
+### 5.9 Cái cổng JSD — nửa còn lại, và nó đã đo được một phần
 
 Mọi phép đo ở trên đều nhắm vào **phần chẩn đoán**. Nhưng cái còn lại để giải
 thích Fox là **luật hợp nhất**: `fox off` giữ nguyên dual pass và fusion, tắt
@@ -533,9 +586,9 @@ can thiệp mua 0.73 điểm CHAIR_S bằng 2.8 điểm recall.
 
 ## 6. Tình trạng hiện tại
 
-- **348/358 job đã chạy.** r16 về 5/6 session: **V11 đã chấm đủ** (xem 5.7), còn Table 1 thiếu 8 job vì **session 5 không về**.
-- Hai job `L2-14` (seed 43, 44) bị cắt ở tường session (`rc = -15`), còn 2972/3000 và 2599/3000 record. Đã ghép đôi trên phần giao nên vẫn dùng được; cả hai bước nhảy liên quan đều không có ý nghĩa thống kê.
-- Gate kiểm chứng: **20 đúng / 4 sai**.
+- **373/391 job đã chạy.** r17 xong (25 job, 3 session, **0 lỗi**); plan r16 giờ cũng trọn vẹn — hai job `L2-14` bị cắt đã merge đủ 3000 record. **r18** đóng băng 18 job, 2 session.
+- Table 1 đã đủ cả ba split cho mọi phương pháp so sánh.
+- Gate kiểm chứng: **21 đúng / 5 sai** (V12a đúng, V12b sai).
 - Hàng đợi `pending` của bot **đã chạy qua trên GPU thật**: 10 session khai
   báo, 4 chạy ngay (2 account còn quota × trần 2 session), **6 xếp hàng** và
   được cron đẩy dần khi có chỗ. Cả 10 đều xong, 0 lỗi. Trước đó nhánh này mới
@@ -637,7 +690,26 @@ Ba quy tắc rút ra từ việc mất GPU-h thật:
 
 ## 8. Còn lại gì — việc có thể nhận
 
-**r17 đã đóng băng**: 25 job, 23 GPU-h, **3 session, thứ tự `priority`**.
+**r18 đã đóng băng**: 18 job, 16.5 GPU-h, **2 session**. Chỉ một việc:
+==kiểm **ngoài mẫu** kết quả lớn nhất của cả project.==
+
+`{3,7,8,12}` so `{4,5,6,9}` trên **POPE-popular và POPE-random**, kèm `fox
+off` làm baseline (chưa bao giờ chạy trên hai split đó, mà không có baseline
+thì phép so không có mốc 0).
+
+Lý do duy nhất: chênh lệch 1.62 điểm của r17 hiện đang **định đoạt kết luận
+của toàn bộ bản kiểm toán**, và nó dựa trên một phép kiểm đã tự chọn giả
+thuyết của mình. Ba split POPE khác nhau ở **cách chọn câu hỏi phủ định**
+(ngẫu nhiên / vật thể hay gặp / vật thể đồng xuất hiện), không khác ở ảnh
+hay mô hình. Một phép định vị nằm trong layer của mô hình thì **không được
+phép** quan tâm tới chính sách sinh câu hỏi.
+
+Dự đoán: chênh lệch **còn trên 1.0 điểm ở cả hai split**, và bộ chết vẫn
+không phân biệt được với `fox off`.
+
+---
+
+**r17 (đã xong)**: 25 job, 23 GPU-h, 3 session, `priority`.
 
 | session | nội dung | h |
 |---|---|---|

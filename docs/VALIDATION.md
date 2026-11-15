@@ -1322,7 +1322,11 @@ a shortfall of **−1.20**, almost half the total effect.
 >
 > What survives is weaker and different: **the intervention needs a run of
 > early layers beginning at or before about layer 7, and saturates once it
-> has enough of them.** Which particular layers is largely interchangeable.
+> has enough of them.** ~~Which particular layers is largely
+> interchangeable.~~ — **that second sentence is retracted by r17**, which
+> measured `3,7,8,12` at +1.64 and `4,5,6,9` at +0.02. No single layer is
+> necessary; the labels are not interchangeable. Both can hold, because
+> several disjoint sets suffice and `4,5,6,9` is not one of them.
 
 ### What that does to the three accounts
 
@@ -1405,6 +1409,149 @@ early layers and the labels on them do not matter.
 
 The second row is the one worth wanting. It is the only outcome left in this
 suite that would restore a load-bearing role to the diagnosis.
+
+---
+
+## Results, round 17 (2026-11-15) — layer identity matters, and the diagnosis misses it
+
+25 jobs, 3 sessions, no failures. The two L2–14 windows r16 left partial were
+merged to complete, so the plan is 373/373. POPE-adversarial, sampling, seeds
+42/43/44, against `fox off` (78.97).
+
+### V12a — holds. The boundary is coverage, not a threshold
+
+| start | window | vs `fox off` | 90 % CI |
+|---|---|---|---|
+| 2 | L2–15 | +2.59 | [+2.09, +3.10] |
+| 4 | L4–17 | +2.57 | [+2.09, +3.04] |
+| 5 | L5–18 | +2.34 | [+1.88, +2.83] |
+| 6 | L6–19 | +2.34 | [+1.87, +2.82] |
+| 7 | L7–20 | **+1.36** | [+0.91, +1.80] |
+| 8 | L8–21 | +0.32 | [−0.10, +0.76] |
+| 11 | L11–24 | −0.48 | [−0.90, −0.04] |
+
+Monotone throughout, L7–20 clearly above L8–21, L5–18 above +2.0. **Both
+clauses of the prediction hold.** The decline is gradual — there is no single
+edge layer — which is what "coverage of the live region" predicts and what a
+threshold does not.
+
+### V12b — fails, by 1.62 points, and this is the result
+
+| set | layers | vs `fox off` |
+|---|---|---|
+| `3,7,8,12` | the four r16's steps said add | **+1.64** [+1.21, +2.10] |
+| `4,5,6,9` | four that added nothing | **+0.02** [−0.40, +0.44] |
+| difference | | **+1.62** [+1.30, +1.97], p < 0.0001 |
+
+Predicted within 0.5 of each other. Measured 1.62 apart, and the second set
+is **exactly nothing** — four early layers, the same count, the same
+benchmark, zero effect. For scale, fourteen layers (L2–15) give +2.59, so
+four chosen layers recover **63 %** of what fourteen do, and four other early
+layers recover none of it.
+
+**Layer identity is not interchangeable.** r16 concluded the opposite, and
+r16 was wrong about it — see the retraction below.
+
+### The free follow-up, as promised: does the diagnosis find them?
+
+The pre-registration said that if V12b failed this way, r13's per-layer AUCs
+could answer the next question at no GPU cost. Figure 7 plots |AUC − 0.5| per
+layer, and that is the quantity the paper's automatic rule ranks layers by.
+
+| layer | H_vis \|ΔAUC\| | rank /32 | m_sys \|ΔAUC\| | rank /32 | |
+|---|---|---|---|---|---|
+| 3 | 0.0217 | 20 | 0.0044 | **31** | live |
+| 7 | 0.0085 | 29 | 0.0109 | 29 | live |
+| 8 | 0.0229 | 19 | 0.0644 | 17 | live |
+| 12 | 0.0621 | **7** | 0.0171 | 24 | live |
+| 4 | 0.0164 | 24 | 0.0027 | 32 | dead |
+| 5 | 0.0095 | 28 | 0.0288 | 21 | dead |
+| 6 | 0.0023 | 32 | 0.0255 | 22 | dead |
+| 9 | 0.0123 | 26 | **0.1066** | **9** | dead |
+
+Mean rank of the live four against the dead four: **18.8 vs 27.5** on `H_vis`,
+and **25.2 vs 21.0** on `m_sys` — on the paper's own anchor quantity the dead
+layers rank *better*.
+
+**No.** Layer 3 carries more of the effect than any other single layer and
+ranks **31st of 32** on `m_sys`. Layer 9 is worth nothing and ranks 9th.
+Three of the four live layers sit in the bottom half of both rankings.
+
+This is the sharpest statement this audit has produced, and it is sharper
+than the one it replaces. The earlier reading was "nothing about the window
+choice matters, so the diagnosis is harmless decoration". The measured
+reading is worse for the paper: **there is a real localisation, worth 1.62
+points, and the diagnosis points somewhere else.**
+
+> [!warning] This retracts r16's "which particular layers is largely
+> interchangeable"
+> r16 saw that no single layer is *necessary* — L4–17 omits layer 3 and keeps
+> 99 % — and generalised that to interchangeability. The two are different
+> claims, and V12b separates them. Not necessary, because several disjoint
+> sets suffice; not interchangeable, because `4,5,6,9` is one of the sets
+> that does not. L4–17 works because it contains 7, 8 and 12, not because the
+> labels do not matter.
+>
+> What survives from r16 unchanged: the sub-additivity (+1.22 and +2.57
+> combining to +2.59), and that no single layer is necessary.
+
+### The caveat this result needs, stated plainly
+
+**V12b is a confirmation on the same data that chose its own hypothesis.**
+The two sets were picked from r16's step table, which came from these seeds,
+this split and this benchmark; V12b then ran on the same seeds, split and
+benchmark. That is not an out-of-sample test.
+
+It is not noise-mining either — the split was made on intervals that exclude
+zero (layers 3, 7, 8, 12 at [+0.88,+1.37], [+0.40,+0.81], [+0.49,+0.93],
+[+0.24,+0.62]) rather than on point estimates, and a 1.62-point gap is far
+outside what selection on well-powered estimates can manufacture. But the
+honest statement is that the *localisation* is established and its *specific
+membership* is not yet validated out of sample.
+
+The fix is cheap and is r18: run the same two sets on POPE-popular and
+POPE-random. If the localisation is a property of the model, it transfers. If
+`3,7,8,12` is partly an artefact of this split, it will not.
+
+Gate: **21 held, 5 failed.** V12a held on both clauses; V12b failed.
+
+---
+
+## V13 — Does the localisation transfer off the split that found it?
+
+`--intervention-layers 3,7,8,12` and `4,5,6,9`, plus `fox off` as the
+baseline, on **POPE-popular and POPE-random**, seeds 42/43/44. **16.5 h.**
+18 jobs, no new code.
+
+This round exists for one reason. r17's 1.62-point gap is the largest single
+finding in this audit, and it has one weakness: the two sets were chosen from
+r16's step table, measured on POPE-adversarial at these seeds, and then
+confirmed on POPE-adversarial at these seeds. A confirmation on the data that
+chose the hypothesis is not evidence that the hypothesis is about the model.
+
+The other two POPE splits are the cheapest honest test — same model, same
+layers, different questions and different images. `fox off` has never run on
+them, so it is included; without a baseline on each split the comparison has
+no zero.
+
+**Prediction: the gap survives at more than 1.0 point on both splits, with
+`4,5,6,9` remaining statistically indistinguishable from `fox off`.**
+
+The reasoning is that the three POPE splits differ in how the negative
+questions are chosen — random, frequent-object, co-occurring-object — and not
+in the images or the model. A localisation inside the model's layers should
+not care which distractor policy generated the question.
+
+| outcome | reading |
+|---|---|
+| gap > 1.0 on both, dead set still ≈ 0 | **the localisation is real and is a property of the model.** r17's finding stands without its caveat, and this audit's headline becomes: there is a genuine localisation worth 1.6 points, and the paper's diagnostic ranks those layers in the bottom half |
+| gap shrinks below 1.0 but stays > 0 | the membership is partly adversarial-specific. The *existence* of a localisation survives; `{3,7,8,12}` as the answer does not, and the honest statement is that some early layers matter more than others without naming them |
+| gap vanishes | **r17 was selection on its own data after all**, despite the intervals excluding zero. The retraction would be mine again, and r16's "interchangeable" reading would be restored |
+| the dead set becomes non-zero | the live/dead split is split-specific in both directions, which would point at the question distribution rather than the model and would need a different experiment entirely |
+
+The third row is why this runs before anything else. r17's result currently
+sets the conclusion of the whole audit, and it rests on a test that chose its
+own hypothesis.
 
 ---
 

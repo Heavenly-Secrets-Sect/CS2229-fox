@@ -1153,6 +1153,46 @@ def _build_plan() -> List[Job]:
                 note=f"V12b: {why}, run alone",
             ))
 
+    # ---- Round 18: validate r17's localisation out of sample --------------
+    # V13. r17 found {3,7,8,12} worth +1.64 and {4,5,6,9} worth +0.02, a
+    # 1.62-point gap at p < 0.0001 -- the largest single finding in this
+    # audit. It has one weakness and this round is only about that weakness.
+    #
+    # The two sets were SELECTED from r16's step table, which was measured on
+    # POPE-adversarial at seeds 42/43/44; V12b then confirmed them on the
+    # same split at the same seeds. That is a confirmation on the data that
+    # chose the hypothesis, not an out-of-sample test. The selection was made
+    # on intervals excluding zero rather than on point estimates, so it is
+    # not noise-mining -- but "these four layers" is a claim about the model
+    # and has only ever been checked on one split.
+    #
+    # The two other POPE splits are the cheapest honest test: same model,
+    # same layers, different questions and different images. If the
+    # localisation is a property of the model it transfers; if {3,7,8,12} is
+    # partly an artefact of adversarial, it will not.
+    #
+    # Both sets on both splits, because a gap that shrinks is only
+    # interpretable if the dead set stayed dead.
+    for split in ("popular", "random"):
+        for layers, why in (("3,7,8,12", "the live four"),
+                            ("4,5,6,9", "the dead four")):
+            for seed in SEEDS_BREADTH:
+                jobs.append(Job(
+                    "layer_identity", "fox", "pope", split, seed=seed,
+                    intervention_layers=layers,
+                    note=f"V13: {why}, out of sample on {split}",
+                ))
+
+    # The baseline each is read against, on splits where `fox off` has never
+    # run. Without it the comparison has no zero.
+    for split in ("popular", "random"):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "layer_identity", "fox", "pope", split, seed=seed,
+                mode="off",
+                note=f"V13: the no-intervention baseline on {split}",
+            ))
+
     return jobs
 
 
