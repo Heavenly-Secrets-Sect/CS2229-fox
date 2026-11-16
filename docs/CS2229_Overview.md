@@ -586,9 +586,9 @@ can thiệp mua 0.73 điểm CHAIR_S bằng 2.8 điểm recall.
 
 ## 6. Tình trạng hiện tại
 
-- **373/391 job đã chạy.** r17 xong (25 job, 3 session, **0 lỗi**); plan r16 giờ cũng trọn vẹn — hai job `L2-14` bị cắt đã merge đủ 3000 record. **r18** đóng băng 18 job, 2 session.
+- **415/415 job đã chạy — plan rỗng.** r19 xong (12 job, 3 session, 0 lỗi); bản sửa generator-device giữ được. r17 xong (25 job, 3 session, **0 lỗi**); plan r16 giờ cũng trọn vẹn — hai job `L2-14` bị cắt đã merge đủ 3000 record. **r18** đóng băng 18 job, 2 session.
 - Table 1 đã đủ cả ba split cho mọi phương pháp so sánh.
-- Gate kiểm chứng: **21 đúng / 5 sai** (V12a đúng, V12b sai).
+- Gate kiểm chứng: **21 đúng / 6 sai**, và **V14 không chấm được** — dự đoán phát biểu trên POPE, mà POPE không đặt được câu hỏi đó (V12a đúng, V12b sai).
 - Hàng đợi `pending` của bot **đã chạy qua trên GPU thật**: 10 session khai
   báo, 4 chạy ngay (2 account còn quota × trần 2 session), **6 xếp hàng** và
   được cron đẩy dần khi có chỗ. Cả 10 đều xong, 0 lỗi. Trước đó nhánh này mới

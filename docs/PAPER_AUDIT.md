@@ -98,7 +98,7 @@ A second note: Table 7 gives α=2 as 85.97 while Table 4 gives the same
 configuration as 85.99. A 0.02 discrepancy between two tables describing one
 run.
 
-### Tables 4 and 12 — temporal-anchor / query-position ablation — **PARTLY RUN, r18; POPE cannot test it**
+### Tables 4 and 12 — temporal-anchor / query-position ablation — **DONE, r18 + r19. One row refuted, the rest beyond our power**
 
 **These are the same table printed twice** — identical five rows, identical
 numbers, once in the main text as "temporal-anchor" and once in the appendix
@@ -132,8 +132,32 @@ points. Conditional because it rests on Table 4's POPE runs using the budget
 their POPE script sets, which the paper does not state.
 
 The CHAIR columns are where the question is well posed — 512 tokens, so the
-anchors genuinely differ. That half crashed in r18 on a generator-device bug
-and is re-run in r19.
+anchors genuinely differ, and r19 confirmed it: all four non-default arms
+generate differently from the released one on **500 of 500** captions.
+
+| anchor | CHAIR_S | Δ vs released [90 %] | paper |
+|---|---|---|---|
+| `y_prev` (released) | 48.47 | — | 49.12 |
+| `both` | **46.93** | −1.53 [−3.80, +0.67] | 46.40 |
+| `mean_all` | 47.60 | −0.87 [−3.00, +1.33] | 52.06 |
+| `random` | 48.20 | −0.27 [−2.60, +2.07] | 53.42 |
+| `x_last` | 48.27 | −0.20 [−2.53, +2.13] | 48.63 |
+
+**No pairwise difference is significant**; the spread is 1.53 against the
+paper's 7.02.
+
+* **`random token` does not reproduce.** The paper puts it 7.02 behind the
+  two-anchor row; we measure +1.27 [−0.93, +3.60], and 7.02 is outside that.
+  Choosing the query position at random costs nothing detectable.
+* **The headline anchor gain is unresolved and cannot be resolved here.**
+  The paper's 2.72-point gain sits inside our interval, which also contains
+  zero. CHAIR at n=500 against a measured 5.20-point image-draw drift cannot
+  separate 1.5 points, and more seeds do not touch the image component.
+
+The ordering at the top does match: `both` is our best anchor too, and it
+beats the released `y_prev` on CHAIR_S, CHAIR_I **and** recall — so if the
+effect is real, the configuration the paper describes is better than the one
+its code ships.
 
 ### Table 14 — fusion-strategy ablation — **DONE, r15. The ordering inverts**
 

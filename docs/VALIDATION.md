@@ -1730,6 +1730,88 @@ Gate: **21 held, 6 failed.** V13 failed; V14 is unscored.
 
 ---
 
+## Results, round 19 (2026-11-16) — half of Table 4 refuted, half beyond our power
+
+12 jobs, 3 sessions, all green. The generator-device fix held: every CHAIR
+anchor job that died in r18 completed here.
+
+### First, the check that r18 earned
+
+On POPE, three of the five anchors came back byte-identical. That must not
+repeat on CHAIR, or the table is unreadable:
+
+| anchor | captions identical to `y_prev` |
+|---|---|
+| `x_last` | **0 / 500** |
+| `both` | **0 / 500** |
+| `mean_all` | **0 / 500** |
+| `random` | **0 / 500** |
+
+Every arm generates differently. With 512 tokens the anchors are genuinely
+distinct quantities, so the table below means something.
+
+### V14 on CHAIR, with the recall guard
+
+| anchor | CHAIR_S | Δ vs `y_prev` [90 %] | p | CHAIR_I | recall | objects |
+|---|---|---|---|---|---|---|
+| `y_prev` (released) | 48.47 | — | — | 13.89 | 75.79 | 1182 |
+| **`both`** (paper's main) | **46.93** | −1.53 [−3.80, +0.67] | 0.26 | 13.76 | 77.16 | 1204 |
+| `mean_all` | 47.60 | −0.87 [−3.00, +1.33] | 0.54 | 13.93 | 76.60 | 1195 |
+| `random` | 48.20 | −0.27 [−2.60, +2.07] | 0.89 | 14.19 | 77.09 | 1203 |
+| `x_last` | 48.27 | −0.20 [−2.53, +2.13] | 0.90 | 14.52 | 77.35 | 1207 |
+
+**No pairwise difference reaches significance.** The point-estimate spread is
+**1.53** CHAIR_S against the paper's **7.02**.
+
+Two things are worth separating, because they have different verdicts.
+
+**The paper's `random token` row does not reproduce.** Table 4 puts random
+token 7.02 CHAIR_S points behind the two-anchor configuration. We measure
+**+1.27 [−0.93, +3.60]**, and the paper's value sits **outside** that
+interval. Picking the query position at random costs nothing we can detect.
+
+**The paper's headline anchor gain is not resolved, and cannot be here.**
+Table 4's `x_last + y_{t−1}` beats `y_{t−1} only` by 2.72 points; our
+`both` beats `y_prev` by 1.53 [−3.80, +0.67], and **2.72 is inside that
+interval**. So the claim is neither confirmed nor refuted — our interval is
+3.8 points below to 0.7 above, and it contains both the paper's value and
+zero.
+
+That is a power limit, and it is structural rather than a budget choice.
+CHAIR here is 500 images × 3 seeds, and this project measured a **5.20-point
+draw-to-draw drift** across five image draws (§3.8.1). More seeds reduce the
+generation component and leave the image-set component untouched, so no seed
+count available to us resolves a 1.5-point CHAIR difference. **CHAIR at
+n = 500 cannot test Table 4's finer rows.**
+
+### Is the prediction scored?
+
+No, and saying so is more useful than forcing it. V14 predicted "all five
+anchors within 0.5 points **on POPE**", and r18 established that POPE cannot
+pose the question — one token, so three of the five policies are the same
+computation. The substance of the prediction — that the anchor should matter
+about as little as head selection does — is *consistent* with five
+indistinguishable arms, but an experiment that cannot resolve 0.5 points is
+not a test of a 0.5-point claim.
+
+Gate stays **21 held, 6 failed**; V14 is recorded as unscoreable rather than
+counted either way.
+
+### What r19 does establish
+
+* the **ordering** at the top matches the paper: `both` is our best anchor
+  too, at 46.93 against the paper's 46.40 — inside the image-set drift;
+* `both` is better than the shipped `y_prev` on CHAIR_S, CHAIR_I **and**
+  recall (77.16 vs 75.79, 1204 objects vs 1182). Not a trade. If the effect
+  is real, **the configuration the paper describes is better than the one
+  its code ships** — the second time this suite has found that shape, after
+  V8's windows, and this time pointing the paper's way;
+* the released `y_prev` has the **lowest recall of all five anchors**;
+* and the magnitudes in Table 4 are, on this stack, 4.6× larger than
+  anything we can see.
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run
