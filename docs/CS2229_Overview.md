@@ -708,18 +708,29 @@ bản**. POPE chấm cả 3000 câu nên đó là nguồn biến thiên duy nh�
 CHAIR bị chặn bởi **lần rút 500 ảnh**, mà không số seed nào đụng tới — r19 đã
 xác lập điều đó.
 
-### r21+ — MME, MMBench, MathVista. **Chặn ở dữ liệu, không phải ở GPU**
+### r21+ — MME, MMBench, MathVista. **Đã kiểm nguồn dữ liệu, không phải đoán**
 
-| | GPU | công việc thật |
-|---|---|---|
-| MME | ~4 h | harness viết từ đầu — ==release **không ship script MME** dù báo cáo kết quả MME== |
-| MMBench | ~6 h | SID có script tham khảo |
-| MathVista | ~8 h | không repo nào có script |
+| | nguồn | hình dạng | dùng lại được gì |
+|---|---|---|---|
+| **MME** | `lmms-lab/MME`, không gated, 25k lượt tải | **yes/no nhị phân** | ==chấm điểm dùng lại gần như nguyên của POPE== |
+| MMBench | `lmms-lab/MMBench_EN`, 11 095 dòng, split `dev` + `test` | trắc nghiệm A/B/C/D | **không** — cần scorer mới |
+| MathVista | `AI4Math/MathVista`, 6 141 dòng | có `answer`, `choices`, `answer_type` | một phần |
 
-Nút thắt **không phải** 18 GPU-h mà là ba bộ dữ liệu chưa dựng và ba harness
-chưa viết. Thứ tự đề xuất: MME trước — rẻ nhất, và việc release không có
-script cho chính con số nó công bố **tự nó đã là một phát hiện** cùng họ với
-Table 13 và các cờ VCD/ICD chết.
+**MME trước, và lý do mạnh hơn tôi tưởng:** nó là yes/no, tức cùng hình dạng
+với POPE — bộ chấm, bộ parse "yes/no", và `paired_bootstrap_proportion` đều
+dùng lại được. Việc release **không ship script MME** dù công bố số MME vẫn
+là một phát hiện cùng họ với Table 13 và các cờ VCD/ICD chết.
+
+> [!caution] MathVista vướng đúng cái hố của Table 5
+> Protocol chính thức của MathVista dùng **LLM để trích đáp án** từ output
+> tự do. Đó là cùng vấn đề đã làm Figure 6 / Table 5 không tái lập được.
+> Lối ra: giới hạn ở tập **trắc nghiệm** (`answer_type` có sẵn trong dataset)
+> với bộ trích theo luật, và ghi rõ đây là **sai khác có chủ ý**, không phải
+> bản sao protocol. Nếu không chấp nhận được thì mục này **không** tái lập
+> được, cùng lý do với GPT-4V judge.
+
+MMBench: split `test` giấu đáp án (phải nộp lên server), nên chỉ `dev` dùng
+được.
 
 ### r22+ — backbone thứ hai. **Đắt nhất, và là phép kiểm lời giải thích của chính nhóm**
 
@@ -728,12 +739,36 @@ của chúng ta**: toàn bộ lập luận "hiệu ứng là requantisation fp16
 trên **một** backbone. Nếu đúng là hiệu ứng độ chính xác thì nó phải xuất
 hiện trên Qwen3-VL-8B hoặc InternVL3-8B; nếu không, giải thích của ta sai.
 
-Công việc code, theo thứ tự khó tăng dần:
+**`scripts/probe_backbone.py` đã trả lời phần lớn câu hỏi này, miễn phí** —
+nó đọc `config.json` và weight index, không tải weight:
 
-1. `locate_image_span` đang **hard-code 576 token** ảnh của LLaVA-1.5.
-2. Hook attention dispatch theo `module.layer_idx` và cấu trúc module của
-   LLaVA — backbone khác đặt tên khác.
-3. `img_start`/`img_end` phụ thuộc cách mỗi model chèn token ảnh.
+| | Qwen3-VL-8B | InternVL3-8B |
+|---|---|---|
+| transformers có class | ✅ | ✅ |
+| **Fox patch tới được decoder** | ✅ | ✅ |
+| tải về | 16.3 GiB | 14.8 GiB |
+| `image_token_id` trong config | ✅ 151655 | ✅ 151667 |
+| visual span | **UNKNOWN** | **UNKNOWN** |
+
+Dòng cuối là **toàn bộ** nút thắt, và nó nhỏ hơn tên gọi:
+
+| model | hình học | số token ảnh |
+|---|---|---|
+| LLaVA-1.5 | 336/14 = 24×24 | **cố định 576** |
+| Qwen3-VL | `patch_size=16`, `spatial_merge_size=2` | **động** theo độ phân giải |
+| InternVL3 | 448/14, chia tile động | **động** theo số tile |
+
+`locate_image_span` **đã** suy ra span từ `input_ids`; con số 576 chỉ là một
+**assertion kiểm tra**, không phải logic. Cả hai model đều khai
+`image_token_id`. Nên công việc thật là:
+
+1. Độ rộng kỳ vọng thành **thuộc tính theo model**, `None` = suy ra từng
+   sample và chỉ khẳng định span liền mạch, khác rỗng.
+2. `load_llava` → loader chung; khoá sub-config của `attn_implementation`
+   khác nhau theo kiến trúc.
+3. **Một session smoke rẻ** trên Kaggle: load, 5 sample, khẳng định span liền
+   mạch và logits ra đúng `[B,H,Q,K]`. ==Đây mới là rủi ro thật, và nó được
+   cô lập vào một session thay vì một round.==
 
 > [!warning] Thứ tự này không tuỳ tiện
 > r20 chạy trước vì nó có thể **rút lại** phát hiện lớn nhất của project. Dựng
