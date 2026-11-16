@@ -98,7 +98,7 @@ A second note: Table 7 gives α=2 as 85.97 while Table 4 gives the same
 configuration as 85.99. A 0.02 discrepancy between two tables describing one
 run.
 
-### Tables 4 and 12 — temporal-anchor / query-position ablation — **IMPLEMENTED, running in r18**
+### Tables 4 and 12 — temporal-anchor / query-position ablation — **PARTLY RUN, r18; POPE cannot test it**
 
 **These are the same table printed twice** — identical five rows, identical
 numbers, once in the main text as "temporal-anchor" and once in the appendix
@@ -118,6 +118,22 @@ The bottom row is the main configuration (46.40 / 12.90 match Table 2), and
 Runnable, and it bears directly on a finding of ours: the released code uses
 `tail_n = 1`, a single query position, not the two anchors the paper
 describes. These rows would measure what that choice costs.
+
+**r18 found that POPE cannot measure it at all.** POPE emits one token, so
+there is one query position and no `y_{t-1}` distinct from `x_last`. Our
+`x_last`, `both` and `random` arms came out **byte-identical on all 3000
+samples** — three of the five policies are the same computation there.
+
+The same argument applies to the paper's own POPE column, conditionally:
+Fox's released `pope_eval.py` passes `max_new_tokens = 1`, and with one token
+the rows `x_last only` (85.02), `y_{t−1} only` (84.91) and `x_last + y_{t−1}`
+(85.99) describe one computation reported as three numbers spanning 1.08
+points. Conditional because it rests on Table 4's POPE runs using the budget
+their POPE script sets, which the paper does not state.
+
+The CHAIR columns are where the question is well posed — 512 tokens, so the
+anchors genuinely differ. That half crashed in r18 on a generator-device bug
+and is re-run in r19.
 
 ### Table 14 — fusion-strategy ablation — **DONE, r15. The ordering inverts**
 

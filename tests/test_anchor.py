@@ -144,6 +144,53 @@ class TestTheState(unittest.TestCase):
         self.assertTrue(torch.equal(
             self.state.resolve(0, "x_last", dec)[0], dec[0]))
 
+    def test_the_reservoir_draw_uses_the_generator_device(self) -> None:
+        """A cuda generator with a cpu draw raises, and CPU CI cannot see it.
+
+        This cost twelve CHAIR jobs. The draw only happens from the SECOND
+        observe onward, so POPE -- one token, one forward -- passed while
+        every CHAIR job died at token two. Asserted on the call rather than
+        on behaviour because there is no GPU here to reproduce it on, and an
+        invariant that only a GPU can check is one that only a GPU run will
+        break.
+        """
+        seen = {}
+        real = torch.rand
+
+        def spy(*a, **kw):
+            seen["device_kwarg_present"] = "device" in kw
+            seen["device"] = kw.get("device")
+            return real(*a, **{k: v for k, v in kw.items() if k != "device"}
+                        ) if kw.get("device") is None else real(*a, **kw)
+
+        gen = torch.Generator()
+        gen.manual_seed(0)
+        state = AnchorState(generator=gen)
+        rows = head_scores_rows(self.p_prefill, 6, 65)
+        state.observe(0, (rows[0], rows[1]), rows[2], is_prefill=True)
+        torch.rand = spy
+        try:
+            # Second observe: this is the one that draws.
+            state.observe(0, (rows[0], rows[1]), 1, is_prefill=False)
+        finally:
+            torch.rand = real
+        self.assertTrue(seen.get("device_kwarg_present"),
+                        "the reservoir draw must name a device")
+        self.assertEqual(seen.get("device"), gen.device)
+
+    def test_the_reservoir_runs_at_all_past_the_first_observe(self) -> None:
+        """The behavioural half: many observes must not raise, and must pick."""
+        gen = torch.Generator()
+        gen.manual_seed(0)
+        state = AnchorState(generator=gen)
+        rows = head_scores_rows(self.p_prefill, 6, 65)
+        state.observe(0, (rows[0], rows[1]), rows[2], is_prefill=True)
+        dec = head_scores_rows(self.p_decode, 6, 65)
+        for _ in range(64):
+            state.observe(0, (dec[0], dec[1]), 1, is_prefill=False)
+        self.assertEqual(state.seen[0], rows[2] + 64)
+        self.assertIn(0, state.picked)
+
     def test_an_unknown_anchor_is_refused(self) -> None:
         dec = self.feed(self.p_decode)
         with self.assertRaises(ValueError):

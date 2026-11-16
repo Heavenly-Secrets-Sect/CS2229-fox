@@ -1617,6 +1617,119 @@ destroying the same ranking, and they should cost about the same.
 
 ---
 
+## Results, round 18 (2026-11-16) — V13 fails on its own units; V14 is not answered
+
+42 jobs, 6 sessions. 30 landed; **12 crashed** — every CHAIR job of V14, in
+0.3 s, on a bug this project had already paid for once. See the last section.
+
+### V13 — the prediction fails, and it fails because I wrote it in the wrong units
+
+| split | `3,7,8,12` | `4,5,6,9` | gap | 90 % CI | p |
+|---|---|---|---|---|---|
+| adversarial | +1.64 | +0.02 | **+1.62** | [+1.30, +1.97] | <0.0001 |
+| popular | +1.03 | +0.38 | **+0.66** | [+0.39, +0.93] | <0.0001 |
+| random | +0.27 | +0.21 | +0.06 | [−0.21, +0.32] | 0.76 |
+
+Predicted the gap would stay above **1.0 on both** new splits. It is 0.66 and
+0.06. **Fails.**
+
+But the control changes what that means:
+
+| split | full `fox` − `off` | `3,7,8,12` − `off` | share |
+|---|---|---|---|
+| adversarial | +2.59 | +1.64 | 0.64 |
+| popular | +1.41 | +1.03 | 0.73 |
+| random | +0.62 | +0.27 | 0.43 |
+
+**The whole intervention is 2–4× weaker on the other splits.** There is less
+effect to localise, so an absolute threshold was the wrong instrument — four
+layers recover 43–73 % of whatever effect each split has, and on popular the
+gap is still significant at p < 0.0001.
+
+On random the effect is +0.62 in total. A proportional gap would be about
++0.39, and this interval's upper bound is +0.32 — so three seeds there are
+at the edge of resolving anything, and "the gap vanished" overstates what
++0.06 [−0.21, +0.32] licenses. **Underpowered, not refuted.**
+
+**What stands:** the localisation transfers to POPE-popular, significantly,
+at a similar share of a smaller effect. r17's finding survives its
+out-of-sample test on the split that had the power to run it. What does not
+stand is my prediction, and the fault is in its design: *it was stated in
+accuracy points when the quantity it was about is a fraction of an effect
+that varies 4× across the splits it was tested on.*
+
+### V14 — not answered, and POPE cannot answer it
+
+| anchor | vs `off` | vs `y_prev` |
+|---|---|---|
+| `y_prev` | +2.59 | — |
+| `x_last` | +2.84 | +0.26, p = 0.33 |
+| `both` | +2.84 | +0.26, p = 0.33 |
+| `mean_all` | +2.77 | +0.18, p = 0.50 |
+| `random` | +2.84 | +0.26, p = 0.33 |
+
+Three arms share a number, a confidence interval and a p-value. That is not a
+coincidence and it is not a bug:
+
+> `x_last`, `both` and `random` are **byte-identical on all 3000 samples**.
+
+POPE emits **one token**. With a single query position there is no `y_{t-1}`
+distinct from `x_last`, so three of the five policies are *definitionally the
+same arm*. `mean_all` is the only one that differs, because it averages over
+the prompt rows (2936/3000 identical).
+
+And the +0.26 those three share against `y_prev` is not an anchor effect
+either. It is reduction order: `y_prev` runs `head_scores` over a `[B,H,K]`
+slice and the others run `head_scores_rows` over `[B,H,Q,K]`, the two agree
+bit-for-bit on CPU at test sizes, and at 600×600 on a T4 they do not — which
+flips near-tied top-k selections on 189 of 3000 samples. **The measured
+"spread across five anchors" of 0.26 points is floating-point noise between
+two reductions of the same number.**
+
+So the prediction is neither confirmed nor refuted. **The only place the
+anchor question is well posed is CHAIR**, which generates up to 512 tokens,
+and that is the half that crashed.
+
+### A consequence for the paper, conditional but checkable
+
+The same argument applies to **Table 4's own POPE column**. Fox's released
+`pope_eval.py` passes `max_new_tokens = 1` (recorded in `plan.py`'s OPERA
+note, where the three forks' differing budgets are documented). With one
+token there is one query position, so the paper's rows `x_last only`,
+`y_{t−1} only` and `x_last + y_{t−1}` describe **the same computation** — yet
+Table 4 reports 85.02, 84.91 and 85.99 for them, a 1.08-point spread.
+
+Stated as a conditional because it rests on their POPE runs using the budget
+their released POPE script sets. If Table 4's POPE column was produced with a
+longer budget, the argument does not apply — and the paper does not say.
+Either way the CHAIR columns are unaffected, which is where r19 measures.
+
+### The crash, and why only CHAIR died
+
+```
+RuntimeError: Expected a 'cpu' device type for generator but found 'cuda'
+```
+
+`AnchorState`'s reservoir draw called `torch.rand(1, generator=...)` without a
+device. A seeded run puts its generator on the logits device, and torch
+refuses a CUDA generator for a CPU draw.
+
+The draw only happens from the **second** `observe` onward. POPE emits one
+token, reaches one forward per layer, and never gets there — so all 12 POPE
+anchor jobs passed while all 12 CHAIR jobs died at token two. Fixed with
+`device=self._gen.device`.
+
+This project had already paid for this once: `TestGeneratorDevice` in
+`tests/test_attention_wiring.py` exists because `fox_generate` built a CPU
+generator against CUDA logits on the first real GPU run. Two tests now cover
+the anchor path, one of them asserting on the call rather than on behaviour,
+because a CPU-only test suite cannot reproduce a cross-device error and an
+invariant only a GPU can check is one only a GPU run will break.
+
+Gate: **21 held, 6 failed.** V13 failed; V14 is unscored.
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

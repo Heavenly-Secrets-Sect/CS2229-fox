@@ -195,7 +195,15 @@ class AnchorState:
         if layer not in self.picked:
             self.picked[layer] = last_row
         else:
-            r = torch.rand(1, generator=self._gen).item()
+            # `device=` is load-bearing: a seeded run puts its generator on
+            # the LOGITS device, and torch refuses a cuda generator for a cpu
+            # draw. Without it this raises on the second forward of every
+            # GPU run -- so POPE, which emits one token and never reaches a
+            # second forward, passed while all twelve CHAIR jobs died at
+            # token two. The project had already paid for this once, in
+            # _sample_from; see TestGeneratorDevice in test_attention_wiring.
+            dev = self._gen.device if self._gen is not None else None
+            r = torch.rand(1, generator=self._gen, device=dev).item()
             if r < n_rows / self.seen[layer]:
                 self.picked[layer] = last_row
 
