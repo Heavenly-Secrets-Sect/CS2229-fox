@@ -80,6 +80,9 @@ __all__ = [
     "register",
     "describe_environment",
     "load_llava",
+    "load_backbone",
+    "expected_span_width",
+    "resolve_image_token_id",
     "locate_image_span",
     "fox_generate",
     "fox_diagnose",
@@ -848,7 +851,44 @@ def load_llava(
 
     Returns ``(model, processor)``.
     """
-    from transformers import AutoProcessor, LlavaForConditionalGeneration
+    return load_backbone(model_id, dtype=dtype, device_map=device_map,
+                         eager_layers=eager_layers, allow_cpu=allow_cpu)
+
+
+#: Which sub-config carries the decoder, by ``config.model_type``.
+#:
+#: ``attn_implementation`` is a dict keyed on sub-config name, and the Fox
+#: patch must land on the TEXT tower only -- the vision tower stays on sdpa,
+#: because the intervention is defined over image KEYS in the decoder and
+#: patching the encoder would change the features themselves. Every backbone
+#: here happens to use ``text_config``/``vision_config``, which is the
+#: transformers convention; a model that does not is a refusal, not a guess.
+_DECODER_SUBCONFIG = {"llava": ("text_config", "vision_config"),
+                      "qwen3_vl": ("text_config", "vision_config"),
+                      "internvl": ("text_config", "vision_config")}
+
+
+def load_backbone(
+    model_id: str = "llava-hf/llava-1.5-7b-hf",
+    *,
+    dtype: str = "fp16",
+    device_map: str = "auto",
+    eager_layers: Optional[frozenset] = None,
+    allow_cpu: bool = False,
+) -> Tuple[Any, Any]:
+    """Load any image-text backbone with the Fox attention on its decoder.
+
+    Generalises :func:`load_llava`, which remains as the LLaVA-1.5 name.
+    ``scripts/probe_backbone.py`` answers whether a candidate will work here
+    from its config alone -- it reported Qwen3-VL-8B and InternVL3-8B as
+    runnable with the patch reaching the decoder, which is what made this
+    worth writing.
+
+    Quantization stays unavailable for every backbone: it would change the
+    precision of the tensor under study, and r2 established that the
+    precision IS the effect.
+    """
+    from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor
 
     torch_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16,
                    "fp32": torch.float32}[dtype]
@@ -862,14 +902,27 @@ def load_llava(
     _refuse_cpu_only_host(dtype, allow_cpu=allow_cpu)
     _refuse_unconverted_checkpoint(model_id)
 
+    cfg = AutoConfig.from_pretrained(model_id)
+    mt = getattr(cfg, "model_type", "")
+    if mt not in _DECODER_SUBCONFIG:
+        raise ValueError(
+            f"model_type {mt!r} has no known decoder sub-config. Fox patches "
+            f"the TEXT tower only, so guessing the key would silently patch "
+            f"nothing or patch the vision tower. Run "
+            f"scripts/probe_backbone.py --model-id {model_id} and add it to "
+            f"_DECODER_SUBCONFIG once the layout is known. "
+            f"Known: {sorted(_DECODER_SUBCONFIG)}"
+        )
+    text_key, vision_key = _DECODER_SUBCONFIG[mt]
+
     register()
     if eager_layers is not None:
         FOX.eager_layers = eager_layers
 
-    model, info = LlavaForConditionalGeneration.from_pretrained(
+    model, info = AutoModelForImageTextToText.from_pretrained(
         model_id,
         dtype=torch_dtype,            # `torch_dtype` is deprecated from 4.56
-        attn_implementation={"text_config": ATTN_NAME, "vision_config": "sdpa"},
+        attn_implementation={text_key: ATTN_NAME, vision_key: "sdpa"},
         device_map=device_map,
         output_loading_info=True,
     )
@@ -972,13 +1025,51 @@ def _assert_fully_loaded(model_id: str, info: Dict[str, Any]) -> None:
     )
 
 
-def locate_image_span(input_ids: torch.Tensor, image_token_id: int) -> Tuple[int, int]:
+#: Backbones whose image-token count is FIXED, by ``config.model_type``.
+#:
+#: LLaVA-1.5 with CLIP ViT-L/336 always expands ``<image>`` into 336/14 =
+#: 24x24 = 576 ids, so a different width there means the processor took the
+#: pre-4.44 "legacy" path that spliced embeddings inside the model and the
+#: key indices are not what they appear to be. That check is worth keeping.
+#:
+#: A model ABSENT from this map has a dynamic count and the width carries no
+#: information: Qwen3-VL merges patches 2x2 at dynamic resolution, InternVL3
+#: tiles dynamically. For those the span is derived per sample and only its
+#: contiguity is asserted. The 576 was never logic -- it was always a guard.
+FIXED_SPAN_WIDTH: Dict[str, int] = {"llava": 576}
+
+
+def expected_span_width(model: Any) -> Optional[int]:
+    """The fixed image-token count for this backbone, or None if dynamic."""
+    cfg = getattr(model, "config", model)
+    return FIXED_SPAN_WIDTH.get(getattr(cfg, "model_type", ""), None)
+
+
+def resolve_image_token_id(model: Any) -> int:
+    """The image placeholder id, under whichever name the config uses.
+
+    LLaVA calls it ``image_token_index``; Qwen3-VL and InternVL3 call it
+    ``image_token_id``. Reading only the first is how a backbone port turns
+    into an AttributeError three layers down instead of a clear refusal.
+    """
+    cfg = getattr(model, "config", model)
+    for name in ("image_token_index", "image_token_id"):
+        got = getattr(cfg, name, None)
+        if got is not None:
+            return int(got)
+    raise ValueError(
+        f"{getattr(cfg, 'model_type', type(model).__name__)} declares neither "
+        f"image_token_index nor image_token_id; pass image_token_id explicitly"
+    )
+
+
+def locate_image_span(input_ids: torch.Tensor, image_token_id: int,
+                      expected_width: Optional[int] = 576) -> Tuple[int, int]:
     """Half-open-exclusive ``(img_start, img_end)`` with ``img_end`` inclusive.
 
-    LLaVA-1.5 with CLIP ViT-L/336 expands ``<image>`` into exactly 576 token
-    ids, so this should return a 576-wide span; a different width means the
-    processor took the pre-4.44 "legacy" path that spliced embeddings inside
-    the model instead, and the key indices would be wrong.
+    ``expected_width`` is asserted when given and ignored when ``None``. It
+    defaults to LLaVA-1.5's 576 so that every existing caller keeps the check
+    it had; :func:`expected_span_width` supplies the right value per model.
 
     System keys are everything before ``img_start``, which is what the paper's
     ``m_sys`` measures.
@@ -992,11 +1083,21 @@ def locate_image_span(input_ids: torch.Tensor, image_token_id: int) -> Tuple[int
         )
     start, end = int(pos[0].item()), int(pos[-1].item())
     width = end - start + 1
-    if width != 576:
+    if width != int(pos.numel()):
+        # Taking first and last would otherwise swallow whatever sits
+        # between two images, and m_sys would be measured over a span that
+        # is partly text. Cheap to check and impossible to see downstream.
         raise ValueError(
-            f"expected 576 image tokens for LLaVA-1.5/CLIP-336, found {width}. "
-            "Check the processor config (patch_size=14, "
-            "num_additional_image_tokens=1) before trusting any key index."
+            f"image tokens are not contiguous: {pos.numel()} tokens spread "
+            f"over {width} positions ({start}..{end}). Fox scores one "
+            f"contiguous visual span; multi-image inputs are not supported."
+        )
+    if expected_width is not None and width != expected_width:
+        raise ValueError(
+            f"expected {expected_width} image tokens, found {width}. For "
+            "LLaVA-1.5/CLIP-336 check the processor config (patch_size=14, "
+            "num_additional_image_tokens=1) before trusting any key index; "
+            "for a dynamic-resolution backbone pass expected_width=None."
         )
     return start, end
 
@@ -1089,17 +1190,11 @@ def fox_diagnose(
     "n_prompt_tokens": int}``.
     """
     if image_token_id is None:
-        cfg = getattr(model, "config", None)
-        image_token_id = getattr(cfg, "image_token_index", None)
-        if image_token_id is None:
-            image_token_id = getattr(cfg, "image_token_id", None)
-    if image_token_id is None:
-        raise ValueError(
-            "the checkpoint declares no image token id; pass image_token_id"
-        )
+        image_token_id = resolve_image_token_id(model)
 
     input_ids = inputs["input_ids"]
-    img_start, img_end = locate_image_span(input_ids, int(image_token_id))
+    img_start, img_end = locate_image_span(
+        input_ids, int(image_token_id), expected_span_width(model))
     n_layers = int(getattr(
         getattr(model.config, "text_config", model.config),
         "num_hidden_layers",
@@ -1287,12 +1382,13 @@ def fox_generate(
     split_pass = input_ids_do is not None and not single_branch
 
     device = next(model.parameters()).device
-    image_token_id = model.config.image_token_index
+    image_token_id = resolve_image_token_id(model)
     input_ids = inputs["input_ids"].to(device)
     attn_mask = inputs["attention_mask"].to(device)
     pixel_values = inputs["pixel_values"].to(device)
 
-    img_start, img_end = locate_image_span(input_ids, image_token_id)
+    img_start, img_end = locate_image_span(
+        input_ids, image_token_id, expected_span_width(model))
     n_prompt = int(input_ids.shape[1])
 
     gen = None
