@@ -1,129 +1,429 @@
 {
-  "round": "r19",
+  "round": "r20",
   "order": "priority",
-  "n_sessions": 3,
+  "n_sessions": 5,
   "budget_hours": 10.0,
   "n_calibrated": 0,
   "in_flight_excluded": [],
   "jobs": {
-    "table4:fox:chair:val2014_500:ancx_last": {
-      "id": "table4:fox:chair:val2014_500:ancx_last",
-      "target": "table4",
-      "note": "V14: query position = x_last, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor x_last",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-1b6102ef.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L3,7,8,12:s45": {
+      "id": "layer_identity:fox:pope:popular:L3,7,8,12:s45",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-45__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancboth": {
-      "id": "table4:fox:chair:val2014_500:ancboth",
-      "target": "table4",
-      "note": "V14: query position = both, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor both",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-7f4b4aef.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L4,5,6,9:s45": {
+      "id": "layer_identity:fox:pope:popular:L4,5,6,9:s45",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-45__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancmean_all": {
-      "id": "table4:fox:chair:val2014_500:ancmean_all",
-      "target": "table4",
-      "note": "V14: query position = mean_all, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor mean_all",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-5ab189bc.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L3,7,8,12:s46": {
+      "id": "layer_identity:fox:pope:popular:L3,7,8,12:s46",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 46 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-46__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancrandom": {
-      "id": "table4:fox:chair:val2014_500:ancrandom",
-      "target": "table4",
-      "note": "V14: query position = random, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor random",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-7925b44c.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L4,5,6,9:s46": {
+      "id": "layer_identity:fox:pope:popular:L4,5,6,9:s46",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 46 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-46__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancx_last:s43": {
-      "id": "table4:fox:chair:val2014_500:ancx_last:s43",
-      "target": "table4",
-      "note": "V14: query position = x_last, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor x_last",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-1b6102ef.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L3,7,8,12:s47": {
+      "id": "layer_identity:fox:pope:popular:L3,7,8,12:s47",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 47 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-47__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancboth:s43": {
-      "id": "table4:fox:chair:val2014_500:ancboth:s43",
-      "target": "table4",
-      "note": "V14: query position = both, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor both",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-7f4b4aef.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L4,5,6,9:s47": {
+      "id": "layer_identity:fox:pope:popular:L4,5,6,9:s47",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 47 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-47__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancmean_all:s43": {
-      "id": "table4:fox:chair:val2014_500:ancmean_all:s43",
-      "target": "table4",
-      "note": "V14: query position = mean_all, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor mean_all",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-5ab189bc.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L3,7,8,12:s48": {
+      "id": "layer_identity:fox:pope:popular:L3,7,8,12:s48",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-48__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancrandom:s43": {
-      "id": "table4:fox:chair:val2014_500:ancrandom:s43",
-      "target": "table4",
-      "note": "V14: query position = random, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor random",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-7925b44c.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L4,5,6,9:s48": {
+      "id": "layer_identity:fox:pope:popular:L4,5,6,9:s48",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-48__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancx_last:s44": {
-      "id": "table4:fox:chair:val2014_500:ancx_last:s44",
-      "target": "table4",
-      "note": "V14: query position = x_last, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor x_last",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-1b6102ef.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L3,7,8,12:s49": {
+      "id": "layer_identity:fox:pope:popular:L3,7,8,12:s49",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 49 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-49__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancboth:s44": {
-      "id": "table4:fox:chair:val2014_500:ancboth:s44",
-      "target": "table4",
-      "note": "V14: query position = both, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor both",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-7f4b4aef.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L4,5,6,9:s49": {
+      "id": "layer_identity:fox:pope:popular:L4,5,6,9:s49",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 49 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-49__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancmean_all:s44": {
-      "id": "table4:fox:chair:val2014_500:ancmean_all:s44",
-      "target": "table4",
-      "note": "V14: query position = mean_all, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor mean_all",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-5ab189bc.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L3,7,8,12:s50": {
+      "id": "layer_identity:fox:pope:popular:L3,7,8,12:s50",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 50 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-50__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
       "measured": false
     },
-    "table4:fox:chair:val2014_500:ancrandom:s44": {
-      "id": "table4:fox:chair:val2014_500:ancrandom:s44",
-      "target": "table4",
-      "note": "V14: query position = random, CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native --anchor random",
-      "est_s": 5450.0,
-      "run_file": "m-fox__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-7925b44c.jsonl",
-      "n_samples": 500,
+    "layer_identity:fox:pope:popular:L4,5,6,9:s50": {
+      "id": "layer_identity:fox:pope:popular:L4,5,6,9:s50",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 50 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-50__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:L3,7,8,12:s51": {
+      "id": "layer_identity:fox:pope:popular:L3,7,8,12:s51",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 51 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-51__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:L4,5,6,9:s51": {
+      "id": "layer_identity:fox:pope:popular:L4,5,6,9:s51",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 51 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-51__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:off:s45": {
+      "id": "layer_identity:fox:pope:popular:off:s45",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-45__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:off:s46": {
+      "id": "layer_identity:fox:pope:popular:off:s46",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 46 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-46__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:off:s47": {
+      "id": "layer_identity:fox:pope:popular:off:s47",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 47 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-47__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:off:s48": {
+      "id": "layer_identity:fox:pope:popular:off:s48",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-48__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:off:s49": {
+      "id": "layer_identity:fox:pope:popular:off:s49",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 49 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-49__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:off:s50": {
+      "id": "layer_identity:fox:pope:popular:off:s50",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 50 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-50__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:popular:off:s51": {
+      "id": "layer_identity:fox:pope:popular:off:s51",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on popular, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 51 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-popular__seed-51__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L3,7,8,12:s45": {
+      "id": "layer_identity:fox:pope:random:L3,7,8,12:s45",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-45__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L4,5,6,9:s45": {
+      "id": "layer_identity:fox:pope:random:L4,5,6,9:s45",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-45__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L3,7,8,12:s46": {
+      "id": "layer_identity:fox:pope:random:L3,7,8,12:s46",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 46 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-46__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L4,5,6,9:s46": {
+      "id": "layer_identity:fox:pope:random:L4,5,6,9:s46",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 46 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-46__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L3,7,8,12:s47": {
+      "id": "layer_identity:fox:pope:random:L3,7,8,12:s47",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 47 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-47__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L4,5,6,9:s47": {
+      "id": "layer_identity:fox:pope:random:L4,5,6,9:s47",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 47 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-47__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L3,7,8,12:s48": {
+      "id": "layer_identity:fox:pope:random:L3,7,8,12:s48",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-48__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L4,5,6,9:s48": {
+      "id": "layer_identity:fox:pope:random:L4,5,6,9:s48",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-48__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:off:s45": {
+      "id": "layer_identity:fox:pope:random:off:s45",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-45__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L3,7,8,12:s49": {
+      "id": "layer_identity:fox:pope:random:L3,7,8,12:s49",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 49 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-49__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L4,5,6,9:s49": {
+      "id": "layer_identity:fox:pope:random:L4,5,6,9:s49",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 49 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-49__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L3,7,8,12:s50": {
+      "id": "layer_identity:fox:pope:random:L3,7,8,12:s50",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 50 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-50__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L4,5,6,9:s50": {
+      "id": "layer_identity:fox:pope:random:L4,5,6,9:s50",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 50 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-50__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L3,7,8,12:s51": {
+      "id": "layer_identity:fox:pope:random:L3,7,8,12:s51",
+      "target": "layer_identity",
+      "note": "V15: 3,7,8,12 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 51 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3,7,8,12",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-51__dt-fp16__v-sampling-2a85bb51.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:L4,5,6,9:s51": {
+      "id": "layer_identity:fox:pope:random:L4,5,6,9:s51",
+      "target": "layer_identity",
+      "note": "V15: 4,5,6,9 on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 51 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 4,5,6,9",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-51__dt-fp16__v-sampling-c732f056.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:off:s46": {
+      "id": "layer_identity:fox:pope:random:off:s46",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 46 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-46__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:off:s47": {
+      "id": "layer_identity:fox:pope:random:off:s47",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 47 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-47__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:off:s48": {
+      "id": "layer_identity:fox:pope:random:off:s48",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-48__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:off:s49": {
+      "id": "layer_identity:fox:pope:random:off:s49",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 49 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-49__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:off:s50": {
+      "id": "layer_identity:fox:pope:random:off:s50",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 50 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-50__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "layer_identity:fox:pope:random:off:s51": {
+      "id": "layer_identity:fox:pope:random:off:s51",
+      "target": "layer_identity",
+      "note": "V15: no-intervention baseline on random, seeds 4-10",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 51 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode off --logit-dtype native",
+      "est_s": 3300.0,
+      "run_file": "m-fox__b-pope__s-random__seed-51__dt-fp16__v-sampling-93866aba.jsonl",
+      "n_samples": 3000,
       "measured": false
     }
   },
@@ -131,32 +431,74 @@
     {
       "session": 1,
       "jobs": [
-        "table4:fox:chair:val2014_500:ancx_last",
-        "table4:fox:chair:val2014_500:ancboth",
-        "table4:fox:chair:val2014_500:ancmean_all",
-        "table4:fox:chair:val2014_500:ancrandom"
+        "layer_identity:fox:pope:popular:L3,7,8,12:s45",
+        "layer_identity:fox:pope:popular:L4,5,6,9:s45",
+        "layer_identity:fox:pope:popular:L3,7,8,12:s46",
+        "layer_identity:fox:pope:popular:L4,5,6,9:s46",
+        "layer_identity:fox:pope:popular:L3,7,8,12:s47",
+        "layer_identity:fox:pope:popular:L4,5,6,9:s47",
+        "layer_identity:fox:pope:popular:L3,7,8,12:s48",
+        "layer_identity:fox:pope:popular:L4,5,6,9:s48",
+        "layer_identity:fox:pope:popular:L3,7,8,12:s49",
+        "layer_identity:fox:pope:popular:L4,5,6,9:s49"
       ],
-      "est_hours": 6.06
+      "est_hours": 9.17
     },
     {
       "session": 2,
       "jobs": [
-        "table4:fox:chair:val2014_500:ancx_last:s43",
-        "table4:fox:chair:val2014_500:ancboth:s43",
-        "table4:fox:chair:val2014_500:ancmean_all:s43",
-        "table4:fox:chair:val2014_500:ancrandom:s43"
+        "layer_identity:fox:pope:popular:L3,7,8,12:s50",
+        "layer_identity:fox:pope:popular:L4,5,6,9:s50",
+        "layer_identity:fox:pope:popular:L3,7,8,12:s51",
+        "layer_identity:fox:pope:popular:L4,5,6,9:s51",
+        "layer_identity:fox:pope:popular:off:s45",
+        "layer_identity:fox:pope:popular:off:s46",
+        "layer_identity:fox:pope:popular:off:s47",
+        "layer_identity:fox:pope:popular:off:s48",
+        "layer_identity:fox:pope:popular:off:s49",
+        "layer_identity:fox:pope:popular:off:s50"
       ],
-      "est_hours": 6.06
+      "est_hours": 9.17
     },
     {
       "session": 3,
       "jobs": [
-        "table4:fox:chair:val2014_500:ancx_last:s44",
-        "table4:fox:chair:val2014_500:ancboth:s44",
-        "table4:fox:chair:val2014_500:ancmean_all:s44",
-        "table4:fox:chair:val2014_500:ancrandom:s44"
+        "layer_identity:fox:pope:popular:off:s51",
+        "layer_identity:fox:pope:random:L3,7,8,12:s45",
+        "layer_identity:fox:pope:random:L4,5,6,9:s45",
+        "layer_identity:fox:pope:random:L3,7,8,12:s46",
+        "layer_identity:fox:pope:random:L4,5,6,9:s46",
+        "layer_identity:fox:pope:random:L3,7,8,12:s47",
+        "layer_identity:fox:pope:random:L4,5,6,9:s47",
+        "layer_identity:fox:pope:random:L3,7,8,12:s48",
+        "layer_identity:fox:pope:random:L4,5,6,9:s48",
+        "layer_identity:fox:pope:random:off:s45"
       ],
-      "est_hours": 6.06
+      "est_hours": 9.17
+    },
+    {
+      "session": 4,
+      "jobs": [
+        "layer_identity:fox:pope:random:L3,7,8,12:s49",
+        "layer_identity:fox:pope:random:L4,5,6,9:s49",
+        "layer_identity:fox:pope:random:L3,7,8,12:s50",
+        "layer_identity:fox:pope:random:L4,5,6,9:s50",
+        "layer_identity:fox:pope:random:L3,7,8,12:s51",
+        "layer_identity:fox:pope:random:L4,5,6,9:s51",
+        "layer_identity:fox:pope:random:off:s46",
+        "layer_identity:fox:pope:random:off:s47",
+        "layer_identity:fox:pope:random:off:s48",
+        "layer_identity:fox:pope:random:off:s49"
+      ],
+      "est_hours": 9.17
+    },
+    {
+      "session": 5,
+      "jobs": [
+        "layer_identity:fox:pope:random:off:s50",
+        "layer_identity:fox:pope:random:off:s51"
+      ],
+      "est_hours": 1.83
     }
   ]
 }

@@ -1226,6 +1226,34 @@ def _build_plan() -> List[Job]:
                 note=f"V14: query position = {anchor}, CHAIR",
             ))
 
+    # ---- Round 20: the one power gap worth closing ------------------------
+    # V15 in docs/VALIDATION.md. r18 tested r17's localisation out of sample
+    # and the gap came back +0.66 on popular (p < 0.0001) and +0.06 on random
+    # (p = 0.76). The random result was read as underpowered rather than
+    # negative, and that reading has to be checked rather than assumed: the
+    # whole intervention is only +0.62 there, a proportional gap would be
+    # about +0.39, and three seeds resolved +-0.26.
+    #
+    # Ten seeds is the project's tier-1 width and shrinks the interval by
+    # roughly 1.8x, to about +-0.15 -- enough to separate +0.39 from zero.
+    #
+    # POPE and not CHAIR on purpose. More seeds shrink the GENERATION draw;
+    # POPE uses all 3000 questions so that is the only variance it has. CHAIR
+    # is limited by its 500-image draw, which no seed count touches (r19).
+    for split in ("popular", "random"):
+        for layers in ("3,7,8,12", "4,5,6,9"):
+            for seed in SEEDS_FULL[3:]:
+                jobs.append(Job(
+                    "layer_identity", "fox", "pope", split, seed=seed,
+                    intervention_layers=layers,
+                    note=f"V15: {layers} on {split}, seeds 4-10",
+                ))
+        for seed in SEEDS_FULL[3:]:
+            jobs.append(Job(
+                "layer_identity", "fox", "pope", split, seed=seed, mode="off",
+                note=f"V15: no-intervention baseline on {split}, seeds 4-10",
+            ))
+
     return jobs
 
 

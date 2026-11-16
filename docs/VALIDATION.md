@@ -1812,6 +1812,45 @@ counted either way.
 
 ---
 
+## V15 — Is POPE-random underpowered, or is the localisation adversarial-specific?
+
+`3,7,8,12`, `4,5,6,9` and `fox off` on POPE-popular and POPE-random at seeds
+45–51, bringing both splits to **ten seeds**. **38.5 h**, 42 jobs, no new
+code.
+
+r18 read the random split's +0.06 [−0.21, +0.32] as *underpowered rather than
+refuted*, on the grounds that the whole intervention is only +0.62 there and a
+proportional gap would be about +0.39. That reading is an inference about
+power, and this round checks it instead of resting on it. Ten seeds shrinks
+the interval by roughly √(10/3) ≈ 1.8×, to about ±0.15 — enough to separate
++0.39 from zero.
+
+**POPE and not CHAIR, deliberately.** More seeds shrink the *generation*
+draw. POPE scores all 3000 questions, so the draw is the only variance it
+has. CHAIR is limited by which 500 images were chosen, which no seed count
+touches — r19 established that, and it is why V14's CHAIR rows stay
+unresolved no matter what is spent on them.
+
+**Prediction: the gap on random comes in at +0.2 to +0.5, with an interval
+excluding zero; popular tightens around +0.66 and stays significant.**
+
+That is what "the localisation is real but scales with a shrinking effect"
+predicts. The alternative it is being separated from — "the localisation is
+an artefact of the adversarial split" — predicts random stays at zero with
+the tighter interval too.
+
+| outcome | reading |
+|---|---|
+| random lands +0.2…+0.5, excludes zero | **underpowered, as r18 guessed.** The localisation is a property of the model and transfers to all three splits, scaling with the effect available on each. r17's finding is then established as firmly as this project can establish anything |
+| random stays at zero with ±0.15 | **r18's charitable reading was wrong and this is a real negative.** The localisation would be adversarial-specific, and since adversarial is the split that *chose* `{3,7,8,12}`, the honest conclusion becomes that the four layers are an artefact of the selection split after all |
+| random goes negative beyond −0.15 | the live/dead split inverts somewhere, which no account here predicts and which would need its own round |
+
+The second row is the one that would hurt, and it is the reason to run this
+rather than leave r18's sentence standing. "Underpowered, not refuted" is a
+claim about an experiment that was not run; this runs it.
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

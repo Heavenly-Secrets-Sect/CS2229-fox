@@ -690,110 +690,64 @@ Ba quy tắc rút ra từ việc mất GPU-h thật:
 
 ## 8. Còn lại gì — việc có thể nhận
 
-**r18 đã đóng băng**: 18 job, 16.5 GPU-h, **2 session**. Chỉ một việc:
-==kiểm **ngoài mẫu** kết quả lớn nhất của cả project.==
+**415/457 job.** Mọi artefact của paper trong tầm với trên LLaVA-1.5 đã xong.
+Ba hướng còn lại, và **chỉ một treo được ngay**.
 
-`{3,7,8,12}` so `{4,5,6,9}` trên **POPE-popular và POPE-random**, kèm `fox
-off` làm baseline (chưa bao giờ chạy trên hai split đó, mà không có baseline
-thì phép so không có mốc 0).
+### r20 — đã đóng băng, không cần code mới
 
-Lý do duy nhất: chênh lệch 1.62 điểm của r17 hiện đang **định đoạt kết luận
-của toàn bộ bản kiểm toán**, và nó dựa trên một phép kiểm đã tự chọn giả
-thuyết của mình. Ba split POPE khác nhau ở **cách chọn câu hỏi phủ định**
-(ngẫu nhiên / vật thể hay gặp / vật thể đồng xuất hiện), không khác ở ảnh
-hay mô hình. Một phép định vị nằm trong layer của mô hình thì **không được
-phép** quan tâm tới chính sách sinh câu hỏi.
+42 job, 38.5 GPU-h, 5 session. **V15**: đưa POPE-popular và POPE-random lên
+**10 seed** cho `{3,7,8,12}`, `{4,5,6,9}` và `fox off`.
 
-Dự đoán: chênh lệch **còn trên 1.0 điểm ở cả hai split**, và bộ chết vẫn
-không phân biệt được với `fox off`.
+Lý do: r18 đọc kết quả +0.06 trên random là **"thiếu lực thống kê chứ không
+phải bị bác bỏ"**. Đó là một *suy đoán về lực*, và round này kiểm nó thay vì
+dựa vào nó. ==Nếu random vẫn bằng 0 với khoảng ±0.15 thì cách đọc rộng lượng
+của r18 sai, và `{3,7,8,12}` là artefact của chính split đã chọn ra nó.==
 
----
+POPE chứ không phải CHAIR, có chủ ý: thêm seed chỉ thu nhỏ **lần rút sinh văn
+bản**. POPE chấm cả 3000 câu nên đó là nguồn biến thiên duy nhất của nó.
+CHAIR bị chặn bởi **lần rút 500 ảnh**, mà không số seed nào đụng tới — r19 đã
+xác lập điều đó.
 
-**r17 (đã xong)**: 25 job, 23 GPU-h, 3 session, `priority`.
+### r21+ — MME, MMBench, MathVista. **Chặn ở dữ liệu, không phải ở GPU**
 
-| session | nội dung | h |
+| | GPU | công việc thật |
 |---|---|---|
-| 1 | dọn nốt r16: 8 job Table 1 của session 5 + 2 job `L2-14` bị cắt | 9.17 |
-| 2 | **V12a** — biên của vùng sống: start 5, 6, 7 ở độ rộng 14 | 8.25 |
-| 3 | **V12b** — layer có thay thế được cho nhau không: `{3,7,8,12}` so `{4,5,6,9}` chạy **riêng** | 5.5 |
+| MME | ~4 h | harness viết từ đầu — ==release **không ship script MME** dù báo cáo kết quả MME== |
+| MMBench | ~6 h | SID có script tham khảo |
+| MathVista | ~8 h | không repo nào có script |
 
-Không cần release riêng để dọn r16: resume khoá theo **run file**, không theo
-round, nên plan mới tự nhặt đúng 10 job còn dở.
+Nút thắt **không phải** 18 GPU-h mà là ba bộ dữ liệu chưa dựng và ba harness
+chưa viết. Thứ tự đề xuất: MME trước — rẻ nhất, và việc release không có
+script cho chính con số nó công bố **tự nó đã là một phát hiện** cùng họ với
+Table 13 và các cờ VCD/ICD chết.
 
-V12b là câu hỏi sắc nhất còn lại. r16 nói layer 3, 7, 8, 12 "có đóng góp" —
-nhưng cũng nói **không layer nào cần thiết**, vì các bước nhảy đó là giá trị
-biên có điều kiện. Hai cách đọc đều khớp bảng bước nhảy, và chưa thực nghiệm
-nào tách được. Chạy riêng hai bộ bốn layer sẽ tách: ==nếu `{3,7,8,12}` hơn
-`{4,5,6,9}` trên 1 điểm thì **danh tính layer có ý nghĩa**, và đó là kết quả
-duy nhất còn lại có thể trả lại vai trò cho phần chẩn đoán.==
+### r22+ — backbone thứ hai. **Đắt nhất, và là phép kiểm lời giải thích của chính nhóm**
 
----
+~20 GPU-h + port loader. Đây là thứ duy nhất còn lại có thể **lật kết luận
+của chúng ta**: toàn bộ lập luận "hiệu ứng là requantisation fp16" đang đứng
+trên **một** backbone. Nếu đúng là hiệu ứng độ chính xác thì nó phải xuất
+hiện trên Qwen3-VL-8B hoặc InternVL3-8B; nếu không, giải thích của ta sai.
 
-**r16 (đã xong)**: 54 job, 49.5 GPU-h, 6 session, `priority`.
+Công việc code, theo thứ tự khó tăng dần:
 
-| session | nội dung | h |
-|---|---|---|
-| 1–3 | **V11** — vách đá layer, mỗi session **một seed trọn vẹn của đường cong** | 9.17 mỗi cái |
-| 4–6 | Table 1, hai split còn thiếu cho VCD / ICD / SID / CausalMM | 7.33 mỗi cái |
+1. `locate_image_span` đang **hard-code 576 token** ảnh của LLaVA-1.5.
+2. Hook attention dispatch theo `module.layer_idx` và cấu trúc module của
+   LLaVA — backbone khác đặt tên khác.
+3. `img_start`/`img_end` phụ thuộc cách mỗi model chèn token ảnh.
 
-==Dùng `--order priority` chứ không phải `balanced`, và đây là lựa chọn có
-chủ ý.== r15 drain trong nửa ngày vì hai account còn đầy quota; round này
-lập khi quota gần cạn nên session có thể nằm chờ nhiều ngày. `balanced` rải
-đều các tầng nên **không tiền tố nào của các session trả lời được gì** — sai
-hẳn khi không biết mấy session sẽ chạy trước khi hết cửa sổ quota. `priority`
-đặt việc quyết định vào session 1, và hàng đợi của bot là FIFO theo số
-session nên session 1 cũng là cái được phóng đầu tiên.
+> [!warning] Thứ tự này không tuỳ tiện
+> r20 chạy trước vì nó có thể **rút lại** phát hiện lớn nhất của project. Dựng
+> harness mới hay port backbone trên một kết luận chưa chắc là xây trên cát.
 
-Thêm một tính chất của cách nhóm job: mỗi session cliff là **một seed đủ 10
-window**, nên mất một session là mất một seed ở mọi điểm, chứ không phải mất
-mọi seed ở vài điểm. Dừng sau session 2 vẫn còn đường cong 2 seed đọc được.
-
-Sau r16, mọi mục còn lại đều **cần code mới trước khi xin quota**; đánh giá
-chi phí lấy từ [`docs/PAPER_AUDIT.md`](PAPER_AUDIT.md).
-
-> [!warning] Plan rỗng thì đừng chạy `plan plan`
-> `plan plan` trên một plan đã cạn sẽ ghi đè `scripts/run_plan.json` thành
-> `round: r1, n_sessions: 0`. **Thêm job trước, đóng băng sau.**
-
-Thứ tự đề xuất, theo "cần code mới" tăng dần:
-
-1. **r17** — Table 4 / 12 (bộ chọn anchor), mục duy nhất còn lại chạm trực
-   tiếp vào một bảng của paper. "x_last only" và "mean-pool all tokens" cần
-   query vector của các vị trí **trước** bước hiện tại, mà KV cache chỉ giữ K
-   và V, không giữ Q. Phải thêm chỗ lưu Q theo từng bước — máy móc mới, không
-   phải một tham số.
-2. **r18+** — MME, MMBench, MathVista (mỗi cái một harness mới).
-3. **r19+** — backbone mới. Đắt nhất và cần tổng quát hoá loader.
-
-Câu hỏi vách đá layer 9–10 **đã vào r16** (V11). Lưu ý về thiết kế: quét
-**tích luỹ** `L2-k` chứ không phải từng layer một. Một layer đơn lẻ đáng
-khoảng 0.35–0.45 điểm trong khi 3 seed trên 3000 sample chỉ phân giải được
-~0.4 — quét từng layer sẽ **thiếu lực thống kê đúng chỗ cần sắc nhất**, và
-trả về một đường cong nhiễu trông như có cấu trúc. Mỗi điểm tích luỹ đo
-0.9–2.6 điểm, rồi lấy hiệu hai điểm liền nhau mới ra đóng góp từng layer.
-
-Không tái lập được, có lý do, **không phải lỗi implementation**:
+### Không tái lập được, có lý do
 
 | mục | vì sao |
 |---|---|
-| CHAIR tuyệt đối | `chair_eval.py` lấy `os.listdir` của một thư mục chưa publish, shuffle rồi giữ 500 ảnh — tập ảnh của paper **không phục hồi được kể cả về nguyên tắc**. Ta đo được khoảng dịch **5.20 điểm** qua năm lần rút, nên con số tuyệt đối không so được; so sánh *giữa hai arm của ta* trên cùng tập ảnh thì vẫn chắc |
-| Figure 6 / Table 5 (GPT-4V judge) | API trả phí, n=50, và model judge đã **deprecated** — không ai tái lập được, kể cả tác giả |
-| Figure 16/17/21/22 | InstructBLIP / Shikra, nằm ngoài phạm vi đã chốt |
-| Figure 10/11/20 | ví dụ định tính, không có gì để tái lập |
-
-| việc | GPU-h | cần code mới? | giá trị |
-|---|---|---|---|
-| ~~**Table 13 + Figure 3, 7, 1a**~~ — **đã chạy r13 (2026-11-12)** | 0.6 thực đo | xong | ba phát hiện, xem `VALIDATION.md` §r13: mẫu số của Eq. 13 là phần dư ~4 %, dấu của nó quyết định AUC là 0.13 hay 0.87; `m_sys` **ngược hướng** paper ở các layer mạnh nhất; cửa sổ L2–15 mà code ship **dưới mức trung bình** theo đúng tiêu chí chọn cửa sổ của paper |
-| ~~**Table 14 + Figure 19**~~ — quy tắc hợp nhất — **trong r15, V9** | 14.6 | xong: `--fuse-strategy`, mặc định khẳng định bit-equal với `reference_fuse` | cao: arm `off` cho thấy riêng phần hợp nhất mang +2.21 trong +5.03 của Fox. Đã đo được từ archive: cổng chỉ mở trên **0.2 %** sample POPE nhưng **100 %** caption CHAIR |
-| **Table 4 / 12** — vị trí truy vấn | ~17 (hoặc ~5 nếu chỉ POPE-adv) | có: bộ chọn anchor | trung bình-cao: code gốc dùng `tail_n = 1`, một vị trí, **không phải** hai anchor như paper mô tả. Mục này đo cái giá của lựa chọn đó |
-| **MME harness** | ~4 | có, viết từ đầu | trung bình: release không có script MME |
-| **MMBench** | ~6 | có (SID có script tham khảo) | trung bình |
-| **MathVista** | ~8 | có, không repo nào có script | thấp-trung bình |
-| **Backbone mới** (Qwen3-VL-8B, InternVL3-8B) | ~20 | có: tổng quát hoá loader; `locate_image_span` đang hard-code 576 token | cao nhưng đắt |
-| **GPT-4V judge** | 0 GPU, tốn API | có | đang hoãn |
-
-`docs/PAPER_AUDIT.md` đã được cập nhật ở r13 (SID/CausalMM không còn ghi
-BLOCKED, Table 13/15 và Figure 3/7/8 đã có kết quả).
+| CHAIR tuyệt đối | tập 500 ảnh không phục hồi được; dịch 5.20 điểm qua năm lần rút |
+| Table 2, dòng OPERA | **quyết định có giá**: 40.5 GPU-h cho một run beam-5, để mua một con số baseline trên chính benchmark mà độ dịch đã làm vô nghĩa |
+| Table 5 / Figure 6 | GPT-4V judge: API trả phí, model judge đã deprecated |
+| Figure 16/17/21/22 | InstructBLIP / Shikra |
+| Figure 10/11/20 | ví dụ định tính |
 
 ## 9. Bản đồ tài liệu
 
