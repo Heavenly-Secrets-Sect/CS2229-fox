@@ -1138,6 +1138,7 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
                           else args.chair_image_list),
         prompt_template_id=cfg.prompt_template_id,
         require_images=not args.dry_run,
+        mme_dir=args.mme_dir,
     )
     run_path = Path(args.runs_dir) / cfg.run_key().filename()
     summary = run(

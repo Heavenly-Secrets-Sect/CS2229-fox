@@ -354,7 +354,7 @@ class TestEndToEnd(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def _generate(self, benchmark: str, split: str) -> None:
+    def _generate(self, benchmark: str, split: str, extra=()) -> None:
         cmd = [
             sys.executable, "-m", "foxrepro.bench.generate", "--dry-run",
             "--benchmark", benchmark, "--split", split, "--seed", "42",
@@ -363,9 +363,55 @@ class TestEndToEnd(unittest.TestCase):
             "--images-dir", str(self.ws["images_dir"]),
             "--chair-image-list", str(self.ws["chair_list"]),
             "--runs-dir", str(self.ws["runs_dir"]), "--progress-every", "0",
+            *extra,
         ]
         proc = subprocess.run(cmd, env=self.env, capture_output=True, text=True, timeout=300)
         self.assertEqual(proc.returncode, 0, proc.stderr[-3000:])
+
+    def _write_mme(self) -> Path:
+        """A two-row MME manifest: one image, its Yes question and its No."""
+        from foxrepro.data.loaders import MME_MANIFEST_NAME
+
+        d = Path(self.ws["runs_dir"]).parent / "mme"
+        (d / "images").mkdir(parents=True, exist_ok=True)
+        (d / "images" / "a.jpg").write_bytes(b"\xff\xd8fake")
+        rows = [
+            {"question_id": "existence/a.png",
+             "item_id": "existence/a.png#yes", "image": "images/a.jpg",
+             "question": "Is there a dog? Please answer yes or no.",
+             "answer": "Yes", "category": "existence"},
+            {"question_id": "existence/a.png",
+             "item_id": "existence/a.png#no", "image": "images/a.jpg",
+             "question": "Is there a cat? Please answer yes or no.",
+             "answer": "No", "category": "existence"},
+        ]
+        (d / MME_MANIFEST_NAME).write_text(
+            "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        return d
+
+    def test_mme_runs_through_the_cli(self) -> None:
+        """The path 679 tests covered everywhere except end to end.
+
+        r21 and r21.1 both lost a whole session to this. `--mme-dir` was
+        added to the parser and never passed to `load_benchmark`, so every
+        MME job died in 0.1 s with "mme_dir is required". Nothing caught it
+        because the MME tests call `load_mme` and `Job.command()` directly
+        and `TestEndToEnd` only ever ran POPE and CHAIR -- so no test
+        executed `generate.py --benchmark mme` as a process.
+
+        A unit test cannot catch an argument that is parsed and dropped.
+        Only running the CLI can.
+        """
+        mme = self._write_mme()
+        self._generate("mme", "test", extra=["--mme-dir", str(mme)])
+        runs = sorted(Path(self.ws["runs_dir"]).glob("*b-mme*.jsonl"))
+        self.assertEqual(len(runs), 1, "the MME run file was not written")
+        recs = [json.loads(line) for line in
+                runs[0].read_text().splitlines() if line.strip()]
+        self.assertEqual(len(recs), 2, "an image's second question was lost")
+        self.assertEqual({r["label"] for r in recs}, {"yes", "no"})
+        # One generated token, not CHAIR's 512.
+        self.assertEqual({r["max_new_tokens"] for r in recs}, {1})
 
     def test_pope_and_chair_pipeline(self) -> None:
         self._generate("pope", "random")
