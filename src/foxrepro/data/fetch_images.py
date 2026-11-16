@@ -328,9 +328,16 @@ def _session_needs(
         if bench == "chair":
             chair_splits.add(split)
     want = sorted(chair_splits) if chair_splits else []
-    if benches == {"pope"}:
+    # MME carries its own images, extracted from parquet by fetch_mme, and
+    # needs nothing from COCO. Falling through to "union" here would have an
+    # MME-only session download every POPE and CHAIR image it will never
+    # open -- the same waste the CHAIR-draw logic above exists to avoid.
+    coco = benches - {"mme"}
+    if not coco:
+        return "none", want
+    if coco == {"pope"}:
         return "pope", want
-    if benches == {"chair"}:
+    if coco == {"chair"}:
         return "chair", want
     return "union", want
 
@@ -341,7 +348,8 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "--what", choices=("pope", "chair", "union", "auto"), default="auto",
+        "--what", choices=("pope", "chair", "union", "none", "auto"),
+        default="auto",
         help="which image set to fetch. 'pope' (500 images, ~78 MB) is enough "
              "for a full POPE run and needs no annotations. 'chair' fetches "
              "the 500 captioning images. 'auto' reads the frozen plan and "
@@ -380,6 +388,10 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         what, chair_splits = _session_needs(args.session, args.plan)
         note = f" chair_splits={','.join(chair_splits)}" if chair_splits else ""
         print(f"[fetch] auto -> {what}{note}")
+    if what == "none":
+        print("[fetch] this session needs no COCO images (MME carries its "
+              "own); nothing to do")
+        return 0
     sets = needed_image_ids(args.pope_dir, args.chair_list,
                             chair_splits=chair_splits)
     ids = sorted(sets[what])

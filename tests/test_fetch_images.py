@@ -190,7 +190,9 @@ class TestSessionAwareFetch(unittest.TestCase):
         if not plan.is_file():
             self.skipTest("no frozen plan in this checkout")
         what, _ = _session_needs(1, plan)
-        self.assertIn(what, ("pope", "chair", "union"))
+        # "none" is legal: a session whose only benchmark is MME needs no
+        # COCO images, because MME extracts its own from parquet.
+        self.assertIn(what, ("pope", "chair", "union", "none"))
 
     def test_an_unknown_session_fetches_everything(self) -> None:
         """Guessing wrong costs a whole session; over-fetching costs minutes."""
@@ -262,6 +264,10 @@ class TestSessionAwareFetch(unittest.TestCase):
                 elif benches == {"chair"}:
                     self.assertEqual(what, "chair")
                     self.assertTrue(splits)
+                elif benches == {"mme"}:
+                    # MME extracts its own images from parquet, so this
+                    # session must not download any COCO at all.
+                    self.assertEqual(what, "none")
                 else:
                     self.assertEqual(what, "union")
                     self.assertTrue(splits)
