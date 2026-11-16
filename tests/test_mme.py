@@ -141,14 +141,63 @@ class TestTheLoader(unittest.TestCase):
             "".join(json.dumps(r) + "\n" for r in recs), encoding="utf-8")
 
     def base(self):
+        """One row per image, mirroring the real manifest's fields."""
         return [
-            {"question_id": "q1", "image": "images/a.jpg", "answer": "Yes",
+            {"question_id": "existence/a.png", "item_id": "existence/a.png#yes",
+             "image": "images/a.jpg", "answer": "Yes",
              "question": "Is there a dog? Please answer yes or no.",
              "category": "existence"},
-            {"question_id": "q2", "image": "images/b.jpg", "answer": "No",
+            {"question_id": "code_reasoning/b.png",
+             "item_id": "code_reasoning/b.png#no",
+             "image": "images/b.jpg", "answer": "No",
              "question": "Is there a cat? Please answer yes or no.",
              "category": "code_reasoning"},
         ]
+
+    def pair(self):
+        """The real shape: ONE image, TWO questions, one Yes and one No.
+
+        This is what killed r21's only session. MME's `question_id` is the
+        IMAGE path -- "code_reasoning/0020.png" -- and every image carries
+        exactly two rows. Verified over all four parquet shards: 1187
+        images, 2374 rows, 2 per image, one of each answer. Code that treats
+        question_id as unique dies on the second row of the split.
+        """
+        return [
+            {"question_id": "code_reasoning/0020.png",
+             "item_id": "code_reasoning/0020.png#yes",
+             "image": "images/a.jpg", "answer": "Yes",
+             "question": "Is a python code shown in the picture? "
+                         "Please answer yes or no",
+             "category": "code_reasoning"},
+            {"question_id": "code_reasoning/0020.png",
+             "item_id": "code_reasoning/0020.png#no",
+             "image": "images/a.jpg", "answer": "No",
+             "question": "Is a c++ code shown in the picture? "
+                         "Please answer yes or no.",
+             "category": "code_reasoning"},
+        ]
+
+    def test_two_questions_on_one_image_do_not_collide(self) -> None:
+        """The exact failure that cost r21 a session, one layer down."""
+        self.write(self.pair())
+        got = load_mme(self.dir)
+        self.assertEqual(len(got), 2, "an image's second question was lost")
+        self.assertEqual(len({s.sample_id for s in got}), 2)
+        self.assertEqual({s.label for s in got}, {"yes", "no"})
+        # Same image, so the same image_id -- which is what acc_plus groups
+        # on, and the reason the two must NOT be forced apart there.
+        self.assertEqual(len({s.image_id for s in got}), 1)
+
+    def test_a_manifest_without_item_id_is_refused(self) -> None:
+        """An old manifest predates the fix; it must not load as half a split."""
+        recs = [dict(r) for r in self.pair()]
+        for r in recs:
+            r.pop("item_id")
+        self.write(recs)
+        with self.assertRaises(ValueError) as ctx:
+            load_mme(self.dir)
+        self.assertIn("item_id", str(ctx.exception))
 
     def test_category_is_carried_on_the_sample_not_as_a_split(self) -> None:
         """The score sums over subtasks; splitting them would break totals."""
@@ -163,7 +212,8 @@ class TestTheLoader(unittest.TestCase):
         self.write(self.base())
         # Sorted by sample_id, so code_reasoning precedes existence.
         got = {s.extra["question_id"]: s.label for s in load_mme(self.dir)}
-        self.assertEqual(got, {"q1": "yes", "q2": "no"})
+        self.assertEqual(got, {"existence/a.png": "yes",
+                               "code_reasoning/b.png": "no"})
         bad = self.base()
         bad[0]["answer"] = "probably"
         self.write(bad)

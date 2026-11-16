@@ -441,8 +441,8 @@ def load_mme(mme_dir: Path, split: str = "test",
             if not line:
                 continue
             rec = json.loads(line)
-            for field in ("question_id", "image", "question", "answer",
-                          "category"):
+            for field in ("question_id", "item_id", "image", "question",
+                          "answer", "category"):
                 if field not in rec:
                     raise ValueError(
                         f"{path} line {idx + 1} missing {field!r}: {rec!r}")
@@ -456,7 +456,11 @@ def load_mme(mme_dir: Path, split: str = "test",
                 missing.append(str(rec["image"]))
                 if require_images:
                     continue
-            sid = f"mme/{rec['category']}/{rec['question_id']}"
+            # `item_id`, not `question_id`: the latter is the IMAGE path and
+            # every image carries two questions, so building the id from it
+            # collides on every single item. r21's session died on the same
+            # assumption one layer up, in the fetcher.
+            sid = f"mme/{rec['item_id']}"
             if sid in seen:
                 raise ValueError(f"{path}: duplicate sample_id {sid!r}")
             seen.add(sid)
@@ -472,6 +476,9 @@ def load_mme(mme_dir: Path, split: str = "test",
                 question=str(rec["question"]),
                 label=label,
                 extra={"category": str(rec["category"]),
+                       # The image key MME ships, kept because acc_plus
+                       # groups by it: the two rows sharing it are the pair
+                       # that term is defined over.
                        "question_id": str(rec["question_id"]),
                        "image_file": str(rec["image"])},
             ))

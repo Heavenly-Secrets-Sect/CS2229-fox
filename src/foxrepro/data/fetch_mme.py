@@ -82,15 +82,31 @@ def fetch(dest: Path, limit: Optional[int] = None,
             f"download would read as a low score rather than as an error."
         )
 
+    # `question_id` is the IMAGE path -- "code_reasoning/0020.png" -- not a
+    # question id, and every image carries EXACTLY TWO rows, one answered
+    # Yes and one answered No. Verified over all four shards: 1187 images,
+    # 2374 rows, 2 per image, one of each answer, no image whose two
+    # questions share their text.
+    #
+    # The first version of this function treated it as unique and raised on
+    # row two, which is what killed r21's only session. The pairing is not
+    # an accident to tolerate: MME's acc_plus term is "both questions of
+    # this image right", so the structure IS the metric and is asserted.
     rows: List[Dict[str, str]] = []
-    seen_qid: set = set()
+    per_image: Dict[str, List[str]] = {}
     for i, rec in enumerate(ds):
         if limit is not None and i >= limit:
             break
         qid = str(rec["question_id"])
-        if qid in seen_qid:
-            raise ValueError(f"duplicate question_id {qid!r} at row {i}")
-        seen_qid.add(qid)
+        answer = str(rec["answer"])
+        seen = per_image.setdefault(qid, [])
+        if answer in seen:
+            raise ValueError(
+                f"image {qid!r} has two rows answered {answer!r} at row {i}; "
+                f"MME pairs one Yes with one No per image and acc_plus "
+                f"depends on it"
+            )
+        seen.append(answer)
 
         img = rec["image"]
         buf = getattr(img, "_bytes", None)
@@ -100,16 +116,24 @@ def fetch(dest: Path, limit: Optional[int] = None,
             img.convert("RGB").save(bio, format="JPEG", quality=95)
             buf = bio.getvalue()
         ext = _image_ext(buf)
-        # Name by question_id, not by a counter: a resumed or re-run fetch
-        # then overwrites the same file instead of growing a second copy.
+        # Name by the image key, not by a counter: the two questions of one
+        # image then write the same file rather than two copies, and a
+        # re-run overwrites instead of growing the directory.
         name = f"{hashlib.sha1(qid.encode()).hexdigest()[:16]}.{ext}"
         (images / name).write_bytes(buf)
 
         rows.append({
+            # Kept under the dataset's own name so the manifest stays a
+            # faithful record of what arrived, but it identifies the IMAGE.
             "question_id": qid,
+            # The per-question id this repo resumes on. The answer is what
+            # separates an image's two rows -- one Yes, one No, asserted
+            # above -- so it is stable across re-fetches in a way that a
+            # row counter would not be.
+            "item_id": f"{qid}#{answer.strip().lower()}",
             "image": f"images/{name}",
             "question": str(rec["question"]),
-            "answer": str(rec["answer"]),
+            "answer": answer,
             "category": str(rec["category"]),
         })
 
@@ -132,9 +156,17 @@ def fetch(dest: Path, limit: Optional[int] = None,
         for r in rows:
             fh.write(json.dumps(r, sort_keys=True) + "\n")
 
+    if limit is None:
+        bad = {k: v for k, v in per_image.items() if len(v) != 2}
+        if bad:
+            raise ValueError(
+                f"{len(bad)} image(s) do not have exactly two questions, "
+                f"first: {sorted(bad)[:3]}. acc_plus is defined over the "
+                f"pair, so a lone question would score an image as failed."
+            )
     return {
         "dest": str(dest), "manifest": str(out), "n_rows": len(rows),
-        "n_images": len({r["image"] for r in rows}),
+        "n_images": len(per_image),
         "subtasks": dict(sorted(cats.items())),
         "partial": limit is not None,
     }
