@@ -22,28 +22,33 @@ a configuration change. Every row below is the LLaVA-1.5 column unless stated.
 
 ## Main tables
 
-### Table 1 — POPE accuracy, 3 splits x 7 methods, 3 backbones — **PARTIAL**
+### Table 1 — POPE accuracy, 3 splits x 7 methods, 3 backbones — **DONE for LLaVA-1.5, r17**
+
+**Complete down every column and along every row**, for LLaVA-1.5:
 
 | | adversarial | popular | random |
 |---|---|---|---|
 | `sampling`, `fox` | 10 seeds | 3 seeds | 3 seeds |
-| OPERA | 1 run (greedy) | 1 run | 1 run |
-| VCD, ICD, SID, CausalMM | 3 seeds | **missing** | **missing** |
+| VCD, ICD, SID, CausalMM | 3 seeds | 3 seeds | 3 seeds |
+| OPERA | 1 run (greedy, deterministic) | 1 run | 1 run |
 
-**OPERA is already complete**: it runs greedy, which is deterministic, so one
-run per split is the whole measurement and seeds do not apply. A first pass at
-this table costed it at 31 h for "two missing splits × three seeds" and both
-halves of that were wrong.
+OPERA needs one run per split because greedy is deterministic; seeds do not
+apply. Backbones beyond LLaVA-1.5 are a separate axis and remain out of
+reach; see the loader note at the end.
 
-What is actually missing is 4 methods × 2 splits × 3 seeds = **24 jobs, 22 h,
-no new code**. Scheduled as r16. Backbones beyond LLaVA-1.5 are a separate
-axis; see the loader note at the end.
+### Table 2 — CHAIR, 7 methods — **6 of 7; OPERA's row deliberately not run**
 
-### Table 2 — CHAIR, 7 methods — **PARTIAL**
+`sampling` and `fox` at 10 seeds; VCD, ICD, SID and CausalMM at 3. Measured
+but unresolved: the gap moves 5.20 points across five image draws, so the
+single-draw interval understates it (§3.8.1).
 
-`sampling` and `fox` done at 10 seeds. Measured but unresolved: the gap moves
-5.20 points across five image draws, so the single-draw interval understates
-it (§3.8.1).
+**OPERA's CHAIR row is a deliberate omission, not an oversight.** Beam-5 over
+512 tokens on 500 images costs **40.5 GPU-hours** for one deterministic run —
+more than any round this project has launched — and it would buy one more
+baseline number on the benchmark whose absolute values the image-set drift
+already makes uninterpretable. The comparison that row would support is
+exactly the one §3.8.1 says cannot be made. Recorded here so the gap is a
+decision with a price attached rather than something nobody got to.
 
 ### Table 8 — POPE **F1** on 3 splits x 3 backbones — **DONE for our rows**
 
