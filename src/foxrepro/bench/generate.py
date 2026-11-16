@@ -1072,6 +1072,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--images-dir", type=Path, default=p.coco_images_dir)
     ap.add_argument("--pope-dir", type=Path, default=p.pope_ann_dir)
     ap.add_argument(
+        "--mme-dir", type=Path, default=p.mme_dir,
+        help="MME images and mme_test.jsonl, as written by "
+             "`python3 -m foxrepro.data.fetch_mme`.",
+    )
+    ap.add_argument(
         "--chair-image-list", type=Path, default=None,
         help="default: the list for --split. Each CHAIR draw has its own "
              "file, so the split name alone selects which 500 images are "

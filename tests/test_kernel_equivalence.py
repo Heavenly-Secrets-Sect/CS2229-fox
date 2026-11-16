@@ -484,8 +484,15 @@ class TestHarnessMatchesTheReleasedHarness(unittest.TestCase):
             RELEASED_POPE_MAX_NEW_TOKENS,
         )
 
+        # MME has no released value to match, because the release ships no
+        # MME script at all while reporting MME results (Figures 5, 18). Its
+        # length comes from the benchmark's own definition -- the questions
+        # are yes/no and end with "Please answer yes or no." -- so 1 is
+        # asserted here rather than imported from `reference`, where every
+        # constant is a transcription of something that exists.
         want = {"pope": RELEASED_POPE_MAX_NEW_TOKENS,
-                "chair": RELEASED_CHAIR_MAX_NEW_TOKENS}
+                "chair": RELEASED_CHAIR_MAX_NEW_TOKENS,
+                "mme": 1}
         overrides = []
         for job in PLAN:
             with self.subTest(job=job.job_id()):
@@ -493,6 +500,10 @@ class TestHarnessMatchesTheReleasedHarness(unittest.TestCase):
                 if got == want[job.benchmark]:
                     continue
                 overrides.append(job)
+                self.assertNotEqual(
+                    job.benchmark, "mme",
+                    "MME is yes/no; a job generating more than one token "
+                    "there is a mistake, and there is no release to blame")
                 self.assertEqual(job.method, "opera")
                 self.assertEqual(job.benchmark, "pope")
                 self.assertEqual(got, OPERA_POPE_MAX_NEW_TOKENS)

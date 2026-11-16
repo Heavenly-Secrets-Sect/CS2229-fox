@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence
@@ -36,6 +37,7 @@ __all__ = [
     "render_prompt",
     "Sample",
     "load_pope",
+    "load_mme",
     "load_chair",
     "load_benchmark",
     "pope_file_for_split",
@@ -66,6 +68,11 @@ PROMPT_TEMPLATES: Dict[str, str] = {
     "pope_v0_raw": "{question}",
     "chair_v1": "Please describe this image in detail.",
     "chair_v2_short": "Describe this image in detail.",
+    # MME ships its own instruction INSIDE the question text -- every item
+    # ends with "Please answer yes or no." -- so the raw form is the faithful
+    # one, exactly as pope_v0_raw is for POPE. Appending another instruction
+    # would be an ablation, not the protocol.
+    "mme_v0_raw": "{question}",
 }
 
 #: Which templates are legal for which benchmark (guards CLI typos).
@@ -74,6 +81,7 @@ _TEMPLATE_BENCHMARK = {
     "pope_v0_raw": "pope",
     "chair_v1": "chair",
     "chair_v2_short": "chair",
+    "mme_v0_raw": "mme",
 }
 
 #: ``benchmark -> the template the release sends``. One definition, read by
@@ -83,6 +91,7 @@ _TEMPLATE_BENCHMARK = {
 DEFAULT_TEMPLATE_IDS: Dict[str, str] = {
     "pope": "pope_v0_raw",
     "chair": "chair_v1",
+    "mme": "mme_v0_raw",
 }
 
 _IMAGE_ID_RE = re.compile(r"(\d{6,})")
@@ -391,6 +400,90 @@ def load_chair(
     return samples
 
 
+#: The manifest `fetch_mme.py` writes beside the extracted images. One JSONL
+#: line per item: ``{question_id, image, question, answer, category}``, the
+#: parquet's own fields with the image replaced by its filename on disk.
+MME_MANIFEST_NAME = "mme_test.jsonl"
+
+
+def load_mme(mme_dir: Path, split: str = "test",
+             require_images: bool = True) -> List[Sample]:
+    """Load MME from the manifest `fetch_mme.py` extracted.
+
+    MME is binary yes/no like POPE, which is why its harness is this short:
+    the same prompt shape, the same single generated token, and the same
+    yes/no parser downstream. What it does NOT share is the metric -- see
+    ``bench.evaluate.evaluate_mme`` -- because MME scores per IMAGE as well
+    as per question.
+
+    ``category`` is carried on every sample rather than becoming a split.
+    The MME score is a SUM over fourteen subtasks, so running them as
+    separate jobs would make the total depend on which jobs finished.
+
+    Args:
+        mme_dir: directory holding ``mme_test.jsonl`` and the images.
+        split: only ``"test"`` exists; accepted for signature symmetry.
+        require_images: raise if a referenced image is missing locally.
+    """
+    mme_dir = Path(mme_dir)
+    path = mme_dir / MME_MANIFEST_NAME
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{path} is missing. Run `python3 -m foxrepro.data.fetch_mme` "
+            f"first; it downloads the parquet shards and extracts the images."
+        )
+    samples: List[Sample] = []
+    missing: List[str] = []
+    seen: set = set()
+    with path.open(encoding="utf-8") as fh:
+        for idx, line in enumerate(fh):
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            for field in ("question_id", "image", "question", "answer",
+                          "category"):
+                if field not in rec:
+                    raise ValueError(
+                        f"{path} line {idx + 1} missing {field!r}: {rec!r}")
+            label = str(rec["answer"]).strip().lower()
+            if label not in ("yes", "no"):
+                raise ValueError(
+                    f"{path} line {idx + 1} has non-binary answer "
+                    f"{rec['answer']!r}; MME is yes/no throughout")
+            img = mme_dir / str(rec["image"])
+            if not img.is_file():
+                missing.append(str(rec["image"]))
+                if require_images:
+                    continue
+            sid = f"mme/{rec['category']}/{rec['question_id']}"
+            if sid in seen:
+                raise ValueError(f"{path}: duplicate sample_id {sid!r}")
+            seen.add(sid)
+            samples.append(Sample(
+                sample_id=sid,
+                # MME images are not COCO, so there is no natural numeric id.
+                # A stable hash of the filename keeps `image_id` an int for
+                # every consumer without pretending it is a COCO id.
+                image_id=zlib.crc32(str(rec["image"]).encode()) & 0x7FFFFFFF,
+                image_path=img,
+                benchmark="mme",
+                split=split,
+                question=str(rec["question"]),
+                label=label,
+                extra={"category": str(rec["category"]),
+                       "question_id": str(rec["question_id"]),
+                       "image_file": str(rec["image"])},
+            ))
+    if missing and require_images:
+        raise FileNotFoundError(
+            f"{len(missing)} MME images missing from {mme_dir}, first: "
+            f"{missing[:3]}. Re-run fetch_mme."
+        )
+    samples.sort(key=lambda s: s.sample_id)
+    return samples
+
+
 def load_benchmark(
     benchmark: str,
     split: str,
@@ -399,6 +492,7 @@ def load_benchmark(
     chair_image_list: Path,
     prompt_template_id: str,
     require_images: bool = True,
+    mme_dir: Optional[Path] = None,
 ) -> List[Sample]:
     """Dispatch to :func:`load_pope` or :func:`load_chair`.
 
@@ -423,6 +517,10 @@ def load_benchmark(
             chair_image_list, images_dir, split=split,
             prompt_template_id=prompt_template_id, require_images=require_images,
         )
+    if benchmark == "mme":
+        if mme_dir is None:
+            raise ValueError("mme_dir is required for benchmark='mme'")
+        return load_mme(mme_dir, split=split, require_images=require_images)
     raise ValueError(f"unknown benchmark {benchmark!r}")
 
 

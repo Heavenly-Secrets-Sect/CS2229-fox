@@ -277,7 +277,9 @@ CONTROL_ARMS: Dict[str, str] = {
 
 #: Default generation length per benchmark, matching the reference code:
 #: POPE answers are a single token (yes/no), CHAIR captions are 512 tokens.
-MAX_NEW_TOKENS_DEFAULT: Dict[str, int] = {"pope": 1, "chair": 512}
+#: MME answers are "Yes"/"No" like POPE's, so one token is enough -- the
+#: official MME prompt already ends with "Please answer yes or no."
+MAX_NEW_TOKENS_DEFAULT: Dict[str, int] = {"pope": 1, "chair": 512, "mme": 1}
 
 #: Benchmarks and their legal splits.
 #: Extra CHAIR splits, each an independent 500-image draw from val2014.
@@ -294,9 +296,24 @@ CHAIR_DRAWS: tuple[str, ...] = (
     "val2014_500_d1", "val2014_500_d2", "val2014_500_d3", "val2014_500_d4",
 )
 
+#: MME's fourteen subtasks, in the two groups its score sums over. The split
+#: is "test" -- the only one the release ships -- and the subtasks are a
+#: field on each item rather than separate splits, because the MME score is
+#: defined as a SUM over subtasks and splitting them into runs would make the
+#: total an artefact of which runs happened to finish.
+MME_PERCEPTION: tuple[str, ...] = (
+    "existence", "count", "position", "color", "posters", "celebrity",
+    "scene", "landmark", "artwork", "OCR",
+)
+MME_COGNITION: tuple[str, ...] = (
+    "commonsense_reasoning", "numerical_calculation",
+    "text_translation", "code_reasoning",
+)
+
 BENCHMARK_SPLITS: Dict[str, tuple[str, ...]] = {
     "pope": ("random", "popular", "adversarial"),
     "chair": ("val2014_500",) + CHAIR_DRAWS,
+    "mme": ("test",),
 }
 
 
@@ -418,6 +435,16 @@ class Paths:
     @property
     def coco_ann_dir(self) -> Path:
         return self.data_root / "annotations"
+
+    @property
+    def mme_dir(self) -> Path:
+        """MME images and manifest, extracted from the parquet shards.
+
+        Its own directory rather than a corner of ``coco_images_dir``: MME's
+        images come from many sources, not from val2014, and mixing them into
+        the COCO tree would let a CHAIR run pick one up by filename.
+        """
+        return self.data_root / "mme"
 
     def coco_annotation(self, stem: str) -> Path:
         """``instances_val2014`` / ``captions_val2014`` -> the file to read.

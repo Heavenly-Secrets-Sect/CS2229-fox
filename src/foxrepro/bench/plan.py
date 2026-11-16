@@ -84,7 +84,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from foxrepro.storage import BENCHMARK_SPLITS, CHAIR_DRAWS, RunKey, paths
+from foxrepro.storage import (
+    BENCHMARK_SPLITS, CHAIR_DRAWS, MAX_NEW_TOKENS_DEFAULT, RunKey, paths,
+)
 from foxrepro.data.loaders import DEFAULT_TEMPLATE_IDS
 
 __all__ = [
@@ -115,6 +117,12 @@ COST_S: Dict[Tuple[str, str], float] = {
     ("chair", "dual"): 10.9,      # 90.6 min / 500
     ("chair", "split"): 16.4,     # estimated: 2x single, no batching to share
     ("diag", "single"): 0.55,     # one prefill, no generation
+    # MME is one generated token on one image -- exactly POPE's shape -- so
+    # it inherits POPE's numbers until its own runs calibrate them. The
+    # prompts are a little longer, so these are a floor, not a promise.
+    ("mme", "single"): 0.55,
+    ("mme", "dual"): 1.10,
+    ("mme", "split"): 1.10,
     # No ("*", "beam") entry on purpose: OPERA is the one shape whose cost
     # scales with the generation length, so it is not a flat per-sample
     # number -- see BEAM_COST_S and Job.est_seconds.
@@ -165,6 +173,10 @@ N_SAMPLES: Dict[Tuple[str, str], int] = {
     ("pope", "adversarial"): 3000,
     ("chair", "val2014_500"): 500,
     **{("chair", d): 500 for d in CHAIR_DRAWS},
+    # The whole released test split. NOT splittable by subtask: the MME
+    # score is a SUM over fourteen subtasks, so a partial set of jobs would
+    # produce a total that silently means something else.
+    ("mme", "test"): 2374,
 }
 
 #: Methods that run two forward branches per token as rows of one batch.
@@ -330,7 +342,10 @@ class Job:
         """Generation length: the benchmark default unless overridden."""
         if self.max_new_tokens is not None:
             return int(self.max_new_tokens)
-        return 1 if self.benchmark == "pope" else 512
+        # From the registry, not a literal. The hard-coded form silently gave
+        # MME 512 tokens on a yes/no benchmark -- a 512x cost increase and a
+        # different run key, neither of which would have raised.
+        return MAX_NEW_TOKENS_DEFAULT[self.benchmark]
 
     def run_key(self) -> RunKey:
         """Must match what ``generate.py`` would build, or progress is wrong."""
@@ -1252,6 +1267,31 @@ def _build_plan() -> List[Job]:
             jobs.append(Job(
                 "layer_identity", "fox", "pope", split, seed=seed, mode="off",
                 note=f"V15: no-intervention baseline on {split}, seeds 4-10",
+            ))
+
+    # ---- Round 21: MME, the first benchmark outside POPE and CHAIR -------
+    # V16 in docs/VALIDATION.md. Figures 5 and 18 report MME results that the
+    # release ships no script for, so there is nothing to transcribe and this
+    # harness is written from the benchmark's own definition.
+    #
+    # The arms are the minimum that makes the number mean something: the
+    # baseline, the full method, and `off`. Without `off` an MME gain cannot
+    # be split between the intervention and the dual-pass fusion -- which is
+    # the split that mattered on POPE, where `off` turned out to carry +2.21
+    # of Fox's +5.03.
+    #
+    # Three seeds. MME scores 2374 questions, so the sampling draw is the
+    # only variance it has, and three is this project's breadth width.
+    for method, mode, why in (
+        ("sampling", "as_implemented", "baseline"),
+        ("fox", "as_implemented", "the full method"),
+        ("fox", "off", "fusion only, no intervention"),
+    ):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "mme", method, "mme", "test", seed=seed,
+                mode=mode if method == "fox" else "as_implemented",
+                note=f"V16: MME, {why}",
             ))
 
     return jobs

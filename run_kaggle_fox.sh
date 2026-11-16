@@ -6,7 +6,7 @@
 #   local:   python3 -m foxrepro.bench.plan plan --budget-hours 10 --round r6
 #            python3 -m foxrepro.bench.plan plan --budget-hours 9 \
 #                    --calibrate <logs>/_job_times.tsv --round r2   (after session 1)
-#   Kaggle:  bash run_kaggle_fox.sh <N>        N = session number (1..5)
+#   Kaggle:  bash run_kaggle_fox.sh <N>        N = session number (1..1)
 #            DRY=1 bash run_kaggle_fox.sh <N>  print the commands only
 #            BUDGET=10 bash run_kaggle_fox.sh <N>     hours, default from the plan
 #
@@ -62,6 +62,20 @@ PY
 # session 1 die within seconds: the data step and the run step disagreed.
 python3 -m foxrepro.data.fetch_images --what auto --session "$N" \
     --workers 8 --progress-every 100
+
+# MME ships its images inside parquet, so it needs its own fetch and the
+# `datasets` package -- neither of which the POPE/CHAIR path touches. Only
+# when THIS session actually has MME jobs: the download is ~864 MB and every
+# other session would pay it for nothing. Same lesson as --what auto above,
+# where a hardcoded benchmark killed every CHAIR job in session 1.
+NEEDS_MME=$(python3 -c 'import json,sys; p=json.load(open("scripts/run_plan.json")); n=int(sys.argv[1]); s=next((x for x in p["sessions"] if int(x["session"])==n), {}); print(int(any("--benchmark mme" in p["jobs"][j]["command"] for j in s.get("jobs", []))))' "$N")
+if [ "$NEEDS_MME" = "1" ]; then
+  echo "[mme] session $N has MME jobs; fetching the split"
+  pip install -q datasets || { echo "datasets install failed"; exit 1; }
+  python3 -m foxrepro.data.fetch_mme || { echo "MME fetch failed"; exit 1; }
+else
+  echo "[mme] no MME jobs in session $N; skipping the 864 MB download"
+fi
 
 # Kaggle gives a session no memory of the last one: /kaggle/working starts
 # empty, so resume would see no run files and redo work already paid for.

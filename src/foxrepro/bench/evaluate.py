@@ -54,6 +54,7 @@ from foxrepro.bench.stats import (  # noqa: E402
     bootstrap_ci, wilson_interval,
 )
 from foxrepro.storage import (  # noqa: E402
+    MME_COGNITION, MME_PERCEPTION,
     OPTIONAL_VARIANT_FIELDS, PROVENANCE_FIELDS, VARIANT_FIELDS, paths,
 )
 
@@ -342,6 +343,115 @@ def _f1_from_codes(codes: Sequence[int]) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def evaluate_mme(
+    records: Sequence[Dict[str, Any]],
+    unparsed_policy: str = "negative",
+    confidence: float = 0.95,
+    n_boot: int = 10000,
+    seed: int = 20260101,
+    pope_parser: str = DEFAULT_POPE_PARSER,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """MME's score, which is NOT POPE accuracy under another name.
+
+    MME asks exactly two yes/no questions per image -- one whose answer is
+    yes, one whose answer is no -- and scores each subtask as
+
+        subtask score = (acc + acc_plus) * 100
+
+    where ``acc`` is per-question accuracy and ``acc_plus`` is the fraction
+    of IMAGES where BOTH questions were right. The reported Perception and
+    Cognition totals are sums over their ten and four subtasks, so each is
+    out of 1000 and 400 rather than 100.
+
+    That per-image term is the whole reason this cannot reuse
+    :func:`evaluate_pope`. A model that answers "yes" to everything scores
+    0.50 acc and **0.00** acc_plus; one that is genuinely right half the
+    time at random scores 0.50 and 0.25. POPE accuracy cannot tell those
+    apart and the MME score is built to.
+
+    Parsing is shared with POPE deliberately -- the answers are the same
+    yes/no shape -- so a parser change moves both benchmarks together rather
+    than letting them drift.
+
+    Returns ``(metrics, outcome_rows)``; the rows carry ``correct`` per
+    question and the image grouping, so paired tests work as they do for
+    POPE.
+    """
+    parse = POPE_PARSERS[pope_parser]
+    by_image: Dict[str, List[Dict[str, Any]]] = {}
+    rows: List[Dict[str, Any]] = []
+    n_unparsed = 0
+    for rec in records:
+        label = str(rec.get("label", "")).strip().lower()
+        if label not in ("yes", "no"):
+            raise ValueError(
+                f"MME record {rec.get('sample_id')!r} has non-binary label "
+                f"{rec.get('label')!r}"
+            )
+        pred = parse(str(rec.get("output", "")))
+        if pred is None:
+            n_unparsed += 1
+            # Same convention as POPE: an unparsable answer is a wrong
+            # answer, not a dropped sample. Dropping would let a model
+            # improve its score by refusing to answer.
+            pred = "no" if unparsed_policy == "negative" else label
+        correct = int(pred == label)
+        extra = rec.get("method_extra") or {}
+        cat = str(rec.get("category") or extra.get("category") or "?")
+        img = str(rec.get("image_file") or extra.get("image_file")
+                  or rec.get("image_id"))
+        row = {"sample_id": rec.get("sample_id"), "category": cat,
+               "image": img, "label": label, "pred": pred,
+               "correct": correct, "parsed": pred is not None}
+        rows.append(row)
+        by_image.setdefault((cat, img), []).append(row)
+
+    per_cat: Dict[str, Dict[str, float]] = {}
+    for (cat, _img), qs in by_image.items():
+        c = per_cat.setdefault(cat, {"n_q": 0, "n_right": 0,
+                                     "n_img": 0, "n_img_both": 0})
+        c["n_q"] += len(qs)
+        c["n_right"] += sum(q["correct"] for q in qs)
+        c["n_img"] += 1
+        c["n_img_both"] += int(all(q["correct"] for q in qs))
+
+    cats: Dict[str, Dict[str, float]] = {}
+    for cat, c in sorted(per_cat.items()):
+        acc = c["n_right"] / c["n_q"] if c["n_q"] else 0.0
+        accp = c["n_img_both"] / c["n_img"] if c["n_img"] else 0.0
+        cats[cat] = {
+            "acc": round(100 * acc, 4), "acc_plus": round(100 * accp, 4),
+            "score": round(100 * (acc + accp), 4),
+            "n_questions": int(c["n_q"]), "n_images": int(c["n_img"]),
+        }
+
+    def total(group: Sequence[str]) -> float:
+        return round(sum(cats[g]["score"] for g in group if g in cats), 4)
+
+    n_q = sum(c["n_questions"] for c in cats.values())
+    n_right = sum(r["correct"] for r in rows)
+    metrics: Dict[str, Any] = {
+        "benchmark": "mme",
+        "n_samples": len(rows),
+        "unparsed": n_unparsed,
+        "per_category": cats,
+        "totals": {
+            "perception": total(MME_PERCEPTION),
+            "cognition": total(MME_COGNITION),
+            "overall": total(MME_PERCEPTION) + total(MME_COGNITION),
+            "accuracy": round(100 * n_right / n_q, 4) if n_q else 0.0,
+        },
+        "subtasks_present": sorted(cats),
+        "subtasks_missing": sorted(
+            set(MME_PERCEPTION + MME_COGNITION) - set(cats)),
+    }
+    if n_q:
+        metrics["accuracy_ci"] = wilson_interval(
+            n_right, n_q, confidence=confidence, name="mme_accuracy"
+        ).as_dict()
+    return metrics, rows
+
+
 def evaluate_pope(
     records: Sequence[Dict[str, Any]],
     labels: Optional[Dict[str, str]] = None,
@@ -611,6 +721,11 @@ def evaluate_run_file(
             records, scorer_factory(), confidence=confidence, n_boot=n_boot, seed=seed
         )
         rows = [s.as_dict() for s in scores]
+    elif benchmark == "mme":
+        metrics, rows = evaluate_mme(
+            records, unparsed_policy=unparsed_policy, confidence=confidence,
+            n_boot=n_boot, seed=seed, pope_parser=pope_parser,
+        )
     else:
         raise ValueError(f"unknown benchmark {benchmark!r}")
 

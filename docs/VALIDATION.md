@@ -1851,6 +1851,51 @@ claim about an experiment that was not run; this runs it.
 
 ---
 
+## V16 — MME: does Fox's gain survive a benchmark it was not tuned on?
+
+`sampling`, `fox` and `fox off` on **MME** (2374 questions, 14 subtasks),
+seeds 42/43/44. **5.4 h**, 9 jobs.
+
+MME is the first benchmark here outside POPE and CHAIR, and Figures 5 and 18
+report MME results that **the release ships no script for** — so there is
+nothing to transcribe and this harness is written from the benchmark's own
+definition. That is the same shape as the dead VCD/ICD flags and Table 13's
+undefined quantity: a published number whose production is not reconstructible
+from what was released.
+
+### Why `off` is in the round and not left for later
+
+On POPE, `fox off` — the dual pass and the fusion with no intervention at
+all — carries **+2.21 of Fox's +5.03**. Without it an MME gain cannot be
+split between the mechanism the paper describes and the two-branch decode
+that comes along with it. Running the method without its own control is how
+a benchmark becomes decoration.
+
+### The metric is not POPE accuracy
+
+MME scores `(acc + acc_plus) × 100` per subtask and **sums** over ten
+Perception and four Cognition subtasks, so the totals run to 1000 and 400.
+`acc_plus` counts IMAGES where both questions were right. An always-yes model
+scores acc 0.50 and acc_plus **0.00**; a genuinely-half-right one scores 0.50
+and 0.25. POPE accuracy cannot separate those.
+
+**Prediction: Fox beats the baseline on MME by less than its POPE margin in
+relative terms, and `off` carries at least half of whatever it gains.**
+
+The reasoning is V2 and r15. The effect is an fp16 requantisation of attention
+logits, which does not know what benchmark it is on — so a gain should appear.
+But POPE-adversarial is the split Fox's hyperparameters were chosen on, and
+`off` has carried 44 % of the gain everywhere it has been measured.
+
+| outcome | reading |
+|---|---|
+| Fox > baseline, `off` ≥ half of it | the account holds on a third benchmark: a precision effect plus a dual-pass effect, neither of them the causal story |
+| Fox > baseline, `off` ≈ 0 | **the prediction fails** and the intervention does something on MME that it does not do on POPE. The first result that would make the diagnosis look load-bearing |
+| Fox ≈ baseline | the gain is specific to POPE-style yes/no about object presence, and MME's fourteen subtasks dilute it. Then the paper's MME figures need explaining, not ours |
+| acc_plus moves opposite to acc | the arms are trading per-question accuracy for per-image consistency, which POPE could never have shown and which would be worth its own round |
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run
