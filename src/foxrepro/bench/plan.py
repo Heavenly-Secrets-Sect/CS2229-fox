@@ -1771,7 +1771,24 @@ def measured_cost(runs_root: Optional[Path] = None) -> Dict[str, float]:
     buckets: Dict[Tuple[str, str], List[float]] = {}
     if not runs_root.is_dir():
         return {}
+    # Per-file (sum, count) per bucket, cached on (size, mtime). Averaging a
+    # whole archive line by line on every `plan list` was six seconds at 415
+    # files and grows with the archive; the aggregates combine exactly.
+    cache_path, cache_all = _progress_cache(runs_root)
+    cost_cache = cache_all["cost"]
+    totals: Dict[str, List[float]] = {}
+    dirty = False
     for f in sorted(runs_root.glob("*.jsonl")):
+        st = f.stat()
+        stamp = [st.st_size, st.st_mtime_ns]
+        hit = cost_cache.get(f.name)
+        if hit is not None and hit[:2] == stamp:
+            for k, (sm, n) in hit[2].items():
+                t = totals.setdefault(k, [0.0, 0])
+                t[0] += sm
+                t[1] += n
+            continue
+        agg: Dict[str, List[float]] = {}
         with f.open() as fh:
             for line in fh:
                 line = line.strip()
@@ -1792,26 +1809,71 @@ def measured_cost(runs_root: Optional[Path] = None) -> Dict[str, float]:
                     else "dual" if m in DUAL_BRANCH
                     else "single"
                 )
-                buckets.setdefault((bench, branches), []).append(lat / 1000.0)
-    return {
-        f"{b}/{br}": round(sum(v) / len(v), 3)
-        for (b, br), v in sorted(buckets.items())
-    }
+                a = agg.setdefault(f"{bench}/{branches}", [0.0, 0])
+                a[0] += lat / 1000.0
+                a[1] += 1
+        cost_cache[f.name] = [st.st_size, st.st_mtime_ns, agg]
+        dirty = True
+        for k, (sm, n) in agg.items():
+            t = totals.setdefault(k, [0.0, 0])
+            t[0] += sm
+            t[1] += n
+    if dirty:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(cache_all, sort_keys=True))
+        except OSError:
+            pass
+    return {k: round(sm / n, 3) for k, (sm, n) in sorted(totals.items()) if n}
+
+
+#: Record counts cached by ``(size, mtime_ns)``, so a run file is parsed once
+#: and not on every ``plan list``, ``plan plan`` and ``plan run``.
+#:
+#: Counting meant reparsing every record of every run file on every call --
+#: about 0.17 s per job, which at 415 jobs put a ten-minute floor under every
+#: planning command and was the bottleneck the whole workflow hit after r18.
+#: Keyed on size AND mtime, so an appended-to file misses and is rescanned;
+#: a corrupt cache is discarded rather than trusted.
+PROGRESS_CACHE_NAME = "scan_counts.json"
+
+
+def _progress_cache(runs_root: Path) -> Tuple[Path, Dict[str, dict]]:
+    """``{"counts": {file: [size, mtime, n]}, "cost": {file: [size, mtime, agg]}}``."""
+    path = runs_root.parent / PROGRESS_CACHE_NAME
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            raise ValueError
+    except (OSError, ValueError):
+        data = {}
+    data.setdefault("counts", {})
+    data.setdefault("cost", {})
+    return path, data
 
 
 def scan_progress(
-    jobs: Iterable[Job] = (), runs_root: Optional[Path] = None
+    jobs: Iterable[Job] = (), runs_root: Optional[Path] = None,
+    use_cache: bool = True,
 ) -> Dict[str, object]:
     """How far each job got, by counting records in its own run file.
 
     A job is complete when its file holds as many records as the benchmark has
     samples. Partial files are reported with their remaining count, since
     re-running the identical command resumes rather than restarting.
+
+    ``use_cache=False`` forces a reparse of every file, which is what a
+    changed PARSER needs -- the cache keys on the file, not on the code that
+    reads it.
     """
     from foxrepro.bench.generate import scan_run_file
 
     runs_root = runs_root or paths().runs_root
     jobs = list(jobs) or PLAN
+    cache_path, cache_all = (_progress_cache(runs_root) if use_cache
+                             else (None, {"counts": {}, "cost": {}}))
+    cache = cache_all["counts"]
+    dirty = False
     rows: List[Dict[str, object]] = []
     for job in jobs:
         key = job.run_key()
@@ -1819,7 +1881,21 @@ def scan_progress(
         done = 0
         if path.is_file():
             try:
-                done = len(scan_run_file(path, key=key).done_ids)
+                st = path.stat()
+                stamp = [st.st_size, st.st_mtime_ns]
+                hit = cache.get(key.filename())
+                if use_cache and hit is not None and hit[:2] == stamp:
+                    done = int(hit[2])
+                else:
+                    scan = scan_run_file(path, key=key)
+                    done = len(scan.done_ids)
+                    if use_cache and not scan.truncated_bytes:
+                        # Re-stat: the scan repairs in place, so the stamp
+                        # taken before it can already be stale.
+                        st = path.stat()
+                        cache[key.filename()] = [st.st_size,
+                                                 st.st_mtime_ns, done]
+                        dirty = True
             except (OSError, ValueError, json.JSONDecodeError):
                 # A corrupt or mismatched file counts as no progress. Caught
                 # narrowly on purpose: a broad `except Exception` here once hid
@@ -1838,6 +1914,12 @@ def scan_progress(
             ),
             "file": key.filename(),
         })
+    if dirty and cache_path is not None:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(cache_all, sort_keys=True))
+        except OSError:
+            pass          # a cache that cannot be written is not an error
     return {
         "rows": rows,
         "n_jobs": len(rows),

@@ -46,3 +46,4 @@ archives/
 # Session zips downloaded from Kaggle; ingest merges them into the runs root.
 runs_inbox/*.zip
 runs_inbox/*/
+scan_counts.json

@@ -525,6 +525,49 @@ class TestProgressActuallyCounts(unittest.TestCase):
         self.assertEqual(row["done"], 7)
         self.assertFalse(row["complete"])
 
+    def test_the_progress_cache_is_keyed_on_the_file_not_the_clock(self) -> None:
+        """Counting reparsed every record of every run on every call.
+
+        At 415 jobs that put a ten-minute floor under `plan list`, `plan
+        plan` and `plan run`, and it grows with the archive. The cache keys
+        on (size, mtime_ns) so an APPENDED file misses -- which is the case
+        that matters, since a resumed job grows its own run file and a stale
+        count would make the planner believe finished work remains.
+        """
+        from foxrepro.bench.plan import scan_progress
+
+        job = next(j for j in PLAN if j.n_samples == 500)
+        self._fill(job, 7)
+        first = scan_progress([job], self.runs)["rows"][0]
+        self.assertEqual(first["done"], 7)
+
+        cached = scan_progress([job], self.runs)["rows"][0]
+        self.assertEqual(cached["done"], 7, "cache changed the answer")
+
+        # Appending must invalidate it.
+        self._fill(job, 9)
+        after = scan_progress([job], self.runs)["rows"][0]
+        self.assertEqual(after["done"], 9,
+                         "an appended run file kept its stale count")
+
+    def test_the_cache_can_be_bypassed_for_a_parser_change(self) -> None:
+        """The cache keys on the file, not on the code that reads it."""
+        from foxrepro.bench.plan import scan_progress
+
+        job = next(j for j in PLAN if j.n_samples == 500)
+        self._fill(job, 5)
+        scan_progress([job], self.runs)
+        got = scan_progress([job], self.runs, use_cache=False)["rows"][0]
+        self.assertEqual(got["done"], 5)
+
+    def test_a_corrupt_cache_is_discarded_not_trusted(self) -> None:
+        from foxrepro.bench.plan import PROGRESS_CACHE_NAME, scan_progress
+
+        job = next(j for j in PLAN if j.n_samples == 500)
+        self._fill(job, 6)
+        (self.runs.parent / PROGRESS_CACHE_NAME).write_text("{not json")
+        self.assertEqual(scan_progress([job], self.runs)["rows"][0]["done"], 6)
+
     def test_a_full_file_marks_the_job_complete(self) -> None:
         job = next(j for j in PLAN if j.n_samples == 500)
         self._fill(job, job.n_samples)
