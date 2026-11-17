@@ -910,6 +910,15 @@ def run(
                 record["method_extra"] = extra
             if sample.label is not None:
                 record["label"] = sample.label
+            # MME's score is per-SUBTASK and per-IMAGE, so a record that
+            # carries neither cannot be scored from itself. The first MME
+            # run wrote neither and every subtask bucketed into "?", which
+            # reported Perception 0.0 and Cognition 0.0 -- a zero that looks
+            # like a measurement. Recoverable from sample_id, but a record
+            # should not need parsing to say what it is.
+            for field in ("category", "image_file"):
+                if sample.extra and sample.extra.get(field) is not None:
+                    record[field] = sample.extra[field]
             writer.write(record)
             summary["n_written"] = writer.n_written
             _maybe_test_crash(writer.n_written)

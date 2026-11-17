@@ -1896,6 +1896,74 @@ But POPE-adversarial is the split Fox's hyperparameters were chosen on, and
 
 ---
 
+## Results, round 21 (2026-11-17) — on MME the intervention SUBTRACTS
+
+9 jobs, 1 session, all green at 24–46 min each. Two earlier attempts at
+this round died in the startup path and are written up in the commit log;
+this is the first MME measurement.
+
+MME, 2374 questions over 14 subtasks, 3 seeds. Score is
+`(acc + acc_plus) × 100` summed within each group, so Perception runs to
+2000 and Cognition to 800.
+
+| arm | Perception | Cognition | overall | accuracy |
+|---|---|---|---|---|
+| `sampling` (baseline) | 1290.1 | 334.4 | 1624.5 | 71.31 |
+| `fox` | 1387.2 | **304.8** | 1691.9 | 74.31 |
+| **`fox off`** | **1447.3** | 314.8 | **1762.1** | **76.96** |
+
+`fox` beats the baseline by **+67.5**. And `fox off` — the dual pass and
+the fusion with **no intervention at all** — beats the baseline by
+**+137.7**, which is **+70.2 ahead of the full method**.
+
+**The prediction holds, and by more than it asked for.** It said `off`
+would carry at least half of whatever `fox` gained. `off` carries **204 %**
+of it: on MME the intervention does not merely fail to contribute, it
+**subtracts**.
+
+### Where it subtracts
+
+| subtask | baseline | fox | Δ |
+|---|---|---|---|
+| count | 107.2 | 137.8 | **+30.6** |
+| OCR | 104.2 | 128.3 | **+24.2** |
+| posters | 124.8 | 141.0 | +16.2 |
+| commonsense_reasoning | 98.6 | 108.1 | +9.5 |
+| landmark | 130.7 | 139.8 | +9.2 |
+| … | | | |
+| text_translation | 80.0 | 75.8 | −4.2 |
+| numerical_calculation | 67.5 | 55.8 | **−11.7** |
+| code_reasoning | 88.3 | 65.0 | **−23.3** |
+
+Split by group, `fox` is **+97.1 on Perception and −29.6 on Cognition**,
+and the three worst subtasks are all Cognition ones. The dual pass helps
+perception; the head edit on top of it costs reasoning.
+
+That is the cleanest statement this suite has of what the intervention
+does, because MME is the first benchmark here with a reasoning half. POPE
+and CHAIR are both object-presence tasks, so neither could show a
+mechanism that helps seeing and hurts computing.
+
+### A measurement that read as a result, and was not
+
+The first scoring of these runs reported **Perception 0.0, Cognition 0.0**.
+Nothing raised. `generate` had never been taught to persist the sample's
+`category`, so every item bucketed into `"?"`, which belongs to neither
+group, and the sums over both groups were therefore empty.
+
+The accuracies were right the whole time — 71.31 / 74.31 / 76.96 — which
+is what made the zero plausible rather than obviously broken.
+
+It cost no GPU time to fix: `sample_id` is `mme/<category>/<image>#<yes|no>`,
+so the category was recoverable from the records already written.
+`generate` now persists it, the scorer derives it when absent, and a record
+with neither **raises** instead of scoring as zero. Three tests pin all
+three paths.
+
+Gate: **22 held, 6 failed.**
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

@@ -122,6 +122,38 @@ class TestTheScore(unittest.TestCase):
         self.assertEqual(m["unparsed"], 0)
         self.assertEqual(m["per_category"]["existence"]["acc"], 100.0)
 
+    def test_the_category_is_derived_from_sample_id_when_absent(self) -> None:
+        """The first MME run wrote no category and scored 0.0 / 0.0.
+
+        Every subtask bucketed into "?", so Perception and Cognition summed
+        to zero -- a number that looks like a measurement. generate now
+        persists the field, and the scorer derives it from sample_id, which
+        keeps those runs scoreable without spending 5.4 GPU-hours again.
+        """
+        recs = [{"sample_id": "mme/OCR/0001.jpg#yes", "label": "yes",
+                 "output": "Yes"},
+                {"sample_id": "mme/OCR/0001.jpg#no", "label": "no",
+                 "output": "No"}]
+        m, _ = evaluate_mme(recs)
+        self.assertIn("OCR", m["per_category"])
+        self.assertEqual(m["per_category"]["OCR"]["acc_plus"], 100.0,
+                         "the two rows were not recognised as one image")
+        self.assertEqual(m["totals"]["perception"], 200.0)
+
+    def test_an_explicit_category_wins_over_the_derived_one(self) -> None:
+        m, _ = evaluate_mme([{"sample_id": "mme/OCR/0001.jpg#yes",
+                              "category": "color", "label": "yes",
+                              "output": "Yes"}])
+        self.assertIn("color", m["per_category"])
+        self.assertNotIn("OCR", m["per_category"])
+
+    def test_a_record_with_no_recoverable_category_is_refused(self) -> None:
+        """Rather than summing into neither total and reporting zero."""
+        with self.assertRaises(ValueError) as ctx:
+            evaluate_mme([{"sample_id": "something-else", "label": "yes",
+                           "output": "Yes"}])
+        self.assertIn("category", str(ctx.exception))
+
     def test_a_non_binary_label_is_refused(self) -> None:
         with self.assertRaises(ValueError):
             evaluate_mme([{"sample_id": "x", "label": "maybe", "output": "Yes"}])

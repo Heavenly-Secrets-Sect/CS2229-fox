@@ -396,10 +396,29 @@ def evaluate_mme(
             # improve its score by refusing to answer.
             pred = "no" if unparsed_policy == "negative" else label
         correct = int(pred == label)
+        # sample_id is "mme/<category>/<image>#<yes|no>", built by load_mme,
+        # and is the one field every record has. The explicit fields are
+        # preferred when present -- runs from r21.2 onward carry them -- but
+        # deriving keeps the earlier runs scoreable without re-running them,
+        # and keeps a missing field from silently bucketing into "?" where
+        # it reads as Perception 0.0.
         extra = rec.get("method_extra") or {}
-        cat = str(rec.get("category") or extra.get("category") or "?")
+        sid = str(rec.get("sample_id") or "")
+        derived_cat = derived_img = None
+        if sid.startswith("mme/"):
+            body = sid[len("mme/"):]
+            derived_img = body.split("#", 1)[0] or None
+            derived_cat = derived_img.split("/", 1)[0] if derived_img else None
+        cat = str(rec.get("category") or extra.get("category")
+                  or derived_cat or "?")
         img = str(rec.get("image_file") or extra.get("image_file")
-                  or rec.get("image_id"))
+                  or derived_img or rec.get("image_id"))
+        if cat == "?":
+            raise ValueError(
+                f"MME record {sid!r} carries no category and none can be "
+                f"derived from its sample_id. Scoring it would sum into "
+                f"neither Perception nor Cognition and report a total of 0."
+            )
         row = {"sample_id": rec.get("sample_id"), "category": cat,
                "image": img, "label": label, "pred": pred,
                "correct": correct, "parsed": pred is not None}
