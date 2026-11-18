@@ -1875,6 +1875,10 @@ a benchmark becomes decoration.
 
 MME scores `(acc + acc_plus) × 100` per subtask and **sums** over ten
 Perception and four Cognition subtasks, so the totals run to 1000 and 400.
+[Wrong, and left standing because this is a pre-registration: each
+subtask maxes at 200, so the totals are **2000 and 800**. Corrected
+below and in the r21 results; the scoring code was never wrong, only
+this sentence.]
 `acc_plus` counts IMAGES where both questions were right. An always-yes model
 scores acc 0.50 and acc_plus **0.00**; a genuinely-half-right one scores 0.50
 and 0.25. POPE accuracy cannot separate those.
@@ -2037,6 +2041,46 @@ carry the effect are early ones the diagnostic ranks in the bottom half.
 Whatever the right four are, the diagnosis does not find them.
 
 Gate: **22 held, 7 failed.**
+
+---
+
+## V17 — MME at ten seeds: does the intervention really subtract?
+
+`sampling`, `fox` and `fox off` on **MME**, seeds 45–51. **12.7 h**, 21 jobs.
+Pre-registered before the round ran.
+
+r21 produced the strongest single claim this audit has: on MME **`fox off`
+(1762.1) beats `fox` (1691.9)**. Not "the gain is smaller than reported" —
+the intervention the paper is named for **subtracts 70.2 points** once the
+dual-pass fusion it ships with is held constant. The split was +97.1
+Perception, **−29.6 Cognition**.
+
+It rests on three seeds, and the Cognition half is **260 questions of 2374**.
+This project refused to believe r17's localisation claim at three seeds and
+was right to — V15 took it to ten and the claim narrowed from "transfers" to
+"weakens". The same standard has to apply to a result that favours our own
+account, and more so, because this one inverts the paper's.
+
+### Why the baseline arm is not trimmed
+
+It is the cheapest of the three — one pass at 0.579 s/sample against 1.105
+— and without it only `off − fox` gets a ten-seed interval while `fox −
+baseline` stays at three. The comparison that matters to a reader is
+reported at the same width as the comparison that flatters us, or the table
+is an argument rather than a measurement.
+
+**Prediction: `fox off` still beats `fox` overall at ten seeds, and the
+Cognition deficit survives with a 90% interval excluding zero.**
+
+If instead the Cognition gap collapses toward zero, the r21 result was
+three-seed noise on a 260-question subset and **the audit's strongest claim
+has to be withdrawn**, not softened. Writing that down now is the only thing
+that makes the prediction worth having: the failure mode is that a result we
+like gets quietly re-described as "suggestive" once the seeds disagree.
+
+MME's totals run to 2000 Perception and 800 Cognition — not 1000 and 400 as
+V16 states above; that error is corrected in the r21 results section and the
+scoring code was never wrong.
 
 ---
 

@@ -6,7 +6,9 @@
 #   local:   python3 -m foxrepro.bench.plan plan --budget-hours 10 --round r6
 #            python3 -m foxrepro.bench.plan plan --budget-hours 9 \
 #                    --calibrate <logs>/_job_times.tsv --round r2   (after session 1)
-#   Kaggle:  bash run_kaggle_fox.sh <N>        N = session number (1..1)
+#   Kaggle:  bash run_kaggle_fox.sh <N>        N = session number (1..2)
+#            SMOKE=<model-id> bash run_kaggle_fox.sh 0   backbone pre-flight,
+#                                      no data fetch, no plan jobs
 #            DRY=1 bash run_kaggle_fox.sh <N>  print the commands only
 #            BUDGET=10 bash run_kaggle_fox.sh <N>     hours, default from the plan
 #
@@ -24,6 +26,41 @@ cd "$(dirname "$0")"
 
 N="${1:?usage: bash run_kaggle_fox.sh <session number>}"
 export FOX_ENV="${FOX_ENV:-kaggle}"
+
+# A backbone smoke session: no benchmark data, no plan jobs, one checkpoint.
+# Table 10 needs Qwen3-VL-8B and InternVL3-8B, and the only risk unit tests
+# cannot reach is whether the image span is contiguous on a real checkpoint.
+# Isolated into its own session on purpose -- a round is not the place to
+# find out, and this costs one download instead of twenty GPU-hours.
+#
+#   SMOKE=Qwen/Qwen3-VL-8B-Instruct bash run_kaggle_fox.sh 0
+#   SMOKE=all bash run_kaggle_fox.sh 0
+#
+# One model per session by default. Each 8B checkpoint is ~16 GiB at fp16 and
+# the HF cache keeps both, so `all` wants the disk checked first.
+if [ -n "${SMOKE:-}" ]; then
+  echo "[smoke] backbone pre-flight; no benchmark data will be fetched"
+  # Checked before the DRY branch below, because a smoke session has no
+  # session number in the frozen plan and `plan run --session 0` would die
+  # on a lookup instead of saying so.
+  if [ "${DRY:-0}" = "1" ]; then
+    [ "$SMOKE" = "all" ] && echo "python3 scripts/smoke_backbone.py --all" \
+      || echo "python3 scripts/smoke_backbone.py --model-id $SMOKE"
+    exit 0
+  fi
+  pip install -q -e . || { echo "editable install failed"; exit 1; }
+  if [ "${ALLOW_CPU:-0}" != "1" ]; then
+    python3 scripts/require_gpu.py || exit 3
+  fi
+  if [ "$SMOKE" = "all" ]; then
+    python3 scripts/smoke_backbone.py --all
+  else
+    python3 scripts/smoke_backbone.py --model-id "$SMOKE"
+  fi
+  rc=$?
+  echo "[smoke] exit $rc"
+  exit $rc
+fi
 
 if [ "${DRY:-0}" = "1" ]; then
   python3 -m foxrepro.bench.plan run --session "$N" --dry-run

@@ -1294,6 +1294,34 @@ def _build_plan() -> List[Job]:
                 note=f"V16: MME, {why}",
             ))
 
+    # ---- Round 22: MME at ten seeds ------------------------------------
+    # V17. r21 found the audit's strongest single claim -- on MME the
+    # intervention SUBTRACTS: `fox off` scores 1762.1 against `fox`'s
+    # 1691.9, split as +97.1 Perception and -29.6 Cognition. MME is the
+    # first benchmark here with a reasoning half, so POPE and CHAIR could
+    # not have shown it either way.
+    #
+    # It rests on three seeds, and the Cognition half is 260 questions out
+    # of 2374. A claim that inverts the paper's own result deserves the
+    # same width this project demanded of V15 before believing it, so the
+    # remaining seven seeds run on all three arms.
+    #
+    # The baseline arm is included rather than trimmed: it is the cheapest
+    # of the three (single pass, 0.579 s/sample against 1.105) and without
+    # it the ten-seed interval for `fox - baseline` cannot be stated
+    # alongside the one for `fox off - fox`.
+    for method, mode, why in (
+        ("sampling", "as_implemented", "baseline"),
+        ("fox", "as_implemented", "the full method"),
+        ("fox", "off", "fusion only, no intervention"),
+    ):
+        for seed in SEEDS_FULL[3:]:
+            jobs.append(Job(
+                "mme", method, "mme", "test", seed=seed,
+                mode=mode if method == "fox" else "as_implemented",
+                note=f"V17: MME at ten seeds, {why}",
+            ))
+
     return jobs
 
 
