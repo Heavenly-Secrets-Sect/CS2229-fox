@@ -1649,6 +1649,22 @@ class TestTheKaggleCiManifest(unittest.TestCase):
             f"both, and the workflow refuses to launch when they disagree."
         )
 
+    def test_est_hours_matches_the_frozen_plan(self) -> None:
+        """`est_hours` is what the bot shows before spending quota.
+
+        It survived three rounds reading 5.4 while the plan moved to 12.7,
+        which is the same doc-rot `tests/test_docs_are_not_stale.py` was
+        written for: nothing executes this number, so nothing contradicted
+        it. Tolerance is a tenth of an hour, since the manifest carries one
+        decimal place.
+        """
+        claimed = float(self.manifest["est_hours"])
+        actual = sum(float(s["est_hours"]) for s in self.frozen["sessions"])
+        self.assertAlmostEqual(
+            claimed, actual, delta=0.1,
+            msg=f"kaggle-run.yml says est_hours={claimed} but the frozen "
+                f"plan ({self.frozen.get('round')}) totals {actual:.2f}")
+
     def test_budget_fits_the_session_wall(self) -> None:
         budget = float(self.manifest["budget_hours"])
         self.assertLessEqual(budget, TestSessionBudget.WALL_HOURS)
