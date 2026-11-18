@@ -450,12 +450,20 @@ specified — `shuffle` 76.67 vs `cf_blind` 77.53, p = 1.6e-4.
 
 | | why |
 |---|---|
-| Table 10, recent backbones (Qwen3-VL-8B, InternVL3-8B) | new models, new ports |
-| Table 11, MMBench and MathVista | datasets not set up |
-| Figures 5 and 18, MME | the release ships **no MME script** despite reporting MME results |
+| Table 11, MathVista | its official protocol extracts answers with an LLM — the same dependency that makes Table 5 irreproducible. Reachable only as the multiple-choice subset with a rule-based extractor, declared as a deviation |
 | Figure 6 and Table 5, GPT-4V judge | paid API, n=50, and the judge model is deprecated — not reproducible by anyone |
 | Figures 16, 17, 21, 22 | InstructBLIP and Shikra |
 | Figures 10, 11, 20 | qualitative examples, nothing to reproduce |
+
+---
+
+## Reachable now, which these were not
+
+| | state |
+|---|---|
+| **Figures 5 and 18, MME** <!-- plan-targets: mme --> | **DONE, r21.** The release ships no MME script while reporting MME results, so this harness is written from the benchmark's own definition. `fox off` beats the full method by +70.2 overall; the intervention is +97.1 on Perception and −29.6 on Cognition |
+| **Table 10, recent backbones** | **code done, one smoke session away.** `scripts/probe_backbone.py` reports Qwen3-VL-8B and InternVL3-8B runnable with the Fox patch reaching the decoder; `load_backbone` and a per-model image-span width landed in a8ac2e5. What is left is one cheap session proving the span is contiguous on a real checkpoint |
+| **Table 11, MMBench** | dataset reachable (`lmms-lab/MMBench_EN`, dev split has answers). Needs a multiple-choice scorer, which nothing here reuses |
 
 ---
 
