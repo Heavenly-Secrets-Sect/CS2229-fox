@@ -516,7 +516,18 @@ thật, đáng 1.62 điểm, và phần chẩn đoán chỉ sai chỗ.**==
 > Cũng không phải đào nhiễu: việc chia làm trên các khoảng **loại trừ 0**, và
 > chênh 1.62 vượt xa thứ chọn lọc trên ước lượng đủ lực tạo ra được. Phát
 > biểu trung thực: **phép định vị đã xác lập; thành phần cụ thể thì chưa.**
-> r18 sửa chỗ đó bằng POPE-popular và POPE-random.
+> r18 rồi r20 sửa chỗ đó bằng POPE-popular và POPE-random.
+>
+> **Kết quả ở 10 seed: "chuyển được một phần".** Chênh lệch giữ được trên
+> popular (+0.55, p < 0.0001) nhưng **không đạt ý nghĩa trên random**
+> (+0.13 [−0.01, +0.27]). Tính theo **tỉ lệ** hiệu ứng sẵn có của từng
+> split, nó giảm đều **63 % → 39 % → 21 %** — đúng thứ tự ba split chọn câu
+> hỏi phủ định. Và khoảng tin cậy trên random **loại trừ** giá trị tỉ lệ
+> (+0.39), nên đây không còn là chuyện thiếu lực thống kê.
+>
+> ==Thứ còn đứng: **một số layer sớm quan trọng hơn các layer sớm khác.**
+> Thứ không còn đứng: rằng **chính bộ `{3,7,8,12}`** là tính chất của mô
+> hình — nó mang một phần đặc tính của split đã chọn ra nó.==
 
 ### 5.9 Cái cổng JSD — nửa còn lại, và nó đã đo được một phần
 
@@ -586,9 +597,9 @@ can thiệp mua 0.73 điểm CHAIR_S bằng 2.8 điểm recall.
 
 ## 6. Tình trạng hiện tại
 
-- **415/415 job đã chạy — plan rỗng.** r19 xong (12 job, 3 session, 0 lỗi); bản sửa generator-device giữ được. r17 xong (25 job, 3 session, **0 lỗi**); plan r16 giờ cũng trọn vẹn — hai job `L2-14` bị cắt đã merge đủ 3000 record. **r18** đóng băng 18 job, 2 session.
+- **466/466 job — plan rỗng.** r20 và r21 đều xong; MME đã có kết quả (5.9).
 - Table 1 đã đủ cả ba split cho mọi phương pháp so sánh.
-- Gate kiểm chứng: **21 đúng / 6 sai**, và **V14 không chấm được** — dự đoán phát biểu trên POPE, mà POPE không đặt được câu hỏi đó (V12a đúng, V12b sai).
+- Gate kiểm chứng: **22 đúng / 7 sai**. Mọi cái sai đều là dự đoán của nhóm, không phải bug — và ba cái gần nhất (V11, V15, V8) đều buộc siết lại một khẳng định của chính nhóm.
 - Hàng đợi `pending` của bot **đã chạy qua trên GPU thật**: 10 session khai
   báo, 4 chạy ngay (2 account còn quota × trần 2 session), **6 xếp hàng** và
   được cron đẩy dần khi có chỗ. Cả 10 đều xong, 0 lỗi. Trước đó nhánh này mới

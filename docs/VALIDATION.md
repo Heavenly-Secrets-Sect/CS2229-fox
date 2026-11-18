@@ -1964,6 +1964,82 @@ Gate: **22 held, 6 failed.**
 
 ---
 
+## Results, round 20 (2026-11-19) — V15 fails, and r17's claim has to be narrowed
+
+42 jobs, 5 sessions, all green. The plan is empty at 466/466. Session 2 ran
+two days past the others and its zip was never clicked; it was pulled from
+Kaggle with `scripts/fetch_session_zip.py` after MongoDB reported it done.
+
+| split | seeds | `3,7,8,12` | `4,5,6,9` | gap | 90 % CI | p |
+|---|---|---|---|---|---|---|
+| adversarial | 3 | +1.64 | +0.02 | **+1.62** | [+1.30, +1.97] | <0.0001 |
+| popular | 3 | +1.03 | +0.38 | +0.66 | [+0.39, +0.93] | <0.0001 |
+| **popular** | **10** | +0.77 | +0.22 | **+0.55** | [+0.39, +0.71] | <0.0001 |
+| random | 3 | +0.27 | +0.21 | +0.06 | [−0.21, +0.32] | 0.76 |
+| **random** | **10** | +0.28 | +0.14 | **+0.13** | [−0.01, +0.27] | 0.12 |
+
+**The prediction fails.** It said random would land between +0.2 and +0.5
+with an interval excluding zero. It lands at **+0.13**, below that range,
+and the interval includes zero — by one hundredth of a point, but it
+includes it.
+
+### r18's "underpowered, not refuted" was half right, and the half that was wrong matters
+
+Ten seeds did move it: the interval narrowed from ±0.26 to ±0.14 and the
+point estimate doubled from +0.06 to +0.13. So the three-seed result *was*
+partly a power problem.
+
+But it did not move to where proportionality predicted, and now there is
+enough power to say so. Scaling adversarial's gap by the effect available
+on random gives **0.62 × 0.63 = +0.39**, and the measured interval
+[−0.01, +0.27] **excludes +0.39**. The shortfall is no longer attributable
+to noise.
+
+The share of the available effect declines monotonically across the three
+splits:
+
+| split | gap | effect available (`fox` − `off`) | share |
+|---|---|---|---|
+| adversarial | +1.62 | +2.59 | **63 %** |
+| popular | +0.55 | +1.41 | **39 %** |
+| random | +0.13 | +0.62 | **21 %** |
+
+> [!warning] This narrows r17's finding; it does not retract it
+> What survives: `{3,7,8,12}` beats `{4,5,6,9}` on **adversarial**
+> (+1.62) and on **popular** (+0.55 at ten seeds, p < 0.0001). Layer
+> identity is not interchangeable, and that claim stands on two splits with
+> real power behind it.
+>
+> What does not: that the membership is a property of the model. The three
+> splits differ only in how the negative questions are chosen — random,
+> frequent-object, co-occurring-object — and the localisation's grip
+> declines in exactly that order, from 63 % to 21 %. **`{3,7,8,12}` is
+> partly a property of the adversarial question distribution**, which is
+> also the distribution that selected it.
+>
+> r17 said the localisation "transfers". The supported word is **weakens**.
+
+### What this leaves
+
+The audit's strongest claim is now two claims, and only the first is firm:
+
+1. **Some early layers matter more than others.** Four chosen layers
+   recover 63 % of the effect on adversarial where four other early layers
+   recover none, and the ordering holds on popular;
+2. ~~those four layers are the answer~~ — **not established**. Which four
+   depends on the split, and this suite never ran a selection on popular or
+   random to compare. Doing that is cheap and is the honest next step if
+   the membership matters.
+
+The separate finding is untouched either way: r13 measured the paper's
+diagnostic as peaking at L11–26, and on **every** split the layers that
+carry the effect are early ones the diagnostic ranks in the bottom half.
+Whatever the right four are, the diagnosis does not find them.
+
+Gate: **22 held, 7 failed.**
+
+---
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run

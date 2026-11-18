@@ -294,10 +294,17 @@ ranks 9th. Mean rank of the live four against the dead four is 18.8 vs 27.5
 on `H_vis` and 25.2 vs 21.0 on `m_sys`, i.e. the dead layers rank better on
 the paper's own anchor quantity.
 
-Caveat carried with it: the two sets were chosen from r16's step table on the
-same split and seeds V12b ran on, so the localisation is established but its
-specific membership is not yet validated out of sample. r18 tests it on
-POPE-popular and POPE-random.
+**r20 then tested it out of sample at ten seeds, and narrowed it.** The gap
+holds on popular (+0.55, p < 0.0001) and does not reach significance on
+random (+0.13 [−0.01, +0.27]). As a share of the effect available on each
+split it declines 63 % → 39 % → 21 % across adversarial, popular and random
+— the same order in which those splits choose their negative questions. So
+*some* early layers matter more than others, firmly; but `{3,7,8,12}`
+specifically is partly a property of the adversarial distribution, which is
+also the distribution that selected it.
+
+Unaffected either way: on every split the layers that carry the effect are
+early ones this figure's quantity ranks in the bottom half.
 
 **r14 first intervened on the two windows this figure's rule selects, and
 they do not work.** L11–24 is
