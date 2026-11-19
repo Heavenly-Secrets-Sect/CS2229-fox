@@ -310,3 +310,81 @@ class TestThePlanRegistration(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TestTheMarkdownFormatterHandlesMME(unittest.TestCase):
+    """r22 lost twenty of twenty-one scores to a missing formatter branch.
+
+    `_format_markdown` tested `benchmark == "pope"` and treated everything
+    else as CHAIR. MME metrics have no `chair_s_ci`, so the first MME run
+    scored, wrote its metrics file, and then raised from the formatter --
+    which is called AFTER the write and outside the loop's try/except. The
+    exception left `_main` entirely, so the remaining twenty runs were never
+    scored at all.
+
+    The shape worth remembering is not the KeyError. It is that the failure
+    landed three frames below the real mistake: `else` quietly meant
+    "chair", so adding a benchmark could not produce a message naming it.
+    An unknown benchmark now raises by name.
+    """
+
+    def _metrics(self, benchmark: str) -> dict:
+        return {
+            "provenance": {
+                "method": "fox", "benchmark": benchmark, "split": "test",
+                "seed": 42, "dtype": "fp16", "run_file": "x.jsonl",
+                "n_records": 2374, "n_duplicate_sample_ids": 0,
+            },
+            "metrics": {
+                "benchmark": benchmark,
+                "n_samples": 2374, "unparsed": 0,
+                "subtasks_missing": [],
+                "totals": {"perception": 1376.9, "cognition": 297.9,
+                           "overall": 1674.7, "accuracy": 0.7384},
+                "accuracy_ci": {"point": 0.7384, "ci_lo": 0.7204,
+                                "ci_hi": 0.7557, "successes": 1753,
+                                "n": 2374},
+            },
+        }
+
+    def test_an_mme_result_formats(self) -> None:
+        from foxrepro.bench.evaluate import _format_markdown
+        out = _format_markdown(self._metrics("mme"))
+        self.assertIn("perception", out)
+        self.assertIn("1376.9", out)
+        self.assertIn("cognition", out)
+        self.assertIn("2800", out)
+
+    def test_a_missing_subtask_is_printed_next_to_the_total(self) -> None:
+        """A subtask that produced no rows is a silent zero in a SUM."""
+        from foxrepro.bench.evaluate import _format_markdown
+        d = self._metrics("mme")
+        d["metrics"]["subtasks_missing"] = ["code_reasoning"]
+        out = _format_markdown(d)
+        self.assertIn("subtasks missing", out)
+        self.assertIn("code_reasoning", out)
+
+    def test_an_unknown_benchmark_raises_by_name(self) -> None:
+        from foxrepro.bench.evaluate import _format_markdown
+        d = self._metrics("mmbench")
+        with self.assertRaises(ValueError) as ctx:
+            _format_markdown(d)
+        self.assertIn("mmbench", str(ctx.exception))
+
+    def test_chair_is_still_formatted(self) -> None:
+        """The branch that used to be `else` keeps working."""
+        from foxrepro.bench.evaluate import _format_markdown
+        d = self._metrics("chair")
+        d["metrics"] = {
+            "benchmark": "chair",
+            "chair_s_ci": {"point": 0.21, "ci_lo": 0.18, "ci_hi": 0.25},
+            "chair_i_ci_cluster_bootstrap": {"point": 0.06, "ci_lo": 0.05,
+                                             "ci_hi": 0.08},
+            "totals": {"chair_s_numerator": 105, "chair_s_denominator": 500,
+                       "chair_i_numerator": 190, "chair_i_denominator": 3100,
+                       "recall": 0.72, "precision": 0.81, "f1": 0.76,
+                       "mean_caption_words": 92.4},
+        }
+        out = _format_markdown(d)
+        self.assertIn("CHAIR_S", out)
+        self.assertIn("CHAIR_I", out)

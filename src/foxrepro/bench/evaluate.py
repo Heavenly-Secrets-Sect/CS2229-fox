@@ -791,7 +791,28 @@ def _format_markdown(result: Dict[str, Any]) -> str:
         lines.append(
             f"| unparsed | {met['n_unparsed']} | - | - | {met['n_samples']} |"
         )
-    else:
+    elif met["benchmark"] == "mme":
+        t = met["totals"]
+        acc = met["accuracy_ci"]
+        # Perception runs to 2000 and Cognition to 800: each subtask scores
+        # (acc + acc_plus) x 100, summed over ten and four subtasks.
+        lines.append(f"| perception | {t['perception']:.1f} | - | - | 2000 |")
+        lines.append(f"| cognition | {t['cognition']:.1f} | - | - | 800 |")
+        lines.append(f"| overall | {t['overall']:.1f} | - | - | 2800 |")
+        lines.append(
+            f"| accuracy | {100 * acc['point']:.2f} | "
+            f"[{100 * acc['ci_lo']:.2f}, {100 * acc['ci_hi']:.2f}] | "
+            f"{acc['successes']:.0f} | {acc['n']} |"
+        )
+        lines.append(
+            f"| unparsed | {met['unparsed']} | - | - | {met['n_samples']} |")
+        if met["subtasks_missing"]:
+            # A missing subtask is a SILENT zero in a score that sums over
+            # subtasks, so it is printed next to the total it deflates.
+            lines.append(
+                f"| subtasks missing | {', '.join(met['subtasks_missing'])} "
+                f"| - | - | - |")
+    elif met["benchmark"] == "chair":
         t = met["totals"]
         cs, ci = met["chair_s_ci"], met["chair_i_ci_cluster_bootstrap"]
         lines.append(
@@ -808,6 +829,17 @@ def _format_markdown(result: Dict[str, Any]) -> str:
             lines.append(f"| {name} | {100 * t[name]:.2f} | - | - | "
                          f"{t.get(name + '_denominator', '-')} |")
         lines.append(f"| mean caption words | {t['mean_caption_words']:.1f} | - | - | - |")
+    else:
+        # This used to be the CHAIR branch, reached by `else`. MME metrics
+        # therefore fell into it and died on met["chair_s_ci"] three frames
+        # down, AFTER its own metrics file had been written -- so one run
+        # scored, the exception left the loop, and the other twenty never
+        # ran. A formatter is not where a new benchmark should be discovered.
+        raise ValueError(
+            f"no markdown formatter for benchmark "
+            f"{met['benchmark']!r}; add one beside the pope/mme/chair "
+            f"branches rather than letting it fall through"
+        )
     return head + "\n".join(lines) + "\n"
 
 

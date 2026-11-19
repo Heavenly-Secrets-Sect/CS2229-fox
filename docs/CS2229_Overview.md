@@ -595,9 +595,67 @@ Và một dòng nữa đáng đọc: `fox off` đạt CHAIR_S 49.20 ở **recall
 (78.57). Phương pháp đầy đủ được 48.47 ở recall 75.79 — tức trên CHAIR, phần
 can thiệp mua 0.73 điểm CHAIR_S bằng 2.8 điểm recall.
 
+### 5.10 MME — phần can thiệp **trừ đi**, và lý do nhóm đưa ra lúc đầu sai chỗ
+
+MME là benchmark đầu tiên ngoài POPE và CHAIR, và release của Fox **không
+có script MME** dù công bố kết quả MME (Figure 5, Figure 18) — nên harness
+này viết từ định nghĩa của chính benchmark, không phải chép lại.
+
+Điểm MME là `(acc + acc_plus) × 100` **cộng dồn** trong từng nhóm, nên
+Perception chạy tới 2000 và Cognition tới 800. `acc_plus` đếm **ảnh** mà cả
+hai câu hỏi đều đúng, nên nó phân biệt được một model luôn trả lời "yes"
+(acc 0.50, acc_plus 0.00) với một model đúng thật một nửa (0.50 và 0.25) —
+việc độ chính xác POPE không làm được.
+
+9 seed dùng chung cho cả ba arm (r21 ba seed, r22 thêm sáu):
+
+| arm | Perception | Cognition | overall | accuracy |
+|---|---|---|---|---|
+| `sampling` (baseline) | 1278.0 | 333.7 | 1611.7 | 71.46 |
+| `fox` | 1377.5 | 304.2 | 1681.7 | 74.26 |
+| **`fox off`** | **1423.7** | 312.3 | **1736.0** | **76.59** |
+
+`fox off` — hai nhánh decode và phần fusion, **không can thiệp gì cả** —
+thắng phương pháp đầy đủ **+54.2 điểm**, CI 90 % [+41.2, +67.3], paired
+theo seed. Trên MME phần can thiệp không chỉ không góp gì, nó **trừ đi**.
+
+> [!warning] Và đây là chỗ nhóm đã đọc sai kết quả của chính mình
+> Ở ba seed, r21 kết luận "+97.1 Perception, −29.6 Cognition" và giải thích
+> rằng Fox đánh đổi Perception để lấy reasoning — MME là benchmark đầu tiên
+> có nửa reasoning nên POPE và CHAIR không thể thấy. Arm `off` tách được
+> cái mà cách đọc đó gộp vào nhau:
+>
+> | | Perception | Cognition |
+> |---|---|---|
+> | `fox off` − baseline | +145.7 | −21.4 |
+> | `fox` − baseline | +99.5 | −29.4 |
+> | **giá của can thiệp** | **−46.2** | **−8.1** |
+>
+> Trong −29.4 điểm Cognition, **−21.4 thuộc về dual pass và fusion**, chỉ
+> −8.1 là của can thiệp. Và can thiệp làm hại **Perception nhiều hơn**:
+> −46.2 so với −8.1.
+>
+> Vậy khẳng định "can thiệp trừ đi" ==mạnh hơn trước== (CI hẹp, loại 0),
+> còn cơ chế mà r21 gán cho nó thì **không sống sót**. Fox không đánh đổi
+> Perception lấy reasoning; nó mất điểm ở **cả hai** nửa so với chính cách
+> decode hai nhánh của nó, và mất nhiều hơn ở đúng nửa mà paper coi là thế
+> mạnh. Nửa reasoning vẫn là lý do MME đáng chạy, nhưng không còn là lời
+> giải thích cho cái MME tìm ra.
+
+Khoảng cách cũng co lại theo số seed: 70.2 ở ba seed, 54.2 ở chín. Ba seed
+phóng đại một hiệu ứng mà nhóm **muốn** nó đúng — y hệt hướng mà V15 đã kéo
+khẳng định của r17 lại.
+
+Một job bị tường session cắt: `fox off` seed 45 dừng ở 1816/2374 record. Vì
+điểm MME là **tổng**, một run bị cắt đọc ra thành điểm thấp chứ không phải
+điểm thiếu, nên nó bị loại **theo tên** chứ không được bình quân vào. Cả ba
+arm vì vậy báo trên chín seed dùng chung; seed 45 của hai arm kia hoàn chỉnh
+nhưng **không dùng**, vì một arm bình quân trên nhiều seed hơn arm nó được
+so sánh với thì không còn là paired.
+
 ## 6. Tình trạng hiện tại
 
-- **466/466 job — plan rỗng.** r20 và r21 đều xong; MME đã có kết quả (5.9).
+- **486/487 job.** r20, r21 và r22 đều xong; MME đã có kết quả ở chín seed (5.10). Job còn lại là `fox off` seed 45 trên MME, bị tường session cắt ở 1816/2374 — resume keyed trên run file nên chạy lại chỉ tốn **558 sample ≈ 0.2 GPU-h**, không phải cả job.
 - Table 1 đã đủ cả ba split cho mọi phương pháp so sánh.
 - Gate kiểm chứng: **22 đúng / 7 sai**. Mọi cái sai đều là dự đoán của nhóm, không phải bug — và ba cái gần nhất (V11, V15, V8) đều buộc siết lại một khẳng định của chính nhóm.
 - Hàng đợi `pending` của bot **đã chạy qua trên GPU thật**: 10 session khai

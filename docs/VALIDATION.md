@@ -2082,6 +2082,62 @@ MME's totals run to 2000 Perception and 800 Cognition — not 1000 and 400 as
 V16 states above; that error is corrected in the r21 results section and the
 scoring code was never wrong.
 
+### Result, r22 — the prediction holds, and the explanation was wrong
+
+21 jobs. One was cut by the session wall: `fox off` seed 45 stopped at
+**1816 of 2374** records. MME sums over subtasks, so a truncated run reads
+as a low score rather than as a missing one — it is excluded by name, not
+averaged in. Every arm is therefore reported over the **nine seeds they
+share** (42–44, 46–51). `fox` and the baseline each have a complete seed 45
+that is deliberately unused: an arm averaged over more seeds than the arm
+it is compared against is not a paired contrast, and the contrast at issue
+here is exactly the one that would have absorbed the difference.
+
+| arm | Perception | Cognition | overall | accuracy |
+|---|---|---|---|---|
+| `sampling` (baseline) | 1278.0 | 333.7 | 1611.7 | 71.46 |
+| `fox` | 1377.5 | 304.2 | 1681.7 | 74.26 |
+| **`fox off`** | **1423.7** | 312.3 | **1736.0** | **76.59** |
+
+Paired by seed, 90% bootstrap intervals over the nine seed-level
+differences:
+
+| contrast | Perception | Cognition | overall |
+|---|---|---|---|
+| `fox` − baseline | +99.5 [+88.4, +110.5] | **−29.4** [−42.9, −15.4] | +70.0 [+52.5, +87.9] |
+| `fox off` − baseline | +145.7 [+131.5, +158.6] | **−21.4** [−32.4, −9.7] | +124.3 [+106.9, +141.8] |
+| **`fox off` − `fox`** | **+46.2** [+36.6, +55.3] | **+8.1** [+1.7, +14.4] | **+54.2** [+41.2, +67.3] |
+
+**Both halves of the prediction hold.** `fox off` still beats `fox`
+overall, by +54.2 with an interval well clear of zero, so the intervention
+**subtracts** at nine seeds as it did at three. And `fox`'s Cognition
+deficit against the baseline survives at −29.4, also clear of zero.
+
+**And the reason r21 gave for it is wrong.** r21 read the result as
+"+97.1 Perception, −29.6 Cognition" — Perception is where Fox helps,
+Cognition is where it hurts — and tied that to MME being the first
+benchmark here with a reasoning half. The `off` arm splits what that
+framing merged:
+
+* of the −29.4 Cognition deficit, **−21.4 belongs to the dual pass and the
+  fusion**, which `fox off` carries without any intervention at all. Only
+  −8.1 is the intervention's;
+* the intervention's cost is **mostly Perception**: −46.2 against −8.1.
+
+So the headline claim is stronger than it was — the interval is narrow and
+excludes zero — while its stated mechanism does not survive. Fox does not
+trade Perception for reasoning. It gives up points on **both** halves
+relative to its own two-branch decode, and gives up more of them on the
+half the paper reports as its strength. The reasoning half is still the
+reason MME was worth running, since POPE and CHAIR have none; it is no
+longer the explanation of what MME found.
+
+The gap also narrowed with seeds, 70.2 → 54.2, the same direction V15 moved
+r17. Three seeds overstate an effect this project wants to be true.
+
+**Gate: the V17 prediction held. The r21 interpretation is withdrawn and
+replaced above, not softened.**
+
 ---
 
 ## What this suite does **not** establish
