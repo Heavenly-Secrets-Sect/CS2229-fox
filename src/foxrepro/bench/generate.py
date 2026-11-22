@@ -475,7 +475,7 @@ def register_method(cls: Type[Method]) -> Type[Method]:
 #: entry in ``--list-methods``.
 _GPU_METHODS = frozenset({
     "sampling", "fox", "vcd", "icd", "sid", "causalmm", "opera",
-    "vcd_fox_fusion",
+    "vcd_fox_fusion", "sampling_instructblip", "fox_instructblip",
 })
 
 
