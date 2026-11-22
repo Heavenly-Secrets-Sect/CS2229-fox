@@ -2138,6 +2138,38 @@ r17. Three seeds overstate an effect this project wants to be true.
 **Gate: the V17 prediction held. The r21 interpretation is withdrawn and
 replaced above, not softened.**
 
+### Result, r23 — the missing seed, and ten seeds
+
+r23 resumed `fox off` seed 45 from record 1816 and wrote the remaining 558
+(12.2 minutes), so all three arms now have the same ten complete seeds
+(42–51) and `scripts/score_mme.py` needs no seed dropped. Seed 45 of `fox`
+and the baseline, deliberately unused above, is now paired with a complete
+`fox off` seed 45.
+
+| arm | Perception | Cognition | overall | accuracy |
+|---|---|---|---|---|
+| `sampling` (baseline) | 1281.7 | 336.4 | 1618.1 | 71.48 |
+| `fox` | 1377.5 | 303.6 | 1681.0 | 74.22 |
+| **`fox off`** | **1426.0** | 313.4 | **1739.4** | **76.66** |
+
+| contrast | Perception | Cognition | overall |
+|---|---|---|---|
+| `fox` − baseline | +95.8 [+84.3, +107.2] | **−32.8** [−46.0, −18.9] | +63.0 [+43.6, +82.2] |
+| `fox off` − baseline | +144.3 [+131.5, +156.3] | **−23.0** [−33.2, −12.2] | +121.3 [+105.4, +137.7] |
+| **`fox off` − `fox`** | **+48.6** [+38.9, +57.6] | **+9.8** [+3.7, +16.1] | **+58.4** [+44.9, +71.9] |
+
+Nothing in the nine-seed reading changes. The intervention still subtracts
+overall, its cost is still mostly Perception (48.6 against 9.8), and most of
+`fox`'s Cognition deficit is still the dual pass (−23.0 of −32.8). Every
+interval excludes zero, the Cognition one for the intervention's own cost
+(+3.7 at the low end) by less than the others.
+
+One thing does move. The overall gap read 70.2 at three seeds and 54.2 at
+nine, and the nine-seed text above called that a shrinkage with seeds. At ten
+it is 58.4: the tenth seed pulled it back up, so the gap did not keep
+shrinking. What the three numbers support is that three seeds overstated it,
+not that it converges toward zero.
+
 ---
 
 ## What this suite does **not** establish

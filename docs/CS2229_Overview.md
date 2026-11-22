@@ -611,13 +611,13 @@ việc độ chính xác POPE không làm được.
 
 | arm | Perception | Cognition | overall | accuracy |
 |---|---|---|---|---|
-| `sampling` (baseline) | 1278.0 | 333.7 | 1611.7 | 71.46 |
-| `fox` | 1377.5 | 304.2 | 1681.7 | 74.26 |
-| **`fox off`** | **1423.7** | 312.3 | **1736.0** | **76.59** |
+| `sampling` (baseline) | 1281.7 | 336.4 | 1618.1 | 71.48 |
+| `fox` | 1377.5 | 303.6 | 1681.0 | 74.22 |
+| **`fox off`** | **1426.0** | 313.4 | **1739.4** | **76.66** |
 
 `fox off` — hai nhánh decode và phần fusion, **không can thiệp gì cả** —
-thắng phương pháp đầy đủ **+54.2 điểm**, CI 90 % [+41.2, +67.3], paired
-theo seed. Trên MME phần can thiệp không chỉ không góp gì, nó **trừ đi**.
+thắng phương pháp đầy đủ **+58.4 điểm**, CI 90 % [+44.9, +71.9], paired
+theo seed, mười seed. Trên MME phần can thiệp không chỉ không góp gì, nó **trừ đi**.
 
 > [!warning] Và đây là chỗ nhóm đã đọc sai kết quả của chính mình
 > Ở ba seed, r21 kết luận "+97.1 Perception, −29.6 Cognition" và giải thích
@@ -627,13 +627,13 @@ theo seed. Trên MME phần can thiệp không chỉ không góp gì, nó **tr�
 >
 > | | Perception | Cognition |
 > |---|---|---|
-> | `fox off` − baseline | +145.7 | −21.4 |
-> | `fox` − baseline | +99.5 | −29.4 |
-> | **giá của can thiệp** | **−46.2** | **−8.1** |
+> | `fox off` − baseline | +144.3 | −23.0 |
+> | `fox` − baseline | +95.8 | −32.8 |
+> | **giá của can thiệp** | **−48.6** | **−9.8** |
 >
-> Trong −29.4 điểm Cognition, **−21.4 thuộc về dual pass và fusion**, chỉ
-> −8.1 là của can thiệp. Và can thiệp làm hại **Perception nhiều hơn**:
-> −46.2 so với −8.1.
+> Trong −32.8 điểm Cognition, **−23.0 thuộc về dual pass và fusion**, chỉ
+> −9.8 là của can thiệp. Và can thiệp làm hại **Perception nhiều hơn**:
+> −48.6 so với −9.8.
 >
 > Vậy khẳng định "can thiệp trừ đi" ==mạnh hơn trước== (CI hẹp, loại 0),
 > còn cơ chế mà r21 gán cho nó thì **không sống sót**. Fox không đánh đổi
@@ -642,20 +642,20 @@ theo seed. Trên MME phần can thiệp không chỉ không góp gì, nó **tr�
 > mạnh. Nửa reasoning vẫn là lý do MME đáng chạy, nhưng không còn là lời
 > giải thích cho cái MME tìm ra.
 
-Khoảng cách cũng co lại theo số seed: 70.2 ở ba seed, 54.2 ở chín. Ba seed
-phóng đại một hiệu ứng mà nhóm **muốn** nó đúng — y hệt hướng mà V15 đã kéo
-khẳng định của r17 lại.
+Khoảng cách là 70.2 ở ba seed, 54.2 ở chín và 58.4 ở mười: seed thứ mười
+kéo nó lên lại, nên nó không tiếp tục co. Điều ba con số này chứng minh là
+ba seed đã phóng đại một hiệu ứng mà nhóm **muốn** nó đúng — y hệt hướng mà
+V15 đã kéo khẳng định của r17 lại — chứ không phải hiệu ứng hội tụ về 0.
 
-Một job bị tường session cắt: `fox off` seed 45 dừng ở 1816/2374 record. Vì
-điểm MME là **tổng**, một run bị cắt đọc ra thành điểm thấp chứ không phải
-điểm thiếu, nên nó bị loại **theo tên** chứ không được bình quân vào. Cả ba
-arm vì vậy báo trên chín seed dùng chung; seed 45 của hai arm kia hoàn chỉnh
-nhưng **không dùng**, vì một arm bình quân trên nhiều seed hơn arm nó được
-so sánh với thì không còn là paired.
+Ở r22, một job bị tường session cắt: `fox off` seed 45 dừng ở 1816/2374
+record. Vì điểm MME là **tổng**, một run bị cắt đọc ra thành điểm thấp chứ
+không phải điểm thiếu, nên nó bị loại **theo tên** chứ không được bình quân
+vào, và cả ba arm tạm báo trên chín seed dùng chung. r23 chạy nốt 558 record
+còn lại (12.2 phút) nên giờ cả ba arm đủ mười seed.
 
 ## 6. Tình trạng hiện tại
 
-- **486/487 job.** r20, r21 và r22 đều xong; MME đã có kết quả ở chín seed (5.10). Job còn lại là `fox off` seed 45 trên MME, bị tường session cắt ở 1816/2374 — resume keyed trên run file nên chạy lại chỉ tốn **558 sample ≈ 0.2 GPU-h**, không phải cả job.
+- **487/487 job.** r20 đến r23 đều xong; MME có kết quả ở mười seed (5.10). Job cuối là `fox off` seed 45 trên MME, bị tường session cắt ở r22 và được r23 chạy nốt (558 sample, 12.2 phút).
 - Table 1 đã đủ cả ba split cho mọi phương pháp so sánh.
 - Gate kiểm chứng: **22 đúng / 7 sai**. Mọi cái sai đều là dự đoán của nhóm, không phải bug — và ba cái gần nhất (V11, V15, V8) đều buộc siết lại một khẳng định của chính nhóm.
 - Hàng đợi `pending` của bot **đã chạy qua trên GPU thật**: 10 session khai
