@@ -1099,6 +1099,27 @@ The extractor has never seen a real LLaVA-1.5 answer, so the first run's
 fit. If coverage on MathVista is low, change the rules **and record it here**
 rather than after looking at which direction moves Fox.
 
+### 3.18 Figure 6 / Table 5: a substitute judge, our own 50 images, both orders
+
+Harness: `src/foxrepro/bench/gpt_judge.py`, `scripts/gpt_judge.py`, tests in
+`tests/test_gpt_judge.py`. Authorised by the user (OpenAI key, COCO val2014
+images and our captions sent to OpenAI for this purpose only).
+
+| item | paper | here | why it can move a number |
+|---|---|---|---|
+| judge | GPT-4V (deprecated) | a current OpenAI vision model; the exact id is recorded in every output file (default pinned snapshot `gpt-4.1-2025-04-14`, a non-reasoning model so `temperature=0.2` and `max_tokens=512` can be sent as specified) | a different instrument: absolute scores are not comparable to the paper's, only Fox-minus-Sampling is |
+| prompt, scale, format | Table 5, 1-10, `Accuracy: s1 s2` | the same text, asserted verbatim by a test (and compared to the paper text when present) | none |
+| images | "a curated subset of 50" (not named) | **the first 50 CHAIR images by ascending `image_id`** (ids 136..56137), fixed before any call | the paper's curation may have favoured illustrative cases; ours is mechanical |
+| captions | "standardized prompt" | archived CHAIR runs, seed 42, sampling, r2 prompt: baseline `m-sampling...v-sampling-5c7c06df` against default `m-fox...v-sampling-5c7c06df` | one seed, one draw of sampling |
+| positions | not stated (presumably one order) | **every image judged in both orders**; paper-style (Assistant 1 = Sampling) reported beside the order-averaged result | our addition, to cancel position bias; the paper-style number is still reported |
+| backbones | LLaVA-1.5, InstructBLIP, Shikra | **LLaVA-1.5 only** | Figure 6's across-backbone trend cannot be drawn |
+| unparseable replies | not stated | counted and listed, excluded from averages, never silently dropped; a reading over zero parsed items is refused | n per reading can differ; it is printed |
+| intervals | none | paired bootstrap 90% CI over images | n = 50 is small; treat as complementary evidence, as the paper does |
+
+**Status:** harness and tests done. The first real call on 2026-11-22 was
+refused by the API with `insufficient_quota` ("no credits remaining"), so no
+score exists yet; nothing was retried. 50 images in both orders is 100 calls.
+
 ## 4. In the release, absent here
 
 | | Why |
