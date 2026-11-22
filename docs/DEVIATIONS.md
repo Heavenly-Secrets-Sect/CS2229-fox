@@ -946,11 +946,105 @@ hyperparameters" despite Algorithm 1 taking it as an input.
 - `--use-cd` is `store_true` with `default=True`, so it can never be turned
   off and the `--use-vcd` branch is unreachable. Our modes are explicit flags.
 
+### 3.16 InstructBLIP-vicuna-7b: a different method on a different layout
+
+Added so the paper's InstructBLIP columns (Tables 1, 2, 8; Figures 16, 21) can
+be run. It is **not** LLaVA's Fox on another checkpoint, and it has its own
+method names, `sampling_instructblip` and `fox_instructblip`, so nothing that
+groups records by method can pool it with `fox`. Every number below was read
+from the release (`github.com/Cc2021start/Fox`, cloned read-only) unless it is
+marked as ours. Nothing here has been run on the real 7B checkpoint.
+
+**Layout.** HF's `InstructBlipProcessor` writes 32 `<image>` ids *before* BOS,
+and the release does the same (`torch.cat([inputs_llm, inputs_embeds], dim=1)`,
+`blip2_vicuna_instruct.py:444`). The image span is therefore keys `[0, 31]` and
+no key precedes it: `m_sys` is identically 0. `fox_generate` refuses
+`use_m_sys=True` when the span starts at key 0, because with every head scoring
+0 the top-k is an index-order tie-break that looks like a result.
+
+**Scoring.** The release's InstructBLIP copy ranks heads by `H_vis` of the last
+query alone (`score_all = metrics["HVis_tail"]`, `modeling_llama.py:219`); it
+never uses `m_sys`. Eq. 4 is not implemented there. Ours: `use_m_sys=False`,
+recorded as `use_m_sys: false` in every run's `resolved_hyperparameters`.
+
+| | InstructBLIP copy (ours, default) | LLaVA Fox (ours) | source |
+|---|---|---|---|
+| layer window | **4–10** inclusive | 2–15 | `modeling_llama.py:197` |
+| head ratio `k` | **0.4** | 0.35 | `:221` |
+| `γ` | 10000 | 10000 | `:222` |
+| `τ_JS` | **0.15** | 0.15 | `vcd_sample.py:177`, see below |
+| `α`, `β` | 2, 0.1 | 2, 0.1 | `vcd_sample.py:174-176` |
+| image span | `[0, 31]`, width 32 | `[~40, ~616]`, width 576 | processor |
+
+**`τ_JS` disagrees with the brief for this port.** The brief said 0.2. The
+InstructBLIP path never passes `JS_threshold`, so `vcd_sample.py`'s default,
+0.15, is what the release ran; 0.2 is the paper's figure for LLaVA and appears
+nowhere in the InstructBLIP code. We follow the code (§3.6). If the paper's
+InstructBLIP columns were produced with 0.2, `--tau-js 0.2` runs it.
+
+**Prompt (read, not assumed).** `INSTRUCTION_TEMPLATE["instructblip"]` is
+`"USER: <ImageHere> <question> ASSISTANT:"` and `generate` strips the
+placeholder before tokenising (`:293`, `:297`), so the model sees
+`"USER:  <question> ASSISTANT:"` with **two** spaces and **no system message**
+(`instructblip_eval.yaml` has none). The Q-Former is given the same string.
+That is `INSTRUCTBLIP_WRAPPER`. Runs use `--system-prompt none`; the method
+refuses `llava_v1`. Decoding is the same as LLaVA's: nucleus sampling,
+`top_p=0.9`, `T=1`, 1 new token on POPE, 512 on CHAIR. *Not verified:* that the
+Hub tokenizer reproduces the release's token ids for that string; both are
+SentencePiece-LLaMA, but no real tokenizer was run.
+
+**Where we do not follow the release.**
+
+- The release hard-codes `key_position = {"image_start": 1, "image_end": 32}`
+  for InstructBLIP (`blip2_vicuna_instruct.py:458`), i.e. keys `[1, 32]`:
+  31 image tokens and the BOS key. The image is at `[0, 31]`. We use the true
+  span, so our `H_vis` is over 32 image keys, theirs over 31 plus BOS. The
+  effect on head selection is unmeasured; a one-key shift would have to be
+  added to reproduce theirs exactly.
+- The released `pope_eval.py` cannot run InstructBLIP as published: it loops
+  over `model.llama_model.model.layers` (`pope_eval.py:349`), an attribute `blip2_vicuna_instruct`
+  does not have (it is `llm_model`). The InstructBLIP POPE numbers in the paper
+  therefore came from a script we do not have.
+- The release's `print(f"Applying intervention at layer: ...")` is not ported.
+
+**Ours, not the release's.**
+
+- *Decode loop.* HF's `InstructBlipForConditionalGeneration.forward` re-runs
+  the ViT and Q-Former and re-scatters the 32 features on every call and takes
+  no `pixel_values=None`. `fox_generate` therefore runs the prefill through the
+  wrapper and every later step through `model.language_model` with the KV
+  cache. A test pins that this agrees token for token with recomputing the
+  whole sequence each step.
+- *The patch does not reach the decoder through `from_pretrained`.* Measured on
+  transformers 4.57.1: `attn_implementation={"text_config": "fox", ...}` leaves
+  InstructBLIP's inner LLaMA on `sdpa`, because the wrapper builds it from
+  `config.text_config` after the dict has been dropped, while LLaVA, Qwen3-VL
+  and InternVL3 are unaffected. `load_backbone` now reads the decoder's own
+  config after loading, re-applies the dict with `set_attn_implementation`, and
+  raises if it still is not `fox`. Without that a whole benchmark would run the
+  unpatched model and report a plausible number. The Q-Former is pinned to
+  `eager` and never to `fox`; the ViT stays on `sdpa`.
+- *Checkpoint.* The plan uses the pre-cast fp16 copy (§3.10),
+  `kietnt0603/instructblip-vicuna-7b-fp16`, which must stay private. No
+  quantized checkpoint is acceptable.
+- *Scope.* Only plain sampling and Fox are ported. VCD, ICD, SID, CausalMM and
+  OPERA on InstructBLIP are refused by `fox_generate` rather than silently
+  running the LLaVA plumbing. Shikra is not ported.
+- *Plan.* `table1_instructblip` and `table2_instructblip`: POPE
+  random/popular/adversarial and CHAIR `val2014_500`, sampling and Fox, seeds
+  42–44 (24 jobs). Three seeds, not ten: the question is whether the column is
+  in reach. Their cost is an **estimate** (`INSTRUCTBLIP_COST_FACTOR`: 0.5x
+  LLaVA's on POPE, 0.9x on CHAIR, arithmetic on token counts and not a timing),
+  and `measured_cost` buckets them apart from LLaVA so a calibration does not
+  mix the two. `k`, `τ_JS` and the window are left unset on the jobs because
+  `pair_key` includes `k` and `τ_JS`, and setting them on the Fox arm alone
+  would split it from its own baseline; the method resolves and records them.
+
 ## 4. In the release, absent here
 
 | | Why |
 |---|---|
-| InstructBLIP path | It is a **second, divergent copy** of the intervention (`minigpt4/models/modeling_llama.py`) that drops `m_sys` from Eq. 4 entirely and uses layers 4–10 with k=0.4. A different method, not a backbone swap. |
+| InstructBLIP path | **Ported, see §3.16.** It is a **second, divergent copy** of the intervention (`minigpt4/models/modeling_llama.py`) that drops `m_sys` from Eq. 4 entirely and uses layers 4–10 with k=0.4. A different method, not a backbone swap. |
 | Shikra path | **Correction, see §3.11.** Earlier notes here called this a Track A job needing transformers 4.29.2. That was wrong: `ShikraLlamaForCausalLM` has no transformers class, but its decoder is a plain LLaMA-7B and the checkpoint carries exactly two tensors beyond one — `model.mm_projector.{weight,bias}`. It is a port on the modern stack, not a vendored environment. It is still a delta needing `huggyllama/llama-7b` merged in. |
 | InstructBLIP path, practically | `Salesforce/instructblip-vicuna-7b` is public and transformers ships `InstructBlipForConditionalGeneration`, so unlike Shikra it can run on the modern stack. Costs: 31.7 GB to download (stored fp32; ~15.8 GB in VRAM once cast, which 2x T4 holds sharded). The work is porting, not hosting — see the row above on the second intervention copy, and note the visual span is **32 Q-Former query tokens**, not 576 patch tokens, so `H_vis` is an entropy over 32 positions instead of 576. |
 | FastV / OPERA plumbing | Present in the release as argparse flags, all `default=False`, with no reweighting behind the SID one. |

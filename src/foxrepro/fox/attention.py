@@ -1439,7 +1439,7 @@ def fox_generate(
         use_m_sys: ``True`` scores heads by ``m_sys * H_vis`` (Eq. 4, LLaVA).
             ``False`` scores by ``H_vis`` alone, which is what the release's
             InstructBLIP copy does. It is a different METHOD, not a switch:
-            see docs/DEVIATIONS.md 3.12. Required for InstructBLIP, where the
+            see docs/DEVIATIONS.md 3.16. Required for InstructBLIP, where the
             image precedes BOS so there are no system keys and ``m_sys`` is
             identically 0.
 

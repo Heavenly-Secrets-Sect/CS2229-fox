@@ -34,11 +34,11 @@ NOT REPRODUCIBLE here, and why -- stated so the report can say so plainly
 rather than leaving a hole:
 
 =====================================  ======================================
-Table 1/2/8/9, InstructBLIP column     Possible (Vicuna-7B class) but it runs
+Table 1/2/8/9, InstructBLIP column     PORTED, not yet run (DEVIATIONS 3.16):
                                        the repo's SECOND intervention copy,
                                        which drops m_sys and uses layers 4-10
-                                       with k=0.4. A different method, so it
-                                       needs its own implementation.
+                                       with k=0.4, as `fox_instructblip`.
+                                       Jobs: table1_/table2_instructblip.
 Table 1/2/8/9, Shikra column           Shikra's checkpoint has no maintained
                                        HF conversion, and the released code
                                        identifies its visual span by the magic
@@ -179,10 +179,53 @@ N_SAMPLES: Dict[Tuple[str, str], int] = {
     ("mme", "test"): 2374,
 }
 
+#: The backbone every Job runs on unless it says otherwise. It was a literal in
+#: ``run_key`` and ``command`` until a second backbone existed.
+LLAVA_MODEL_ID = "llava-hf/llava-1.5-7b-hf"
+
+#: InstructBLIP-vicuna-7b, as the pre-cast fp16 copy (docs/DEVIATIONS.md 3.10).
+#: The original ``Salesforce/instructblip-vicuna-7b`` is 29.5 GiB of fp32 that
+#: every Kaggle session would download again; the copy is the same weights
+#: after the cast ``from_pretrained`` performs anyway. It is PRIVATE and must
+#: stay so (licence: LLaMA-1 derivative). The two ids give different run
+#: files, so changing this constant starts a fresh set of runs, by design.
+INSTRUCTBLIP_MODEL_ID = "kietnt0603/instructblip-vicuna-7b-fp16"
+
+#: Short tag put into ``job_id`` for a non-default backbone, so two backbones
+#: never share an id and the ids of every existing job stay as they were.
+BACKBONE_TAGS: Dict[str, str] = {
+    "Salesforce/instructblip-vicuna-7b": "ib",
+    INSTRUCTBLIP_MODEL_ID: "ib16",
+}
+
+#: Methods that are the InstructBLIP ports (``bench/methods.py``). They are
+#: separate NAMES, not ``fox`` on another ``model_id``, so no aggregation that
+#: groups by method can pool InstructBLIP's H_vis-only Fox with LLaVA's.
+INSTRUCTBLIP_METHODS = frozenset({"sampling_instructblip", "fox_instructblip"})
+
+#: Methods that take ``--mode`` / ``--logit-dtype``.
+FOX_METHODS = frozenset({"fox", "fox_instructblip"})
+
+#: ESTIMATES, NOT MEASUREMENTS. Multipliers on LLaVA's per-sample cost for the
+#: same (benchmark, branches), to be replaced by ``--calibrate`` once an
+#: InstructBLIP run exists (``measured_cost`` buckets InstructBLIP apart from
+#: LLaVA for exactly that reason). Reasoning, which is arithmetic on token
+#: counts and not a timing: POPE is prefill-bound, and InstructBLIP's prefill
+#: is ~36 text tokens plus 32 image tokens through the 7B decoder, against
+#: LLaVA's ~620, but it adds a ViT-g/14 (~1B parameters over 257 patches) and
+#: the Q-Former. So the 7B-decoder FLOPs fall about 15x and the fixed costs
+#: (vision tower, cross-GPU hops, sampling) stay: 0.5 is deliberately high.
+#: CHAIR is decode-bound at up to 512 tokens and a decode step reads the same
+#: weights whichever backbone, so only the smaller KV cache helps: 0.9.
+#: This table has already been wrong by more than half twice (see BEAM_COST_S);
+#: prefer one cheap measured job to trusting it.
+INSTRUCTBLIP_COST_FACTOR: Dict[str, float] = {"pope": 0.5, "chair": 0.9}
+
 #: Methods that run two forward branches per token as rows of one batch.
 #: ``mode="off"`` does NOT take a method out of this set: it disables the head
 #: edit and keeps the second branch, which is the point of that control.
-DUAL_BRANCH = frozenset({"fox", "vcd", "sid", "causalmm", "vcd_fox_fusion"})
+DUAL_BRANCH = frozenset({"fox", "vcd", "sid", "causalmm", "vcd_fox_fusion",
+                         "fox_instructblip"})
 
 #: Methods whose two branches cannot be batched, so the weights are read twice
 #: per token. ICD disturbs the instruction, so the sequences differ in length.
@@ -240,6 +283,11 @@ class Job:
     fuse_strategy: Optional[str] = None
     #: Tables 4 and 12. None is the released single anchor.
     anchor: Optional[str] = None
+    #: Which checkpoint. The default is LLaVA-1.5, which is what every job in
+    #: the archive ran, so nothing about an existing job's run key, command or
+    #: ``job_id`` changes. It was ALREADY part of the run key (as a literal);
+    #: this only makes it settable.
+    model_id: str = LLAVA_MODEL_ID
     note: str = ""
 
     def template_id(self) -> str:
@@ -258,9 +306,16 @@ class Job:
         calibration TSV. Derived from the fields that distinguish jobs, so it
         survives plan edits as long as the job itself is unchanged."""
         bits = [self.target, self.method, self.benchmark, self.split]
+        if self.model_id != LLAVA_MODEL_ID:
+            # Only when non-default, so the 400-odd ids already written to
+            # logs/_job_times_r*.tsv and the frozen plans keep matching.
+            bits.append(BACKBONE_TAGS.get(
+                self.model_id,
+                "m" + "".join(c for c in self.model_id.lower()
+                              if c.isalnum())[-12:]))
         if self.decoding != "sampling":
             bits.append(self.decoding)
-        if self.method == "fox" and self.mode != "as_implemented":
+        if self.method in FOX_METHODS and self.mode != "as_implemented":
             bits.append(self.mode)
         if self.control is not None:
             bits.append(self.control)
@@ -334,9 +389,12 @@ class Job:
                 + self.n_new_tokens() * n_fwd * BEAM_COST_S["forward"]
             )
             return self.n_samples * per_sample
-        return self.n_samples * COST_S.get(
+        base = COST_S.get(
             (self.benchmark, self.branches), COST_S[("pope", "single")]
         )
+        if self.method in INSTRUCTBLIP_METHODS:
+            base *= INSTRUCTBLIP_COST_FACTOR.get(self.benchmark, 1.0)
+        return self.n_samples * base
 
     def n_new_tokens(self) -> int:
         """Generation length: the benchmark default unless overridden."""
@@ -354,7 +412,7 @@ class Job:
             "alpha": self.alpha, "beta": self.beta,
             "max_new_tokens": self.n_new_tokens(),
             "prompt_template_id": self.template_id(),
-            "model_id": "llava-hf/llava-1.5-7b-hf",
+            "model_id": self.model_id,
             "decoding": self.decoding, "top_p": 0.9, "temperature": 1.0,
             "intervention_layers": self.intervention_layers,
             "logit_dtype": self.logit_dtype, "softmax_dtype": "fp32",
@@ -381,7 +439,7 @@ class Job:
             f"--method {self.method}",
             f"--benchmark {self.benchmark}",
             f"--split {self.split}",
-            "--model-id llava-hf/llava-1.5-7b-hf",
+            f"--model-id {self.model_id}",
             "--dtype fp16 --device-map auto",
             f"--seed {self.seed}",
             f"--decoding {self.decoding}",
@@ -389,7 +447,7 @@ class Job:
             f"--wrapper {self.wrapper_id}",
             f"--prompt-template-id {self.template_id()}",
         ]
-        if self.method == "fox":
+        if self.method in FOX_METHODS:
             parts.append(f"--mode {self.mode}")
             parts.append(f"--logit-dtype {self.logit_dtype}")
         for flag, val in (("--gamma", self.gamma), ("--k", self.k),
@@ -1322,6 +1380,36 @@ def _build_plan() -> List[Job]:
                 note=f"V17: MME at ten seeds, {why}",
             ))
 
+    # ---- InstructBLIP-vicuna-7b: the paper's InstructBLIP columns -------- #
+    # Tables 1, 2 and 8 (and Figures 16 and 21) report a second backbone. It
+    # runs the release's SECOND copy of the intervention -- H_vis-only head
+    # scoring, layers 4-10, k=0.4 -- so these arms are a DIFFERENT METHOD from
+    # `fox` and carry their own method names; see docs/DEVIATIONS.md 3.16.
+    #
+    # Three seeds, a breadth tier: the question is whether the paper's
+    # InstructBLIP column is in reach at all, not the interval on it, and this
+    # backbone has never been run here. Priority is last so that no existing
+    # round's `plan plan` changes. Costs are ESTIMATES (INSTRUCTBLIP_COST_FACTOR).
+    #
+    # k, tau_js and the window are left None ON PURPOSE: pair_key includes k
+    # and tau_js, so setting them on the fox arm alone would split it from its
+    # own baseline. The method resolves them (0.4, 0.15, 4-10) and records the
+    # resolved values in every record's provenance.
+    #
+    # system_prompt_id="none": InstructBLIP has no system message, and a run
+    # file must not claim `llava_v1` for a prompt that does not contain it.
+    for seed in SEEDS_BREADTH:
+        for method in ("sampling_instructblip", "fox_instructblip"):
+            for split in _pope_splits():
+                jobs.append(Job(
+                    "table1_instructblip", method, "pope", split, seed=seed,
+                    model_id=INSTRUCTBLIP_MODEL_ID, system_prompt_id="none",
+                    note="InstructBLIP POPE accuracy (T1) and F1 (T8)"))
+            jobs.append(Job(
+                "table2_instructblip", method, "chair", "val2014_500",
+                seed=seed, model_id=INSTRUCTBLIP_MODEL_ID,
+                system_prompt_id="none", note="InstructBLIP CHAIR (T2)"))
+
     return jobs
 
 
@@ -1905,6 +1993,10 @@ def measured_cost(runs_root: Optional[Path] = None) -> Dict[str, float]:
                     else "dual" if m in DUAL_BRANCH
                     else "single"
                 )
+                if m in INSTRUCTBLIP_METHODS:
+                    # Its own bucket: pooling it with LLaVA's would corrupt
+                    # the calibration of both.
+                    branches += "-instructblip"
                 a = agg.setdefault(f"{bench}/{branches}", [0.0, 0])
                 a[0] += lat / 1000.0
                 a[1] += 1

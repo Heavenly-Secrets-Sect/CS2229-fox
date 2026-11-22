@@ -193,9 +193,9 @@ FOX_DEFAULTS: Dict[str, Any] = {
 #:   release ran. The task brief for this port said 0.2; 0.2 is the PAPER's
 #:   LLaVA figure, and no 0.2 appears anywhere in the InstructBLIP path. The
 #:   code's value is used, consistent with ``FOX_DEFAULTS`` above, and the
-#:   disagreement is recorded in docs/DEVIATIONS.md Sec 3.12.
+#:   disagreement is recorded in docs/DEVIATIONS.md Sec 3.16.
 #: * scoring     ``H_vis`` of the last query ALONE (``score_all =
-#:   metrics["HVis_tail"]``, line 218): no ``m_sys`` factor, hence
+#:   metrics["HVis_tail"]``, line 219): no ``m_sys`` factor, hence
 #:   ``use_m_sys=False``.
 INSTRUCTBLIP_FOX_DEFAULTS: Dict[str, Any] = {
     "gamma": 10000.0,
