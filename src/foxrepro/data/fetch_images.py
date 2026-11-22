@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from foxrepro.data.loaders import image_filename_for_id, pope_file_for_split
-from foxrepro.storage import BENCHMARK_SPLITS, paths
+from foxrepro.storage import BENCHMARK_SPLITS, SELF_CONTAINED_BENCHMARKS, paths
 
 __all__ = [
     "COCO_IMAGE_URL",
@@ -328,11 +328,12 @@ def _session_needs(
         if bench == "chair":
             chair_splits.add(split)
     want = sorted(chair_splits) if chair_splits else []
-    # MME carries its own images, extracted from parquet by fetch_mme, and
-    # needs nothing from COCO. Falling through to "union" here would have an
+    # MME, MMBench and MathVista carry their own images, extracted from
+    # parquet by fetch_mme / fetch_mmbench / fetch_mathvista, and need
+    # nothing from COCO. Falling through to "union" here would have an
     # MME-only session download every POPE and CHAIR image it will never
     # open -- the same waste the CHAIR-draw logic above exists to avoid.
-    coco = benches - {"mme"}
+    coco = benches - set(SELF_CONTAINED_BENCHMARKS)
     if not coco:
         return "none", want
     if coco == {"pope"}:
@@ -389,8 +390,8 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         note = f" chair_splits={','.join(chair_splits)}" if chair_splits else ""
         print(f"[fetch] auto -> {what}{note}")
     if what == "none":
-        print("[fetch] this session needs no COCO images (MME carries its "
-              "own); nothing to do")
+        print("[fetch] this session needs no COCO images (MME, MMBench "
+              "and MathVista carry their own); nothing to do")
         return 0
     sets = needed_image_ids(args.pope_dir, args.chair_list,
                             chair_splits=chair_splits)

@@ -492,7 +492,13 @@ class TestHarnessMatchesTheReleasedHarness(unittest.TestCase):
         # constant is a transcription of something that exists.
         want = {"pope": RELEASED_POPE_MAX_NEW_TOKENS,
                 "chair": RELEASED_CHAIR_MAX_NEW_TOKENS,
-                "mme": 1}
+                "mme": 1,
+                # Table 11 has no released script either. MMBench's letter
+                # answer needs the letter and EOS (8 leaves room for "The
+                # answer is B"); MathVista's prompt asks for the letter "at
+                # the end", so a short derivation is allowed (64). Both are
+                # this repo's choices, declared in docs/DEVIATIONS.md.
+                "mmbench": 8, "mathvista": 64}
         overrides = []
         for job in PLAN:
             with self.subTest(job=job.job_id()):
@@ -500,10 +506,11 @@ class TestHarnessMatchesTheReleasedHarness(unittest.TestCase):
                 if got == want[job.benchmark]:
                     continue
                 overrides.append(job)
-                self.assertNotEqual(
-                    job.benchmark, "mme",
-                    "MME is yes/no; a job generating more than one token "
-                    "there is a mistake, and there is no release to blame")
+                self.assertNotIn(
+                    job.benchmark, ("mme", "mmbench", "mathvista"),
+                    "these have no release to match; a job off the default "
+                    "length there is a mistake, and there is no release to "
+                    "blame")
                 self.assertEqual(job.method, "opera")
                 self.assertEqual(job.benchmark, "pope")
                 self.assertEqual(got, OPERA_POPE_MAX_NEW_TOKENS)

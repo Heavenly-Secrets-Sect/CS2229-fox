@@ -575,6 +575,16 @@ class _NotImplementedMethod(Method):
         raise NotImplementedError(f"{self.name}.generate: see load()'s message")
 
 
+#: Sample fields copied into the run record because a scorer needs them.
+#: Adding a benchmark that scores on a new field means adding it HERE; the
+#: end-to-end tests assert each benchmark's record carries what its scorer
+#: demands.
+PERSISTED_SAMPLE_FIELDS = (
+    "category", "image_file", "l2_category", "options", "answer_letters",
+    "pid",
+)
+
+
 @register_method
 class EchoMethod(Method):
     """CPU-only test double: deterministic fake outputs, no model.
@@ -596,6 +606,13 @@ class EchoMethod(Method):
     def generate(self, sample: Sample, prompt: str) -> MethodOutput:
         """Yes/no for POPE (alternating, deterministic), a stock caption for CHAIR."""
         digest = sum(ord(c) for c in sample.sample_id)
+        if sample.benchmark in ("mmbench", "mathvista"):
+            # A deterministic letter from the options this question has, so
+            # the dry run exercises the whole scorer path.
+            letters = sorted(sample.extra["options"])
+            text = letters[digest % len(letters)]
+            return MethodOutput(text, len(prompt.split()) + 576, 1,
+                                {"digest": digest})
         if sample.benchmark == "pope":
             text = "Yes" if digest % 2 == 0 else "No"
             return MethodOutput(text, len(prompt.split()) + 576, 1, {"digest": digest})
@@ -916,7 +933,12 @@ def run(
             # reported Perception 0.0 and Cognition 0.0 -- a zero that looks
             # like a measurement. Recoverable from sample_id, but a record
             # should not need parsing to say what it is.
-            for field in ("category", "image_file"):
+            # MMBench and MathVista-MC add the option set (a letter cannot be
+            # told valid from invalid without it), MMBench's l2-category
+            # (its perception/reasoning grouping) and MathVista's gold
+            # letters. The scorers RAISE when these are absent rather than
+            # reconstruct them.
+            for field in PERSISTED_SAMPLE_FIELDS:
                 if sample.extra and sample.extra.get(field) is not None:
                     record[field] = sample.extra[field]
             writer.write(record)
@@ -991,7 +1013,8 @@ def build_parser() -> argparse.ArgumentParser:
                "four points of POPE-adversarial accuracy; it is kept as an "
                "ablation.")
     ap.add_argument("--max-new-tokens", type=int, default=None,
-                    help="default: 1 for POPE, 512 for CHAIR")
+                    help="default: storage.MAX_NEW_TOKENS_DEFAULT (POPE 1, CHAIR 512, "
+                         "MME 1, MMBench 8, MathVista 64)")
     ap.add_argument(
         "--allow-cpu", action="store_true",
         help="run without a GPU. Refused by default: r4 sessions 1 and 2 "
@@ -1086,6 +1109,16 @@ def build_parser() -> argparse.ArgumentParser:
              "`python3 -m foxrepro.data.fetch_mme`.",
     )
     ap.add_argument(
+        "--mmbench-dir", type=Path, default=p.mmbench_dir,
+        help="MMBench dev images and mmbench_dev.jsonl, as written by "
+             "`python3 -m foxrepro.data.fetch_mmbench`.",
+    )
+    ap.add_argument(
+        "--mathvista-dir", type=Path, default=p.mathvista_dir,
+        help="MathVista MC500 images and manifest, as written by "
+             "`python3 -m foxrepro.data.fetch_mathvista`.",
+    )
+    ap.add_argument(
         "--chair-image-list", type=Path, default=None,
         help="default: the list for --split. Each CHAIR draw has its own "
              "file, so the split name alone selects which 500 images are "
@@ -1148,6 +1181,8 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         prompt_template_id=cfg.prompt_template_id,
         require_images=not args.dry_run,
         mme_dir=args.mme_dir,
+        mmbench_dir=args.mmbench_dir,
+        mathvista_dir=args.mathvista_dir,
     )
     run_path = Path(args.runs_dir) / cfg.run_key().filename()
     summary = run(

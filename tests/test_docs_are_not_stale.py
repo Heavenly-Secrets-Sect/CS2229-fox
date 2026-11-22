@@ -35,6 +35,8 @@ BENCH_NAMES = {
     "pope": "POPE",
     "chair": "CHAIR",
     "mme": "MME",
+    "mmbench": "MMBench",
+    "mathvista": "MathVista",
 }
 
 

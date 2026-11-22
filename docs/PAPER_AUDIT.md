@@ -450,7 +450,6 @@ specified — `shuffle` 76.67 vs `cf_blind` 77.53, p = 1.6e-4.
 
 | | why |
 |---|---|
-| Table 11, MathVista | its official protocol extracts answers with an LLM — the same dependency that makes Table 5 irreproducible. Reachable only as the multiple-choice subset with a rule-based extractor, declared as a deviation |
 | Figure 6 and Table 5, GPT-4V judge | paid API, n=50, and the judge model is deprecated — not reproducible by anyone |
 | Figures 16, 17, 21, 22 | InstructBLIP and Shikra |
 | Figures 10, 11, 20 | qualitative examples, nothing to reproduce |
@@ -505,7 +504,8 @@ rule-based answer extractor.
 |---|---|
 | **Figures 5 and 18, MME** <!-- plan-targets: mme --> | **DONE, r21, r22 and r23, 10 seeds.** The release ships no MME script while reporting MME results, so this harness is written from the benchmark's own definition. `fox off` beats the full method by **+58.4** overall, 90% CI [+44.9, +71.9] — the intervention subtracts. It subtracts on **both** halves relative to the same decode without it: −48.6 Perception and −9.8 Cognition. r21's reading, that Fox trades Perception for reasoning, does not survive the `off` control: −23.0 of the −32.8 Cognition deficit is the dual pass, not the intervention |
 | **Table 10, recent backbones** | **code done, one smoke session away.** `scripts/probe_backbone.py` reports Qwen3-VL-8B and InternVL3-8B runnable with the Fox patch reaching the decoder; `load_backbone` and a per-model image-span width landed in a8ac2e5. What is left is one cheap session proving the span is contiguous on a real checkpoint |
-| **Table 11, MMBench** | dataset reachable (`lmms-lab/MMBench_EN`, dev split has answers). Needs a multiple-choice scorer, which nothing here reuses |
+| **Table 11, MMBench** <!-- plan-targets: table11_mmbench --> | **harness done, no run yet** (V20, 9 jobs, ~11.6 GPU-h estimated). `lmms-lab/MMBench_EN` dev (4377 questions; `test` has no answers), single-pass accuracy, rule-based letter extraction, perception/reasoning on the dataset's own l2-category. Differs from the paper's protocol in ways that can move the number: DEVIATIONS §3.16 |
+| **Table 11, MathVista** <!-- plan-targets: table11_mathvista --> | **harness done, no run yet** (V20, 6 jobs, ~1.3 GPU-h estimated). Its official protocol extracts answers with an LLM, the same dependency that makes Table 5 irreproducible, so this is **only the multiple-choice subset** (a fixed random 500 of 540 `testmini` MC rows) with a rule-based extractor, declared in DEVIATIONS §3.16. Levels are not comparable to the paper's 19.53 (multiple choice has a ~30% chance floor); the Fox-minus-baseline difference is the comparable quantity, and at 500 questions it resolves roughly 3 points |
 
 ---
 
