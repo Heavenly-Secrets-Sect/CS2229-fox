@@ -86,7 +86,8 @@ LEGACY_PROVENANCE_FIELDS: frozenset = frozenset({"wrapper_id"})
 __all__ = [
     "parse_yes_no", "parse_yes_no_released", "POPE_PARSERS",
     "DEFAULT_POPE_PARSER", "read_run", "evaluate_pope", "evaluate_chair",
-    "evaluate_run_file", "PopeOutcome",
+    "evaluate_run_file", "PopeOutcome", "evaluate_mmbench",
+    "evaluate_mathvista",
     "LEGACY_METHOD_NAMES", "canonical_method",
 ]
 
@@ -471,6 +472,192 @@ def evaluate_mme(
     return metrics, rows
 
 
+# --------------------------------------------------------------------------- #
+# MMBench and MathVista-MC (Table 11)
+# --------------------------------------------------------------------------- #
+def _mc_options(rec: Dict[str, Any]) -> Dict[str, str]:
+    """The option set a multiple-choice record was asked with, or raise.
+
+    Read from the record itself (``generate.py`` persists it). Never
+    reconstructed: without it a letter cannot be told valid from invalid, and
+    a guess would score the run on a question the model never saw.
+    """
+    opts = rec.get("options")
+    if not isinstance(opts, dict) or len(opts) < 2:
+        raise ValueError(
+            f"record {rec.get('sample_id')!r} carries no `options`; a "
+            f"multiple-choice run cannot be scored without them. Re-run it "
+            f"with a generate.py that persists them.")
+    return {str(k): str(v) for k, v in opts.items()}
+
+
+def _mc_tally(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """Per-rule counts. ``unparsed`` is the sum of the two failure rules."""
+    rules = Counter(r["rule"] for r in rows)
+    unparsed = rules.get("none", 0) + rules.get("invalid_letter", 0)
+    return {"rule_counts": dict(sorted(rules.items())), "unparsed": unparsed}
+
+
+def _acc(rows: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Accuracy in percent with its numerator, or None for an empty group.
+
+    None and not 0.0: a group with no questions has no accuracy, and a zero
+    here would read as a measured failure. The reader of the metrics file
+    must see that nothing was measured.
+    """
+    if not rows:
+        return None
+    k = sum(r["correct"] for r in rows)
+    return {"acc": round(100 * k / len(rows), 4), "n_right": int(k),
+            "n": len(rows)}
+
+
+def evaluate_mmbench(
+    records: Sequence[Dict[str, Any]],
+    confidence: float = 0.95,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """MMBench dev accuracy: overall, perception and reasoning.
+
+    Single pass over the questions as asked (NOT MMBench's CircularEval, which
+    re-asks each question under option rotations; see docs/DEVIATIONS.md).
+    Overall is accuracy over all questions; perception and reasoning are
+    accuracy over the questions whose ``l2-category`` falls in each group,
+    using ``storage.MMBENCH_PERCEPTION_L2`` / ``MMBENCH_REASONING_L2``.
+
+    Raises rather than degrade: a record without its l2-category or option
+    set, an l2-category in neither group, or a gold letter that is not one of
+    the record's options. Each would otherwise move a question out of a group
+    total silently.
+
+    An unparseable answer is WRONG and counted (``unparsed``, with the
+    per-rule breakdown), never dropped.
+    """
+    from foxrepro.bench.multichoice import extract_choice
+    from foxrepro.storage import (
+        MMBENCH_DEV_ROWS, MMBENCH_PERCEPTION_L2, MMBENCH_REASONING_L2)
+
+    group_of = {**{c: "perception" for c in MMBENCH_PERCEPTION_L2},
+                **{c: "reasoning" for c in MMBENCH_REASONING_L2}}
+    rows: List[Dict[str, Any]] = []
+    for rec in records:
+        sid = rec.get("sample_id")
+        for field in ("label", "category", "l2_category"):
+            if rec.get(field) in (None, ""):
+                raise ValueError(
+                    f"MMBench record {sid!r} carries no {field!r}; scoring "
+                    f"it would drop it from a group total without a trace.")
+        l2 = str(rec["l2_category"])
+        if l2 not in group_of:
+            raise ValueError(
+                f"MMBench record {sid!r} has l2-category {l2!r}, which is in "
+                f"neither the perception nor the reasoning group "
+                f"({sorted(group_of)}). Extend storage.MMBENCH_*_L2 after "
+                f"checking MMBench's definition; do not bucket it.")
+        options = _mc_options(rec)
+        gold = str(rec["label"])
+        if gold not in options:
+            raise ValueError(
+                f"MMBench record {sid!r}: gold {gold!r} is not among its "
+                f"options {sorted(options)}")
+        pred, rule = extract_choice(str(rec.get("output", "")), options)
+        rows.append({
+            "sample_id": sid, "category": str(rec["category"]),
+            "l2_category": l2, "group": group_of[l2], "label": gold,
+            "pred": pred, "rule": rule, "parsed": pred is not None,
+            "correct": int(pred == gold),
+        })
+
+    def group(name: str) -> Optional[Dict[str, Any]]:
+        return _acc([r for r in rows if r["group"] == name])
+
+    per_l2: Dict[str, Any] = {}
+    for l2 in sorted({r["l2_category"] for r in rows}):
+        per_l2[l2] = _acc([r for r in rows if r["l2_category"] == l2])
+    per_cat: Dict[str, Any] = {}
+    for cat in sorted({r["category"] for r in rows}):
+        per_cat[cat] = _acc([r for r in rows if r["category"] == cat])
+
+    overall = _acc(rows)
+    metrics: Dict[str, Any] = {
+        "benchmark": "mmbench",
+        "n_samples": len(rows),
+        "n_expected": MMBENCH_DEV_ROWS,
+        # A short run reads as a low score, not as an error, so say it.
+        "complete": len(rows) == MMBENCH_DEV_ROWS,
+        "totals": {"overall": overall, "perception": group("perception"),
+                   "reasoning": group("reasoning")},
+        "per_l2_category": per_l2,
+        "per_category": per_cat,
+        "l2_missing": sorted(set(group_of) - set(per_l2)),
+        **_mc_tally(rows),
+    }
+    metrics["unparsed_fraction"] = (
+        round(metrics["unparsed"] / len(rows), 6) if rows else None)
+    if overall:
+        metrics["accuracy_ci"] = wilson_interval(
+            overall["n_right"], overall["n"], confidence=confidence,
+            name="mmbench_accuracy").as_dict()
+    return metrics, rows
+
+
+def evaluate_mathvista(
+    records: Sequence[Dict[str, Any]],
+    confidence: float = 0.95,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """MathVista multiple-choice accuracy with a rule-based extractor.
+
+    Accuracy is over ALL scored questions, with an unparseable answer counted
+    wrong. ``coverage`` -- the parsed fraction -- is reported beside it
+    because the official protocol's LLM extractor would recover some answers
+    these rules cannot, so a low coverage means the number understates the
+    model by an unknown amount (docs/DEVIATIONS.md). ``accuracy_parsed`` is
+    accuracy over parsed answers only, so the two readings can be compared.
+
+    A gold with more than one letter (a question whose correct choice text is
+    duplicated) is correct if the prediction is any of them.
+    """
+    from foxrepro.bench.multichoice import extract_choice
+    from foxrepro.storage import MATHVISTA_SUBSET_N
+
+    rows: List[Dict[str, Any]] = []
+    for rec in records:
+        sid = rec.get("sample_id")
+        if not rec.get("label"):
+            raise ValueError(f"MathVista record {sid!r} carries no label")
+        options = _mc_options(rec)
+        gold = str(rec["label"]).split("|")
+        if any(g not in options for g in gold):
+            raise ValueError(
+                f"MathVista record {sid!r}: gold {gold} is not among its "
+                f"options {sorted(options)}")
+        pred, rule = extract_choice(
+            str(rec.get("output", "")), options, allow_tail=True)
+        rows.append({
+            "sample_id": sid, "label": "|".join(gold), "pred": pred,
+            "rule": rule, "parsed": pred is not None,
+            "correct": int(pred is not None and pred in gold),
+        })
+    overall = _acc(rows)
+    parsed = _acc([r for r in rows if r["parsed"]])
+    metrics: Dict[str, Any] = {
+        "benchmark": "mathvista",
+        "n_samples": len(rows),
+        "n_expected": MATHVISTA_SUBSET_N,
+        "complete": len(rows) == MATHVISTA_SUBSET_N,
+        "totals": {"accuracy": overall, "accuracy_parsed": parsed},
+        "coverage": (round(sum(r["parsed"] for r in rows) / len(rows), 6)
+                     if rows else None),
+        **_mc_tally(rows),
+    }
+    metrics["unparsed_fraction"] = (
+        round(metrics["unparsed"] / len(rows), 6) if rows else None)
+    if overall:
+        metrics["accuracy_ci"] = wilson_interval(
+            overall["n_right"], overall["n"], confidence=confidence,
+            name="mathvista_accuracy").as_dict()
+    return metrics, rows
+
+
 def evaluate_pope(
     records: Sequence[Dict[str, Any]],
     labels: Optional[Dict[str, str]] = None,
@@ -745,6 +932,10 @@ def evaluate_run_file(
             records, unparsed_policy=unparsed_policy, confidence=confidence,
             n_boot=n_boot, seed=seed, pope_parser=pope_parser,
         )
+    elif benchmark == "mmbench":
+        metrics, rows = evaluate_mmbench(records, confidence=confidence)
+    elif benchmark == "mathvista":
+        metrics, rows = evaluate_mathvista(records, confidence=confidence)
     else:
         raise ValueError(f"unknown benchmark {benchmark!r}")
 
@@ -812,6 +1003,34 @@ def _format_markdown(result: Dict[str, Any]) -> str:
             lines.append(
                 f"| subtasks missing | {', '.join(met['subtasks_missing'])} "
                 f"| - | - | - |")
+    elif met["benchmark"] in ("mmbench", "mathvista"):
+        def _cell(name: str, g: Any) -> str:
+            # An empty group is "n/a", never a zero: nothing was measured.
+            if g is None:
+                return f"| {name} | n/a (no questions) | - | - | 0 |"
+            return (f"| {name} | {g['acc']:.2f} | - | "
+                    f"{g['n_right']} | {g['n']} |")
+        t = met["totals"]
+        if met["benchmark"] == "mmbench":
+            lines.append(_cell("overall", t["overall"]))
+            lines.append(_cell("perception", t["perception"]))
+            lines.append(_cell("reasoning", t["reasoning"]))
+        else:
+            lines.append(_cell("accuracy", t["accuracy"]))
+            lines.append(_cell("accuracy (parsed only)", t["accuracy_parsed"]))
+            cov = met["coverage"]
+            lines.append(
+                f"| coverage (parsed) | "
+                f"{'n/a' if cov is None else format(100 * cov, '.2f')} "
+                f"| - | - | {met['n_samples']} |")
+        lines.append(
+            f"| unparsed (counted wrong) | {met['unparsed']} | - | - | "
+            f"{met['n_samples']} |")
+        if not met["complete"]:
+            # A short run is a low score in disguise.
+            lines.append(
+                f"| INCOMPLETE | {met['n_samples']} of {met['n_expected']} "
+                f"questions | - | - | - |")
     elif met["benchmark"] == "chair":
         t = met["totals"]
         cs, ci = met["chair_s_ci"], met["chair_i_ci_cluster_bootstrap"]

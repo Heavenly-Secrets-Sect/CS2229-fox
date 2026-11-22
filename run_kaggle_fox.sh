@@ -114,6 +114,23 @@ else
   echo "[mme] no MME jobs in session $N; skipping the 864 MB download"
 fi
 
+# MMBench (~98 MB) and MathVista (~142 MB) are the same shape: images inside
+# Hub parquet, fetched only by a session that has jobs for them, and neither
+# touches COCO (fetch_images.py subtracts them in --what auto).
+needs_bench() {
+  python3 -c 'import json,sys; p=json.load(open("scripts/run_plan.json")); n=int(sys.argv[1]); s=next((x for x in p["sessions"] if int(x["session"])==n), {}); print(int(any("--benchmark "+sys.argv[2]+" " in p["jobs"][j]["command"] for j in s.get("jobs", []))))' "$N" "$1"
+}
+if [ "$(needs_bench mmbench)" = "1" ]; then
+  echo "[mmbench] session $N has MMBench jobs; fetching dev"
+  pip install -q datasets || { echo "datasets install failed"; exit 1; }
+  python3 -m foxrepro.data.fetch_mmbench || { echo "MMBench fetch failed"; exit 1; }
+fi
+if [ "$(needs_bench mathvista)" = "1" ]; then
+  echo "[mathvista] session $N has MathVista jobs; fetching MC500"
+  pip install -q datasets || { echo "datasets install failed"; exit 1; }
+  python3 -m foxrepro.data.fetch_mathvista || { echo "MathVista fetch failed"; exit 1; }
+fi
+
 # Kaggle gives a session no memory of the last one: /kaggle/working starts
 # empty, so resume would see no run files and redo work already paid for.
 # results/runs/ is the committed archive, so a plain `git clone` already

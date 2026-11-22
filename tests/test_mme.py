@@ -366,10 +366,10 @@ class TestTheMarkdownFormatterHandlesMME(unittest.TestCase):
 
     def test_an_unknown_benchmark_raises_by_name(self) -> None:
         from foxrepro.bench.evaluate import _format_markdown
-        d = self._metrics("mmbench")
+        d = self._metrics("vqav2")
         with self.assertRaises(ValueError) as ctx:
             _format_markdown(d)
-        self.assertIn("mmbench", str(ctx.exception))
+        self.assertIn("vqav2", str(ctx.exception))
 
     def test_chair_is_still_formatted(self) -> None:
         """The branch that used to be `else` keeps working."""

@@ -38,6 +38,10 @@ __all__ = [
     "Sample",
     "load_pope",
     "load_mme",
+    "load_mmbench",
+    "load_mathvista",
+    "mathvista_subset_pids",
+    "build_mmbench_question",
     "load_chair",
     "load_benchmark",
     "pope_file_for_split",
@@ -73,6 +77,17 @@ PROMPT_TEMPLATES: Dict[str, str] = {
     # one, exactly as pope_v0_raw is for POPE. Appending another instruction
     # would be an ablation, not the protocol.
     "mme_v0_raw": "{question}",
+    # MMBench, LLaVA's own convention (llava/eval/model_vqa_mmbench.py): the
+    # loader builds "<hint>\n<question>\nA. ..\nB. .." and this appends the
+    # instruction. The hint is omitted when the row has none.
+    "mmbench_v0_letter":
+        "{question}\nAnswer with the option's letter from the given choices "
+        "directly.",
+    # MathVista ships the complete prompt in its `query` field ("Hint: Please
+    # answer the question and provide the correct option letter, e.g., A, B,
+    # C, D, at the end.\nQuestion: ...\nChoices:\n(A) ..."), which is what
+    # the benchmark's own generation script sends. Used verbatim.
+    "mathvista_v0_query": "{question}",
 }
 
 #: Which templates are legal for which benchmark (guards CLI typos).
@@ -82,6 +97,8 @@ _TEMPLATE_BENCHMARK = {
     "chair_v1": "chair",
     "chair_v2_short": "chair",
     "mme_v0_raw": "mme",
+    "mmbench_v0_letter": "mmbench",
+    "mathvista_v0_query": "mathvista",
 }
 
 #: ``benchmark -> the template the release sends``. One definition, read by
@@ -92,6 +109,8 @@ DEFAULT_TEMPLATE_IDS: Dict[str, str] = {
     "pope": "pope_v0_raw",
     "chair": "chair_v1",
     "mme": "mme_v0_raw",
+    "mmbench": "mmbench_v0_letter",
+    "mathvista": "mathvista_v0_query",
 }
 
 _IMAGE_ID_RE = re.compile(r"(\d{6,})")
@@ -491,6 +510,183 @@ def load_mme(mme_dir: Path, split: str = "test",
     return samples
 
 
+#: Manifests written by ``fetch_mmbench.py`` / ``fetch_mathvista.py``.
+MMBENCH_MANIFEST_NAME = "mmbench_dev.jsonl"
+MATHVISTA_MANIFEST_NAME = "mathvista_testmini_mc500.jsonl"
+
+_OPTION_LETTERS = "ABCDEFGH"
+
+
+def build_mmbench_question(question: str, options: Dict[str, str],
+                           hint: Optional[str] = None) -> str:
+    """``<hint>\\n<question>\\nA. ..\\nB. ..`` as LLaVA's MMBench script sends it.
+
+    The hint line is omitted when there is none (the dataset stores the
+    string ``"nan"``; the fetcher turns that into ``None``).
+    """
+    lines = []
+    if hint:
+        lines.append(hint)
+    lines.append(question)
+    for letter in sorted(options):
+        lines.append(f"{letter}. {options[letter]}")
+    return "\n".join(lines)
+
+
+def mathvista_subset_pids(pool_pids: Sequence[str], n: int, seed: int) -> List[str]:
+    """The fixed random subset of the multiple-choice pool.
+
+    Pids are sorted numerically first, so the draw depends on the SET of
+    pids and not on the order the Hub happens to serve them in, then drawn
+    with ``random.Random(seed).sample``. Returned sorted numerically.
+    """
+    import random
+
+    pool = sorted({str(p) for p in pool_pids}, key=int)
+    if n > len(pool):
+        raise ValueError(f"cannot draw {n} from a pool of {len(pool)}")
+    return sorted(random.Random(seed).sample(pool, n), key=int)
+
+
+def _read_manifest(path: Path, hint: str) -> List[Dict[str, object]]:
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} is missing. {hint}")
+    out: List[Dict[str, object]] = []
+    with path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                out.append(json.loads(line))
+    return out
+
+
+def load_mmbench(mmbench_dir: Path, split: str = "dev",
+                 require_images: bool = True) -> List[Sample]:
+    """Load MMBench dev from the manifest ``fetch_mmbench.py`` wrote.
+
+    ``sample_id`` is ``mmbench/<index>``: the dataset's ``index`` is unique
+    per question (4377 of 4377, checked on the real split), unlike MME's
+    ``question_id``, which names an image. The question carries its hint and
+    its options; ``label`` is the gold letter. Everything the scorer needs
+    (category, l2-category, the option set) rides on the sample so the run
+    record can persist it.
+    """
+    from foxrepro.storage import MMBENCH_DEV_ROWS
+
+    mmbench_dir = Path(mmbench_dir)
+    path = mmbench_dir / MMBENCH_MANIFEST_NAME
+    recs = _read_manifest(
+        path, "Run `python3 -m foxrepro.data.fetch_mmbench` first.")
+    if len(recs) != MMBENCH_DEV_ROWS:
+        raise ValueError(
+            f"{path} has {len(recs)} rows, expected {MMBENCH_DEV_ROWS}")
+    samples: List[Sample] = []
+    missing: List[str] = []
+    seen: set = set()
+    for n, rec in enumerate(recs, start=1):
+        for field in ("index", "image", "question", "hint", "options",
+                      "answer", "category", "l2_category"):
+            if field not in rec:
+                raise ValueError(f"{path} row {n} missing {field!r}")
+        options = dict(rec["options"])  # type: ignore[arg-type]
+        answer = str(rec["answer"])
+        if answer not in options:
+            raise ValueError(
+                f"{path} row {n}: answer {answer!r} is not among options "
+                f"{sorted(options)}")
+        sid = f"mmbench/{rec['index']}"
+        if sid in seen:
+            raise ValueError(f"{path}: duplicate sample_id {sid!r}")
+        seen.add(sid)
+        img = mmbench_dir / str(rec["image"])
+        if not img.is_file():
+            missing.append(str(rec["image"]))
+            if require_images:
+                continue
+        samples.append(Sample(
+            sample_id=sid,
+            image_id=zlib.crc32(str(rec["image"]).encode()) & 0x7FFFFFFF,
+            image_path=img, benchmark="mmbench", split=split,
+            question=build_mmbench_question(
+                str(rec["question"]), options,
+                str(rec["hint"]) if rec["hint"] else None),
+            label=answer,
+            extra={"category": str(rec["category"]),
+                   "l2_category": str(rec["l2_category"]),
+                   "options": options, "image_file": str(rec["image"])},
+        ))
+    if missing and require_images:
+        raise FileNotFoundError(
+            f"{len(missing)} MMBench images missing from {mmbench_dir}, "
+            f"first: {missing[:3]}. Re-run fetch_mmbench.")
+    samples.sort(key=lambda s: int(s.sample_id.split("/", 1)[1]))
+    return samples
+
+
+def load_mathvista(mathvista_dir: Path, split: str = "testmini_mc500",
+                   require_images: bool = True) -> List[Sample]:
+    """Load the MathVista multiple-choice subset ``fetch_mathvista.py`` wrote.
+
+    The prompt is the dataset's own ``query`` field. ``label`` is the gold
+    option letter -- ``"B"``, or ``"B|C"`` for the one question whose gold
+    choice text appears twice, where either letter is the right answer.
+    """
+    from foxrepro.storage import (
+        MATHVISTA_MC_POOL, MATHVISTA_SUBSET_N, MATHVISTA_SUBSET_SEED)
+
+    mathvista_dir = Path(mathvista_dir)
+    path = mathvista_dir / MATHVISTA_MANIFEST_NAME
+    recs = _read_manifest(
+        path, "Run `python3 -m foxrepro.data.fetch_mathvista` first.")
+    if len(recs) != MATHVISTA_SUBSET_N:
+        raise ValueError(
+            f"{path} has {len(recs)} rows, expected {MATHVISTA_SUBSET_N}")
+    samples: List[Sample] = []
+    missing: List[str] = []
+    seen: set = set()
+    for n, rec in enumerate(recs, start=1):
+        for field in ("pid", "image", "query", "options", "answer_letters",
+                      "subset_seed", "pool_size"):
+            if field not in rec:
+                raise ValueError(f"{path} row {n} missing {field!r}")
+        if (rec["subset_seed"] != MATHVISTA_SUBSET_SEED
+                or rec["pool_size"] != MATHVISTA_MC_POOL):
+            raise ValueError(
+                f"{path} row {n} was drawn with seed {rec['subset_seed']} "
+                f"from a pool of {rec['pool_size']}; this code expects seed "
+                f"{MATHVISTA_SUBSET_SEED} and {MATHVISTA_MC_POOL}. A different "
+                f"subset is a different benchmark.")
+        options = dict(rec["options"])  # type: ignore[arg-type]
+        letters = list(rec["answer_letters"])  # type: ignore[arg-type]
+        if not letters or any(x not in options for x in letters):
+            raise ValueError(
+                f"{path} row {n}: answer letters {letters} not in options "
+                f"{sorted(options)}")
+        sid = f"mathvista/{rec['pid']}"
+        if sid in seen:
+            raise ValueError(f"{path}: duplicate sample_id {sid!r}")
+        seen.add(sid)
+        img = mathvista_dir / str(rec["image"])
+        if not img.is_file():
+            missing.append(str(rec["image"]))
+            if require_images:
+                continue
+        samples.append(Sample(
+            sample_id=sid,
+            image_id=zlib.crc32(str(rec["image"]).encode()) & 0x7FFFFFFF,
+            image_path=img, benchmark="mathvista", split=split,
+            question=str(rec["query"]), label="|".join(letters),
+            extra={"options": options, "answer_letters": letters,
+                   "pid": str(rec["pid"]), "image_file": str(rec["image"])},
+        ))
+    if missing and require_images:
+        raise FileNotFoundError(
+            f"{len(missing)} MathVista images missing from {mathvista_dir}, "
+            f"first: {missing[:3]}. Re-run fetch_mathvista.")
+    samples.sort(key=lambda s: int(s.sample_id.split("/", 1)[1]))
+    return samples
+
+
 def load_benchmark(
     benchmark: str,
     split: str,
@@ -500,6 +696,8 @@ def load_benchmark(
     prompt_template_id: str,
     require_images: bool = True,
     mme_dir: Optional[Path] = None,
+    mmbench_dir: Optional[Path] = None,
+    mathvista_dir: Optional[Path] = None,
 ) -> List[Sample]:
     """Dispatch to :func:`load_pope` or :func:`load_chair`.
 
@@ -528,6 +726,17 @@ def load_benchmark(
         if mme_dir is None:
             raise ValueError("mme_dir is required for benchmark='mme'")
         return load_mme(mme_dir, split=split, require_images=require_images)
+    if benchmark == "mmbench":
+        if mmbench_dir is None:
+            raise ValueError("mmbench_dir is required for benchmark='mmbench'")
+        return load_mmbench(mmbench_dir, split=split,
+                            require_images=require_images)
+    if benchmark == "mathvista":
+        if mathvista_dir is None:
+            raise ValueError(
+                "mathvista_dir is required for benchmark='mathvista'")
+        return load_mathvista(mathvista_dir, split=split,
+                              require_images=require_images)
     raise ValueError(f"unknown benchmark {benchmark!r}")
 
 

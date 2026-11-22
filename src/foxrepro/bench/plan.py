@@ -48,7 +48,9 @@ Figure 5 (MME)                         Needs the MME dataset; the Fox release
                                        reporting MME results.
 Figure 6 (GPT-4V judge)                Needs a paid OpenAI API key. The
                                        protocol is in Appendix C.3 if funded.
-MMBench / MathVista (appendix)         Separate datasets, not yet obtained.
+MMBench / MathVista (Table 11)         Harness written (V18), no run yet. MathVista
+                                       is its multiple-choice subset with a
+                                       rule-based extractor (DEVIATIONS.md).
 Figures 16, 17                          Sensitivity on InstructBLIP / Shikra.
 ICD, SID, OPERA, CausalMM baselines    Each needs its upstream repo. The Fox
                                        release has only a FastV skeleton for
@@ -123,6 +125,23 @@ COST_S: Dict[Tuple[str, str], float] = {
     ("mme", "single"): 0.55,
     ("mme", "dual"): 1.10,
     ("mme", "split"): 1.10,
+    # MMBench dev and MathVista-MC. ESTIMATES, not measurements: no run of
+    # either exists yet. Derived from the two measured anchors -- MME at one
+    # token, 0.579 s single and 1.105 s dual (docs/VALIDATION.md V17) -- plus
+    # a decode step priced from CHAIR, ((8.2 - 0.55) / ~120 tokens) = 0.064 s
+    # single and 0.082 s dual per generated token.
+    #   MMBench: the letter plus EOS is ~2 tokens, and hint passages add some
+    #     prompt: 0.579 * 1.05 + 0.064 = 0.67, 1.105 * 1.05 + 0.082 = 1.24.
+    #   MathVista: the prompt asks for a letter "at the end", so some answers
+    #     reason first; at an assumed mean of 6 tokens that is 0.96 / 1.60,
+    #     rounded up to 1.2 / 2.0 for the tail (the cap is 64 tokens).
+    # `plan --calibrate` replaces these once a session has run.
+    ("mmbench", "single"): 0.68,
+    ("mmbench", "dual"): 1.25,
+    ("mmbench", "split"): 1.25,
+    ("mathvista", "single"): 1.2,
+    ("mathvista", "dual"): 2.0,
+    ("mathvista", "split"): 2.0,
     # No ("*", "beam") entry on purpose: OPERA is the one shape whose cost
     # scales with the generation length, so it is not a flat per-sample
     # number -- see BEAM_COST_S and Job.est_seconds.
@@ -177,6 +196,11 @@ N_SAMPLES: Dict[Tuple[str, str], int] = {
     # score is a SUM over fourteen subtasks, so a partial set of jobs would
     # produce a total that silently means something else.
     ("mme", "test"): 2374,
+    # Table 11. MMBench dev as released on the Hub (4377 rows; `test` has no
+    # answers). MathVista is the multiple-choice subset only, a fixed random
+    # 500 of its 540 testmini MC rows (storage.MATHVISTA_SUBSET_SEED).
+    ("mmbench", "dev"): 4377,
+    ("mathvista", "testmini_mc500"): 500,
 }
 
 #: Methods that run two forward branches per token as rows of one batch.
@@ -1320,6 +1344,26 @@ def _build_plan() -> List[Job]:
                 "mme", method, "mme", "test", seed=seed,
                 mode=mode if method == "fox" else "as_implemented",
                 note=f"V17: MME at ten seeds, {why}",
+            ))
+
+    # ---- Table 11: MMBench and MathVista-MC (V18) ----------------------
+    # Not frozen into any round yet. LLaVA-1.5, sampling, three seeds. The
+    # paper's rows are Sampling, VCD and Fox on MMBench and Sampling and Fox
+    # on MathVista; no `fox off` arm here, because Table 11 does not have one
+    # and the first question is whether the table reproduces at all. If it
+    # does not, or if it does, `off` is the cheap follow-up that separates
+    # the fusion from the intervention, as it did on POPE and MME.
+    for method in ("sampling", "vcd", "fox"):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "table11_mmbench", method, "mmbench", "dev", seed=seed,
+                note=f"V18: MMBench dev, {method}",
+            ))
+    for method in ("sampling", "fox"):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "table11_mathvista", method, "mathvista", "testmini_mc500",
+                seed=seed, note=f"V18: MathVista MC500, {method}",
             ))
 
     return jobs

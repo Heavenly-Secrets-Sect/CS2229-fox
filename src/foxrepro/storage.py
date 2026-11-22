@@ -279,7 +279,17 @@ CONTROL_ARMS: Dict[str, str] = {
 #: POPE answers are a single token (yes/no), CHAIR captions are 512 tokens.
 #: MME answers are "Yes"/"No" like POPE's, so one token is enough -- the
 #: official MME prompt already ends with "Please answer yes or no."
-MAX_NEW_TOKENS_DEFAULT: Dict[str, int] = {"pope": 1, "chair": 512, "mme": 1}
+#:
+#: MMBench and MathVista-MC answer with an option LETTER. MMBench's prompt
+#: ends "Answer with the option's letter from the given choices directly.",
+#: so the answer is one token and EOS; 8 leaves room for "The answer is B"
+#: and still bounds the bill. MathVista's own prompt asks for the letter "at
+#: the end", which invites a short derivation first, so it gets 64. Neither
+#: has a released script to match (the Fox release ships none for Table 11),
+#: so both numbers are this repo's choice, recorded in docs/DEVIATIONS.md.
+MAX_NEW_TOKENS_DEFAULT: Dict[str, int] = {
+    "pope": 1, "chair": 512, "mme": 1, "mmbench": 8, "mathvista": 64,
+}
 
 #: Benchmarks and their legal splits.
 #: Extra CHAIR splits, each an independent 500-image draw from val2014.
@@ -310,10 +320,45 @@ MME_COGNITION: tuple[str, ...] = (
     "text_translation", "code_reasoning",
 )
 
+#: MMBench's two groups, defined on the dataset's own ``l2-category`` column
+#: (values read from the real ``lmms-lab/MMBench_EN`` dev split, 4377 rows,
+#: not assumed). MMBench's definition: PERCEPTION is coarse perception plus
+#: the two fine-grained perception abilities; REASONING is attribute, logic
+#: and relation reasoning. An l2 value in neither tuple makes the scorer
+#: RAISE: a group accuracy over a silently shorter set is still a number.
+MMBENCH_PERCEPTION_L2: tuple[str, ...] = (
+    "coarse_perception",
+    "finegrained_perception (instance-level)",
+    "finegrained_perception (cross-instance)",
+)
+MMBENCH_REASONING_L2: tuple[str, ...] = (
+    "attribute_reasoning", "logic_reasoning", "relation_reasoning",
+)
+#: Rows in the released dev split. Checked by the fetcher AND by the scorer's
+#: ``complete`` flag, so a short download cannot pass as a result.
+MMBENCH_DEV_ROWS = 4377
+
+#: MathVista's multiple-choice rows in ``testmini`` (``question_type ==
+#: "multi_choice"``; the dataset's value, not "multiple_choice"), and the
+#: size and seed of the random subset drawn from them. The paper evaluates a
+#: random 500-question subset and does not say which; the draw below is ours
+#: and is fixed, so every arm and every seed scores the same 500 questions.
+MATHVISTA_MC_POOL = 540
+MATHVISTA_SUBSET_N = 500
+MATHVISTA_SUBSET_SEED = 2229
+
+#: Benchmarks that carry their own images (extracted from Hub parquet) and
+#: need nothing from COCO. ``fetch_images`` subtracts these before deciding
+#: what a session must download.
+SELF_CONTAINED_BENCHMARKS: tuple[str, ...] = ("mme", "mmbench", "mathvista")
+
 BENCHMARK_SPLITS: Dict[str, tuple[str, ...]] = {
     "pope": ("random", "popular", "adversarial"),
     "chair": ("val2014_500",) + CHAIR_DRAWS,
     "mme": ("test",),
+    # `test` is deliberately absent: the Hub copy withholds its answers.
+    "mmbench": ("dev",),
+    "mathvista": ("testmini_mc500",),
 }
 
 
@@ -445,6 +490,16 @@ class Paths:
         the COCO tree would let a CHAIR run pick one up by filename.
         """
         return self.data_root / "mme"
+
+    @property
+    def mmbench_dir(self) -> Path:
+        """MMBench dev images and manifest, extracted from parquet."""
+        return self.data_root / "mmbench"
+
+    @property
+    def mathvista_dir(self) -> Path:
+        """MathVista testmini MC500 images and manifest, extracted from parquet."""
+        return self.data_root / "mathvista"
 
     def coco_annotation(self, stem: str) -> Path:
         """``instances_val2014`` / ``captions_val2014`` -> the file to read.
