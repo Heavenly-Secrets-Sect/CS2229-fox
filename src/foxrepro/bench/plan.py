@@ -1493,6 +1493,24 @@ def _build_plan() -> List[Job]:
                 seed=seed, model_id=INSTRUCTBLIP_MODEL_ID,
                 system_prompt_id="none", note="InstructBLIP CHAIR (T2)"))
 
+    # The paper says tau_JS = 0.2 for InstructBLIP; the release's InstructBLIP
+    # code never passes it on, so the arm above runs 0.15 (DEVIATIONS 3.16).
+    # Both readings are run, so the distance between "what the release did"
+    # and "what the paper says" is a measurement rather than a choice. Fox only:
+    # the baseline has no tau.
+    for seed in SEEDS_BREADTH:
+        for split in _pope_splits():
+            jobs.append(Job(
+                "table1_instructblip", "fox_instructblip", "pope", split,
+                seed=seed, tau_js=0.2, model_id=INSTRUCTBLIP_MODEL_ID,
+                system_prompt_id="none",
+                note="InstructBLIP at the paper's stated tau_JS=0.2"))
+        jobs.append(Job(
+            "table2_instructblip", "fox_instructblip", "chair",
+            "val2014_500", seed=seed, tau_js=0.2,
+            model_id=INSTRUCTBLIP_MODEL_ID, system_prompt_id="none",
+            note="InstructBLIP CHAIR at the paper's stated tau_JS=0.2"))
+
     # ---- Table 11: MMBench and MathVista-MC (V20) ----------------------
     # Not frozen into any round yet. LLaVA-1.5, sampling, three seeds. The
     # paper's rows are Sampling, VCD and Fox on MMBench and Sampling and Fox

@@ -1808,9 +1808,10 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
                          {"sampling_instructblip", "fox_instructblip"})
         pope = [j for j in jobs if j.benchmark == "pope"]
         chair = [j for j in jobs if j.benchmark == "chair"]
-        # 3 splits x 2 methods x 3 seeds; 1 split x 2 methods x 3 seeds
-        self.assertEqual(len(pope), 18)
-        self.assertEqual(len(chair), 6)
+        # 3 splits x 2 methods x 3 seeds, plus the tau_JS=0.2 Fox arm
+        # (3 splits x 3 seeds); CHAIR likewise 6, plus 3.
+        self.assertEqual(len(pope), 27)
+        self.assertEqual(len(chair), 9)
         self.assertEqual({j.seed for j in jobs}, {42, 43, 44})
         self.assertEqual({j.split for j in chair}, {"val2014_500"})
         self.assertEqual({j.split for j in pope},
@@ -1826,17 +1827,32 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
             # here they would split a fox job from its own baseline in
             # pair_key.
             self.assertIsNone(j.k)
-            self.assertIsNone(j.tau_js)
+            # The one deliberate override: the paper's stated tau_JS=0.2 arm,
+            # run beside the release's effective 0.15 so the distance between
+            # them is a measurement.
+            self.assertIn(j.tau_js, (None, 0.2))
+            if j.tau_js is not None:
+                self.assertEqual(j.method, "fox_instructblip")
             self.assertIsNone(j.intervention_layers)
 
     def test_baseline_and_method_stay_in_one_group(self) -> None:
         from foxrepro.bench.plan import pair_key
         by_key: Dict[Any, set] = {}
         for j in self._ib():
+            if j.tau_js is not None:
+                continue  # the tau_JS=0.2 arm has its own check below
             by_key.setdefault(pair_key(j), set()).add(j.method)
         for methods in by_key.values():
             self.assertEqual(methods, {"sampling_instructblip",
                                        "fox_instructblip"})
+
+    def test_the_tau_arm_has_a_default_sibling_to_be_compared_with(self) -> None:
+        ib = self._ib()
+        default = {(j.benchmark, j.split, j.seed) for j in ib
+                   if j.method == "fox_instructblip" and j.tau_js is None}
+        for j in ib:
+            if j.tau_js is not None:
+                self.assertIn((j.benchmark, j.split, j.seed), default)
 
     def test_fox_instructblip_is_dual_branch_and_costed_as_an_estimate(self) -> None:
         self.assertIn("fox_instructblip", DUAL_BRANCH)

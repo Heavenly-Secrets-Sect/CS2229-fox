@@ -948,6 +948,14 @@ hyperparameters" despite Algorithm 1 taking it as an input.
 
 ### 3.16 InstructBLIP-vicuna-7b: a different method on a different layout
 
+**Decision on `tau_JS` (2026-11-22).** The paper states `tau_JS = 0.2` for
+InstructBLIP, but the release's InstructBLIP code never passes it on, so the
+release effectively ran 0.15. Rather than pick one, both are run: the default
+arm at 0.15 (what the release did) and a `tau_js=0.2` Fox arm on the same
+splits, seeds and baseline (what the paper says). The gap between ours and the
+paper's InstructBLIP columns is then reported for both readings, and the
+distance between the two readings is itself a measurement.
+
 Added so the paper's InstructBLIP columns (Tables 1, 2, 8; Figures 16, 21) can
 be run. It is **not** LLaVA's Fox on another checkpoint, and it has its own
 method names, `sampling_instructblip` and `fox_instructblip`, so nothing that
