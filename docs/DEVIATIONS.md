@@ -946,6 +946,65 @@ hyperparameters" despite Algorithm 1 taking it as an input.
 - `--use-cd` is `store_true` with `default=True`, so it can never be turned
   off and the `--use-vcd` branch is unreachable. Our modes are explicit flags.
 
+### 3.16 Table 11: MMBench and MathVista, written from the benchmarks' definitions
+
+The release ships no script for either (it ships none for MME either), so
+there is nothing to transcribe; this harness follows the benchmarks' own
+conventions and every choice below is ours. Added with the plan jobs
+`table11_mmbench` and `table11_mathvista` (V18). **No run exists yet**; these
+are the rules the first run will be scored by, written down before it.
+
+**MMBench (`lmms-lab/MMBench_EN`, split `dev`, 4377 questions).**
+
+| choice | what we do | why it can move a number |
+|---|---|---|
+| split | `dev` only. `test` withholds its answers (they are scored on the organisers' server) | the paper's MMBench number may have come from the server on `test`; ours cannot |
+| protocol | **single pass**, accuracy over questions as asked. NOT MMBench's CircularEval, which re-asks each question under rotated options and counts it right only if every rotation is | CircularEval scores are systematically lower than single-pass ones; Table 11's 63.1 is in the range of single-pass LLaVA-1.5 results, but the paper does not say |
+| prompt | LLaVA's own MMBench script: `<hint>\n<question>\nA. ..\nB. ..\nAnswer with the option's letter from the given choices directly.`; hint omitted when absent; the dataset stores an absent hint or option as the string `"nan"`, which the fetcher turns into "absent" | the wording is the largest known lever on MMBench for LLaVA |
+| `max_new_tokens` | 8 (letter, EOS; room for "The answer is B") | no released value to match |
+| decoding | the project's default for every table, sampling at `top_p=0.9`, `T=1` (the paper's row is called "Sampling"); not greedy | a sampled first token on a 4-way question is noisier than greedy |
+| answer extraction | rules, not GPT. See below | MMBench's own pipeline falls back to an LLM; some answers the rules call unparsed it would recover |
+| perception / reasoning | on the dataset's own `l2-category`: perception = `coarse_perception` + `finegrained_perception (instance-level)` + `(cross-instance)` (1117 + 1147 + 541 = 2805 questions); reasoning = `attribute_` + `logic_` + `relation_reasoning` (708 + 419 + 445 = 1572). Counts are the real split's. A group is accuracy over its questions | an l2 value outside both groups makes the scorer **raise** |
+
+**MathVista (`AI4Math/MathVista`, `testmini`, multiple choice only).**
+
+| choice | what we do | why it can move a number |
+|---|---|---|
+| scope | only `question_type == "multi_choice"` (the dataset's spelling; 540 of the 1000 `testmini` rows, all with `answer_type == "text"`). The 460 free-form rows are excluded | **the paper's 19.53 / 20.16 were presumably measured on a mixed subset.** Multiple choice has a ~30% chance floor (a random-letter echo run scores 29.6%), so our baseline accuracy will NOT be near 19.53 and levels are not comparable; only the Fox-minus-baseline difference is |
+| subset | a fixed random **500 of the 540**, `random.Random(2229).sample` over numerically sorted pids, recorded in every manifest row and refused by the loader if it differs. Every arm and seed scores the same 500 | the paper's 500 are not published; any 500 is ours |
+| prompt | the dataset's own `query` field, verbatim ("Hint: Please answer the question and provide the correct option letter, e.g., A, B, C, D, at the end. Question: ... Choices: (A) ...") | |
+| `max_new_tokens` | 64 (the prompt asks for the letter "at the end", which invites a short derivation) | no released value to match |
+| answer extraction | **rules, where the official protocol uses an LLM.** This is the same dependency that makes Table 5 irreproducible; the multiple-choice restriction is what makes a rule extractor honest at all. **Coverage (the parsed fraction) is reported with every score**, and accuracy over parsed answers only is reported beside it | an LLM extractor would recover some answers the rules reject, so a low coverage means the number understates the model by an unknown amount |
+| gold | `answer` is the choice TEXT, so gold = the letter(s) whose text equals it. One of the 500 repeats its gold text; either letter is accepted | |
+| the paper's numbers | 19.53 and 20.16 are not multiples of 0.2, so they are not single-run accuracies over 500 questions (probably means over seeds, or a different n) | we cannot tell which |
+
+**The extraction rule** (`bench/multichoice.py`; the first that fires wins, and
+the rule is stored per row and tallied in the metrics):
+
+1. `exact`: the whole answer is one valid option letter ("B", "(b).").
+2. `lead`: an uppercase valid letter followed by a delimiter or the end
+   ("B. a dog", "(C) 97"). A space is not a delimiter, so "A bird is shown"
+   does not read as option A.
+3. `phrase`: the LAST "answer is X" / "option X" / "choice X" with X an
+   uppercase letter followed by a delimiter or the end.
+4. `tail` (MathVista only): a valid uppercase letter as the last token.
+5. `text`: exactly one option's text is the whole answer or appears in it
+   delimited by non-alphanumerics ("1970" does not contain "97").
+
+A letter the question does not offer is `invalid_letter`; anything else is
+`none`. **Both are wrong answers and are counted** (`unparsed`,
+`unparsed_fraction`, `rule_counts`), never dropped: dropping would let a model
+raise its score by refusing to answer.
+
+**Verified:** the real splits were fetched through `datasets` and the whole
+chain (fetch, load, `generate --dry-run`, `evaluate`, `report`) run on them
+with the CPU `echo` method: 4377 and 500 records, every echo letter parsed,
+accuracies at chance (26.3% and 29.6%). **Not verified:** any model output.
+The extractor has never seen a real LLaVA-1.5 answer, so the first run's
+`rule_counts` and `unparsed` are the first evidence of whether these rules
+fit. If coverage on MathVista is low, change the rules **and record it here**
+rather than after looking at which direction moves Fox.
+
 ## 4. In the release, absent here
 
 | | Why |

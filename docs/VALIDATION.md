@@ -2172,6 +2172,58 @@ not that it converges toward zero.
 
 ---
 
+## V18 — Table 11: MMBench and MathVista (multiple choice)
+
+`sampling`, `vcd` and `fox` on **MMBench dev** (4377 questions) and
+`sampling` and `fox` on **MathVista MC500**, seeds 42/43/44. 15 jobs,
+estimated **~13 GPU-h** (MMBench 11.6, MathVista 1.3). **Not run. No round is
+frozen.** The per-sample costs in `plan.COST_S` for these two benchmarks are
+estimates built from MME's measured 0.579 s single / 1.105 s dual plus a
+decode step priced from CHAIR, not measurements; `plan --calibrate` replaces
+them after the first session.
+
+The harness and its protocol deviations are in `DEVIATIONS.md` §3.16. What
+the paper claims (Table 11): MMBench overall / reasoning / perception of
+63.1 / 62.4 / 63.8 for Sampling, 62.7 / 61.8 / 63.5 for VCD and 63.8 / 62.7 /
+64.6 for Fox; MathVista 19.53 for Sampling and 20.16 for Fox.
+
+### Pre-registered predictions
+
+Written before any run, from published LLaVA-1.5 results and the paper's own
+claimed gaps, **not from any run of ours**; so they are priors, and the
+thresholds are deliberately wide. Each is stated so that one number can
+falsify it.
+
+1. **MMBench baseline level.** The 3-seed mean `sampling` overall accuracy is
+   in **[60.0, 65.0]**. (LLaVA-1.5-7B scores about 64 greedy; sampling at
+   `T=1` should cost a little. A value outside the band means the prompt or
+   the extractor is not doing what §3.16 says.)
+2. **MMBench Fox gap.** The paper claims +0.7 overall (+0.3 reasoning, +0.8
+   perception). The 3-seed mean `fox - sampling` is within **[-1.0, +1.5]**
+   on overall, and on each of perception and reasoning. A larger gap in
+   either direction falsifies this. Separately, **no claim is made about the
+   sign**: this project's POPE result (+5.03) and MME result (the intervention
+   subtracts) point in opposite directions for a benchmark of this shape, and
+   that is exactly what the run is for.
+3. **MMBench VCD.** The paper has VCD 0.4 below Sampling. The 3-seed mean
+   `vcd - sampling` has absolute value below **1.5** on overall.
+4. **MathVista level.** Because this is multiple choice with a ~30% chance
+   floor, the 3-seed mean `sampling` accuracy is in **[25, 40]** and is
+   **not** within 3 points of the paper's 19.53. (If it is, the subset is not
+   behaving like multiple choice and the loader is the first suspect.)
+5. **MathVista Fox gap.** At 500 questions a single run's standard error is
+   about 2 points, so the paper's +0.63 cannot be resolved by this design.
+   The 3-seed mean `fox - sampling` has absolute value below **3.0**, and its
+   paired interval contains zero.
+6. **Extraction.** The unparsed fraction is below **2%** on MMBench and
+   coverage is above **90%** on MathVista, for every arm. Higher unparsed
+   means the rules do not fit LLaVA-1.5's answers; change them **and record
+   the change in DEVIATIONS §3.16** before reading any Fox-vs-baseline number.
+
+What a pass does **not** mean: that the paper's Table 11 reproduces. These
+bound where our numbers should fall; whether `fox` beats `sampling` is read
+from the interval, not from these bands.
+
 ## What this suite does **not** establish
 
 * **That our number should match the paper's.** It cannot: the paper's run
