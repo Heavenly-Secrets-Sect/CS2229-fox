@@ -240,6 +240,9 @@ class Job:
     fuse_strategy: Optional[str] = None
     #: Tables 4 and 12. None is the released single anchor.
     anchor: Optional[str] = None
+    #: Nucleus cutoff. None is the shared protocol's 0.9; CausalMM's own
+    #: harness runs 1.0, which is the only reason this is ever set.
+    top_p: Optional[float] = None
     note: str = ""
 
     def template_id(self) -> str:
@@ -278,6 +281,8 @@ class Job:
             bits.append(f"fs{self.fuse_strategy}")
         if self.anchor is not None:
             bits.append(f"anc{self.anchor}")
+        if self.top_p is not None:
+            bits.append(f"tp{self.top_p:g}")
         for nm, v in (("g", self.gamma), ("k", self.k),
                       ("t", self.tau_js), ("a", self.alpha),
                       ("b", self.beta)):
@@ -355,7 +360,9 @@ class Job:
             "max_new_tokens": self.n_new_tokens(),
             "prompt_template_id": self.template_id(),
             "model_id": "llava-hf/llava-1.5-7b-hf",
-            "decoding": self.decoding, "top_p": 0.9, "temperature": 1.0,
+            "decoding": self.decoding,
+            "top_p": 0.9 if self.top_p is None else self.top_p,
+            "temperature": 1.0,
             "intervention_layers": self.intervention_layers,
             "logit_dtype": self.logit_dtype, "softmax_dtype": "fp32",
             "mode": self.mode, "system_prompt_id": self.system_prompt_id,
@@ -405,6 +412,8 @@ class Job:
             parts.append(f"--fuse-strategy {self.fuse_strategy}")
         if self.anchor is not None:
             parts.append(f"--anchor {self.anchor}")
+        if self.top_p is not None:
+            parts.append(f"--top-p {self.top_p:g}")
         if self.max_new_tokens is not None:
             parts.append(f"--max-new-tokens {self.max_new_tokens}")
         if self.limit:
@@ -1321,6 +1330,56 @@ def _build_plan() -> List[Job]:
                 mode=mode if method == "fox" else "as_implemented",
                 note=f"V17: MME at ten seeds, {why}",
             ))
+
+    # ---- Round 24: close the compared-method gaps that code can close ----
+    # The audit of our baselines against their reference code found no
+    # decoding-rule defect, but it did find protocol differences that were
+    # never run. Each arm below tests one of them; a gap that survives its
+    # arm is then recorded as unexplained rather than assumed to be ours.
+    #
+    # V18: CausalMM under its OWN POPE harness. The release appends "Please
+    # answer this question with one word." and samples at top_p=1; we send
+    # the bare question at top_p=0.9. Without the suffix the first token can
+    # be neither Yes nor No, and the released parser scores those as "yes".
+    # Adversarial and popular carry the gaps (-3.41, -1.95).
+    for split in ("adversarial", "popular"):
+        for seed in SEEDS_BREADTH:
+            jobs.append(Job(
+                "causalmm_protocol", "causalmm", "pope", split, seed=seed,
+                prompt_template_id="pope_causalmm", top_p=1.0,
+                note="V18: CausalMM with its own suffix and top_p=1",
+            ))
+
+    # V19: SID at cd_alpha=1.0. pope_eval.py parses --cd-alpha 1 but never
+    # passes it on, so the released run used 0.5; whether the paper's row
+    # came from a checkout that honoured the flag is not recoverable. The
+    # gap is -1.54 under greedy too, so it is not a sampling effect. This is
+    # a sweep over a guessed hyperparameter, and is labelled as one.
+    for seed in SEEDS_BREADTH:
+        jobs.append(Job(
+            "sid_alpha", "sid", "pope", "adversarial", seed=seed, alpha=1.0,
+            note="V19: SID with cd_alpha=1.0 instead of the released 0.5",
+        ))
+
+    # Table 9's two missing POPE splits for the compared methods: only
+    # adversarial was run greedy for VCD and SID.
+    for method in ("vcd", "sid"):
+        for split in ("random", "popular"):
+            jobs.append(Job(
+                "table9_methods", method, "pope", split, decoding="greedy",
+                note="released --sample-greedy default, remaining splits",
+            ))
+
+    # OPERA at its own 10-token protocol on the two other splits. On
+    # adversarial this gives 81.13, the paper's number to the digit, so Fox's
+    # OPERA cells most likely are OPERA-protocol numbers; these two splits
+    # test that on cells where it is not already known to hold.
+    for split in ("random", "popular"):
+        jobs.append(Job(
+            "opera_protocol", "opera", "pope", split, decoding="greedy",
+            max_new_tokens=10,
+            note="OPERA's own 10-token harness on the remaining splits",
+        ))
 
     return jobs
 

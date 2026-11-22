@@ -66,6 +66,7 @@ def cfg_from_command(cmd: str) -> GenConfig:
         fuse_strategy=(str(args["fuse_strategy"])
                        if args.get("fuse_strategy") else None),
         anchor=str(args["anchor"]) if args.get("anchor") else None,
+        top_p=float(str(args["top_p"])) if args.get("top_p") else 0.9,
         decoding=str(args["decoding"]),
         system_prompt_id=str(args["system_prompt"]),
         wrapper_id=str(args.get("wrapper") or "released"),
@@ -1716,3 +1717,46 @@ class TestTheKaggleCiManifest(unittest.TestCase):
         self.assertIn("prerelease", text,
                       "a pre-release must stay dry_run, or the rehearsal "
                       "spends quota")
+
+
+class TestRound24ProtocolArms(unittest.TestCase):
+    """r24 tests protocol differences, so each arm must differ from its
+    default in exactly the field it claims, and the planner's run key must be
+    the one generate.py will write."""
+
+    def _jobs(self, target: str):
+        return [j for j in PLAN if j.target == target]
+
+    def test_causalmm_arm_carries_its_suffix_and_top_p(self) -> None:
+        jobs = self._jobs("causalmm_protocol")
+        self.assertEqual(len(jobs), 6)  # 2 splits x 3 seeds
+        for job in jobs:
+            self.assertIn("--top-p 1", job.command())
+            self.assertIn("--prompt-template-id pope_causalmm", job.command())
+            self.assertEqual(job.run_key().variant_fields["top_p"], 1.0)
+            cfg = cfg_from_command(job.command())
+            self.assertEqual(cfg.top_p, 1.0)
+            self.assertEqual(cfg.prompt_template_id, "pope_causalmm")
+
+    def test_the_default_top_p_is_untouched(self) -> None:
+        base = Job("t", "causalmm", "pope", "adversarial")
+        self.assertEqual(base.run_key().variant_fields["top_p"], 0.9)
+        self.assertNotIn("--top-p", base.command())
+        self.assertNotIn(":tp", base.job_id())
+
+    def test_the_new_arms_do_not_collide_with_existing_job_ids(self) -> None:
+        ids = [j.job_id() for j in PLAN]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_causalmm_template_is_the_release_suffix(self) -> None:
+        from foxrepro.data.loaders import render_prompt
+        self.assertEqual(
+            render_prompt("pope_causalmm", "Is there a cat?"),
+            "Is there a cat? Please answer this question with one word.")
+
+    def test_sid_alpha_arm_is_the_only_one_that_sets_alpha(self) -> None:
+        jobs = self._jobs("sid_alpha")
+        self.assertEqual(len(jobs), 3)
+        for job in jobs:
+            self.assertEqual(job.alpha, 1.0)
+            self.assertIn("--alpha 1", job.command())

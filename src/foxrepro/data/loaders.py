@@ -66,6 +66,10 @@ __all__ = [
 PROMPT_TEMPLATES: Dict[str, str] = {
     "pope_v1": "{question}\nAnswer the question using a single word or phrase.",
     "pope_v0_raw": "{question}",
+    # CausalMM's own POPE harness (object_hallucination_vqa_llava.py:47)
+    # appends this exact suffix. Without it the first token can be neither
+    # Yes nor No, and the released parser scores such answers as "yes".
+    "pope_causalmm": "{question} Please answer this question with one word.",
     "chair_v1": "Please describe this image in detail.",
     "chair_v2_short": "Describe this image in detail.",
     # MME ships its own instruction INSIDE the question text -- every item
@@ -79,6 +83,7 @@ PROMPT_TEMPLATES: Dict[str, str] = {
 _TEMPLATE_BENCHMARK = {
     "pope_v1": "pope",
     "pope_v0_raw": "pope",
+    "pope_causalmm": "pope",
     "chair_v1": "chair",
     "chair_v2_short": "chair",
     "mme_v0_raw": "mme",
