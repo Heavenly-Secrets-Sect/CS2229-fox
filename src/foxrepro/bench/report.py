@@ -657,12 +657,18 @@ def render_resolution_budget(results: Sequence[RunResult]) -> str:
         if res.benchmark == "pope":
             acc = res.met["accuracy"]
             entries = [("accuracy", int(acc["n"]), float(acc["point"]))]
-        else:
+        elif res.benchmark == "chair":
             totals = res.met["totals"]
             entries = [
                 ("CHAIR_S", int(totals["chair_s_denominator"]), float(totals["chair_s"])),
                 ("CHAIR_I", int(totals["chair_i_denominator"]), float(totals["chair_i"])),
             ]
+        else:
+            # MME, MMBench, MathVista: scored by their own metrics, not by
+            # Tables 1/2. This branch used to be `else` for CHAIR and died on
+            # a key those metrics do not have, so one MMBench file in the
+            # reports directory broke the whole report.
+            continue
         for metric, n, p in entries:
             key = (f"{res.benchmark}/{res.split}", metric, n)
             if key in seen or n == 0 or p != p:

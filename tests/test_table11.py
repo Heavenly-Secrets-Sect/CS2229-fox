@@ -637,6 +637,15 @@ class TestCliEndToEnd(unittest.TestCase):
         self.assertFalse(m["complete"])
         self.assertEqual(m["unparsed"], 0, "the echo letters must all parse")
         self.assertIn("INCOMPLETE", out)
+        # The report CLI must survive an MMBench metrics file in its
+        # directory: its resolution budget used to treat every non-POPE
+        # benchmark as CHAIR and died on a key MMBench does not have.
+        proc = subprocess.run(
+            [sys.executable, "-m", "foxrepro.bench.report",
+             "--reports-dir", str(self.reports),
+             "--out", str(self.root / "report.md"), "--baseline", "echo"],
+            env=self.env, capture_output=True, text=True, timeout=300)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-3000:])
 
     def test_mathvista_runs_through_the_cli_and_scores(self) -> None:
         d = self.root / "mathvista"

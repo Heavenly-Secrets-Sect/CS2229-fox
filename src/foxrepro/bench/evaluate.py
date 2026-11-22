@@ -1004,19 +1004,21 @@ def _format_markdown(result: Dict[str, Any]) -> str:
                 f"| subtasks missing | {', '.join(met['subtasks_missing'])} "
                 f"| - | - | - |")
     elif met["benchmark"] in ("mmbench", "mathvista"):
-        def _cell(name: str, g: Any) -> str:
+        def _cell(name: str, g: Any, ci: Any = None) -> str:
             # An empty group is "n/a", never a zero: nothing was measured.
             if g is None:
                 return f"| {name} | n/a (no questions) | - | - | 0 |"
-            return (f"| {name} | {g['acc']:.2f} | - | "
+            band = ("-" if ci is None else
+                    f"[{100 * ci['ci_lo']:.2f}, {100 * ci['ci_hi']:.2f}]")
+            return (f"| {name} | {g['acc']:.2f} | {band} | "
                     f"{g['n_right']} | {g['n']} |")
         t = met["totals"]
         if met["benchmark"] == "mmbench":
-            lines.append(_cell("overall", t["overall"]))
+            lines.append(_cell("overall", t["overall"], met.get("accuracy_ci")))
             lines.append(_cell("perception", t["perception"]))
             lines.append(_cell("reasoning", t["reasoning"]))
         else:
-            lines.append(_cell("accuracy", t["accuracy"]))
+            lines.append(_cell("accuracy", t["accuracy"], met.get("accuracy_ci")))
             lines.append(_cell("accuracy (parsed only)", t["accuracy_parsed"]))
             cov = met["coverage"]
             lines.append(
