@@ -1,19 +1,159 @@
 {
-  "round": "r23",
+  "round": "r24",
   "order": "priority",
-  "n_sessions": 1,
+  "n_sessions": 3,
   "budget_hours": 10.0,
   "n_calibrated": 0,
   "in_flight_excluded": [],
   "jobs": {
-    "mme:fox:mme:test:off:s45": {
-      "id": "mme:fox:mme:test:off:s45",
-      "target": "mme",
-      "note": "V17: MME at ten seeds, fusion only, no intervention",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark mme --split test --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mme_v0_raw --mode off --logit-dtype native",
-      "est_s": 2611.4,
-      "run_file": "m-fox__b-mme__s-test__seed-45__dt-fp16__v-sampling-c64e60b8.jsonl",
-      "n_samples": 2374,
+    "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1": {
+      "id": "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1",
+      "target": "causalmm_protocol",
+      "note": "V18: CausalMM with its own suffix and top_p=1",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_causalmm --top-p 1",
+      "est_s": 3300.0,
+      "run_file": "m-causalmm__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-6f893e9e.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1:s43": {
+      "id": "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1:s43",
+      "target": "causalmm_protocol",
+      "note": "V18: CausalMM with its own suffix and top_p=1",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_causalmm --top-p 1",
+      "est_s": 3300.0,
+      "run_file": "m-causalmm__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-6f893e9e.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1:s44": {
+      "id": "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1:s44",
+      "target": "causalmm_protocol",
+      "note": "V18: CausalMM with its own suffix and top_p=1",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_causalmm --top-p 1",
+      "est_s": 3300.0,
+      "run_file": "m-causalmm__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-6f893e9e.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1": {
+      "id": "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1",
+      "target": "causalmm_protocol",
+      "note": "V18: CausalMM with its own suffix and top_p=1",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_causalmm --top-p 1",
+      "est_s": 3300.0,
+      "run_file": "m-causalmm__b-pope__s-popular__seed-42__dt-fp16__v-sampling-6f893e9e.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s43": {
+      "id": "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s43",
+      "target": "causalmm_protocol",
+      "note": "V18: CausalMM with its own suffix and top_p=1",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_causalmm --top-p 1",
+      "est_s": 3300.0,
+      "run_file": "m-causalmm__b-pope__s-popular__seed-43__dt-fp16__v-sampling-6f893e9e.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s44": {
+      "id": "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s44",
+      "target": "causalmm_protocol",
+      "note": "V18: CausalMM with its own suffix and top_p=1",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_causalmm --top-p 1",
+      "est_s": 3300.0,
+      "run_file": "m-causalmm__b-pope__s-popular__seed-44__dt-fp16__v-sampling-6f893e9e.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "sid_alpha:sid:pope:adversarial:a1": {
+      "id": "sid_alpha:sid:pope:adversarial:a1",
+      "target": "sid_alpha",
+      "note": "V19: SID with cd_alpha=1.0 instead of the released 0.5",
+      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --alpha 1",
+      "est_s": 3300.0,
+      "run_file": "m-sid__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-a166486d.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "sid_alpha:sid:pope:adversarial:a1:s43": {
+      "id": "sid_alpha:sid:pope:adversarial:a1:s43",
+      "target": "sid_alpha",
+      "note": "V19: SID with cd_alpha=1.0 instead of the released 0.5",
+      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --alpha 1",
+      "est_s": 3300.0,
+      "run_file": "m-sid__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-a166486d.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "sid_alpha:sid:pope:adversarial:a1:s44": {
+      "id": "sid_alpha:sid:pope:adversarial:a1:s44",
+      "target": "sid_alpha",
+      "note": "V19: SID with cd_alpha=1.0 instead of the released 0.5",
+      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --alpha 1",
+      "est_s": 3300.0,
+      "run_file": "m-sid__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-a166486d.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table9_methods:vcd:pope:random:greedy": {
+      "id": "table9_methods:vcd:pope:random:greedy",
+      "target": "table9_methods",
+      "note": "released --sample-greedy default, remaining splits",
+      "command": "python -m foxrepro.bench.generate --method vcd --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
+      "est_s": 3300.0,
+      "run_file": "m-vcd__b-pope__s-random__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table9_methods:sid:pope:random:greedy": {
+      "id": "table9_methods:sid:pope:random:greedy",
+      "target": "table9_methods",
+      "note": "released --sample-greedy default, remaining splits",
+      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
+      "est_s": 3300.0,
+      "run_file": "m-sid__b-pope__s-random__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table9_methods:vcd:pope:popular:greedy": {
+      "id": "table9_methods:vcd:pope:popular:greedy",
+      "target": "table9_methods",
+      "note": "released --sample-greedy default, remaining splits",
+      "command": "python -m foxrepro.bench.generate --method vcd --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
+      "est_s": 3300.0,
+      "run_file": "m-vcd__b-pope__s-popular__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "table9_methods:sid:pope:popular:greedy": {
+      "id": "table9_methods:sid:pope:popular:greedy",
+      "target": "table9_methods",
+      "note": "released --sample-greedy default, remaining splits",
+      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
+      "est_s": 3300.0,
+      "run_file": "m-sid__b-pope__s-popular__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "opera_protocol:opera:pope:random:greedy": {
+      "id": "opera_protocol:opera:pope:random:greedy",
+      "target": "opera_protocol",
+      "note": "OPERA's own 10-token harness on the remaining splits",
+      "command": "python -m foxrepro.bench.generate --method opera --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --max-new-tokens 10",
+      "est_s": 18705.6,
+      "run_file": "m-opera__b-pope__s-random__seed-42__dt-fp16__v-greedy-5e8ffbea.jsonl",
+      "n_samples": 3000,
+      "measured": false
+    },
+    "opera_protocol:opera:pope:popular:greedy": {
+      "id": "opera_protocol:opera:pope:popular:greedy",
+      "target": "opera_protocol",
+      "note": "OPERA's own 10-token harness on the remaining splits",
+      "command": "python -m foxrepro.bench.generate --method opera --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --max-new-tokens 10",
+      "est_s": 18705.6,
+      "run_file": "m-opera__b-pope__s-popular__seed-42__dt-fp16__v-greedy-5e8ffbea.jsonl",
+      "n_samples": 3000,
       "measured": false
     }
   },
@@ -21,9 +161,35 @@
     {
       "session": 1,
       "jobs": [
-        "mme:fox:mme:test:off:s45"
+        "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1",
+        "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1:s43",
+        "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1:s44",
+        "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1",
+        "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s43",
+        "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s44",
+        "sid_alpha:sid:pope:adversarial:a1",
+        "sid_alpha:sid:pope:adversarial:a1:s43",
+        "sid_alpha:sid:pope:adversarial:a1:s44"
       ],
-      "est_hours": 0.73
+      "est_hours": 8.25
+    },
+    {
+      "session": 2,
+      "jobs": [
+        "table9_methods:vcd:pope:random:greedy",
+        "table9_methods:sid:pope:random:greedy",
+        "table9_methods:vcd:pope:popular:greedy",
+        "table9_methods:sid:pope:popular:greedy",
+        "opera_protocol:opera:pope:random:greedy"
+      ],
+      "est_hours": 8.86
+    },
+    {
+      "session": 3,
+      "jobs": [
+        "opera_protocol:opera:pope:popular:greedy"
+      ],
+      "est_hours": 5.2
     }
   ]
 }
