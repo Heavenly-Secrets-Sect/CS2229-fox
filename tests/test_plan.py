@@ -47,7 +47,7 @@ def cfg_from_command(cmd: str) -> GenConfig:
         else:
             i += 1
     bench = args["benchmark"]
-    is_fox = args["method"] == "fox"
+    is_fox = str(args["method"]) in ("fox", "fox_instructblip")
     return GenConfig(
         method=str(args["method"]), benchmark=str(bench), split=str(args["split"]),
         seed=int(str(args["seed"])), dtype=str(args["dtype"]),
@@ -100,7 +100,15 @@ class TestPlanMatchesTheCli(unittest.TestCase):
     def test_commands_always_name_the_converted_checkpoint(self) -> None:
         """A plan that emits the original LLaVA repo would load random weights."""
         for job in PLAN:
-            self.assertIn("llava-hf/llava-1.5-7b-hf", job.command())
+            if job.method.endswith("_instructblip"):
+                # The pre-cast fp16 copy (DEVIATIONS 3.10), never a quantized
+                # one, and never the LLaVA repo.
+                self.assertIn("instructblip-vicuna-7b", job.command())
+                self.assertNotIn("llava-hf", job.command())
+                for banned in ("gptq", "8bit", "4bit", "awq"):
+                    self.assertNotIn(banned, job.command().lower())
+            else:
+                self.assertIn("llava-hf/llava-1.5-7b-hf", job.command())
             self.assertNotIn("liuhaotian", job.command())
 
 
@@ -1760,3 +1768,104 @@ class TestRound24ProtocolArms(unittest.TestCase):
         for job in jobs:
             self.assertEqual(job.alpha, 1.0)
             self.assertIn("--alpha 1", job.command())
+
+
+class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
+    """``Job.model_id`` and the InstructBLIP jobs (Tables 1, 2, 8)."""
+
+    def test_the_default_backbone_changes_nothing_for_existing_jobs(self) -> None:
+        j = Job("table1", "fox", "pope", "adversarial", seed=43)
+        self.assertEqual(j.model_id, "llava-hf/llava-1.5-7b-hf")
+        self.assertEqual(j.job_id(), "table1:fox:pope:adversarial:s43")
+        self.assertIn("--model-id llava-hf/llava-1.5-7b-hf", j.command())
+        self.assertEqual(j.run_key().variant_fields["model_id"],
+                         "llava-hf/llava-1.5-7b-hf")
+
+    def test_a_non_default_backbone_is_tagged_and_in_the_run_key(self) -> None:
+        a = Job("t", "sampling", "pope", "random")
+        b = Job("t", "sampling", "pope", "random",
+                model_id="kietnt0603/instructblip-vicuna-7b-fp16")
+        self.assertEqual(b.job_id(), "t:sampling:pope:random:ib16")
+        self.assertNotEqual(a.job_id(), b.job_id())
+        self.assertNotEqual(a.run_key().filename(), b.run_key().filename())
+        self.assertIn("--model-id kietnt0603/instructblip-vicuna-7b-fp16",
+                      b.command())
+
+    def test_every_existing_job_id_is_untouched(self) -> None:
+        """No LLaVA job may carry a backbone tag."""
+        for j in PLAN:
+            if j.model_id == "llava-hf/llava-1.5-7b-hf":
+                self.assertNotIn(":ib", j.job_id())
+
+    def _ib(self):
+        return [j for j in PLAN if j.model_id != "llava-hf/llava-1.5-7b-hf"]
+
+    def test_the_instructblip_jobs_are_exactly_tables_1_and_2(self) -> None:
+        jobs = self._ib()
+        self.assertEqual({j.target for j in jobs},
+                         {"table1_instructblip", "table2_instructblip"})
+        self.assertEqual({j.method for j in jobs},
+                         {"sampling_instructblip", "fox_instructblip"})
+        pope = [j for j in jobs if j.benchmark == "pope"]
+        chair = [j for j in jobs if j.benchmark == "chair"]
+        # 3 splits x 2 methods x 3 seeds; 1 split x 2 methods x 3 seeds
+        self.assertEqual(len(pope), 18)
+        self.assertEqual(len(chair), 6)
+        self.assertEqual({j.seed for j in jobs}, {42, 43, 44})
+        self.assertEqual({j.split for j in chair}, {"val2014_500"})
+        self.assertEqual({j.split for j in pope},
+                         {"random", "popular", "adversarial"})
+        self.assertEqual(len({j.job_id() for j in jobs}), len(jobs))
+        self.assertEqual(
+            len({j.run_key().filename() for j in PLAN}), len(PLAN))
+
+    def test_they_carry_no_llava_system_prompt_and_no_overrides(self) -> None:
+        for j in self._ib():
+            self.assertEqual(j.system_prompt_id, "none")
+            # The method resolves k / tau_js / window and records them; set
+            # here they would split a fox job from its own baseline in
+            # pair_key.
+            self.assertIsNone(j.k)
+            self.assertIsNone(j.tau_js)
+            self.assertIsNone(j.intervention_layers)
+
+    def test_baseline_and_method_stay_in_one_group(self) -> None:
+        from foxrepro.bench.plan import pair_key
+        by_key: Dict[Any, set] = {}
+        for j in self._ib():
+            by_key.setdefault(pair_key(j), set()).add(j.method)
+        for methods in by_key.values():
+            self.assertEqual(methods, {"sampling_instructblip",
+                                       "fox_instructblip"})
+
+    def test_fox_instructblip_is_dual_branch_and_costed_as_an_estimate(self) -> None:
+        self.assertIn("fox_instructblip", DUAL_BRANCH)
+        ib = Job("t", "fox_instructblip", "pope", "random",
+                 model_id="kietnt0603/instructblip-vicuna-7b-fp16")
+        ll = Job("t", "fox", "pope", "random")
+        self.assertEqual(ib.branches, "dual")
+        self.assertLess(ib.est_seconds(), ll.est_seconds())
+        self.assertGreater(ib.est_seconds(), 0)
+
+    def test_the_command_round_trips_with_the_fox_flags(self) -> None:
+        j = [j for j in self._ib() if j.method == "fox_instructblip"][0]
+        self.assertIn("--mode as_implemented", j.command())
+        self.assertIn("--system-prompt none", j.command())
+        self.assertEqual(cfg_from_command(j.command()).model_id, j.model_id)
+
+    def test_calibration_buckets_keep_instructblip_apart(self) -> None:
+        j = Job("t", "fox_instructblip", "pope", "random", limit=2,
+                model_id="kietnt0603/instructblip-vicuna-7b-fp16",
+                system_prompt_id="none")
+        with tempfile.TemporaryDirectory() as td:
+            runs = Path(td) / "runs"
+            runs.mkdir()
+            prov = cfg_from_command(j.command()).provenance()
+            with (runs / j.run_key().filename()).open("w") as fh:
+                for i in range(2):
+                    rec = dict(prov)
+                    rec.update(sample_id=f"pope/random/q{i:07d}",
+                               latency_ms=500.0)
+                    fh.write(json.dumps(rec) + "\n")
+            got = measured_cost(runs)
+        self.assertEqual(got, {"pope/dual-instructblip": 0.5})

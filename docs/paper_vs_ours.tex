@@ -1,0 +1,235 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.8cm]{geometry}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\usepackage{booktabs,array,xcolor,caption,titlesec}
+\usepackage[hidelinks]{hyperref}
+\captionsetup{font=small,labelfont=bf,skip=4pt}
+\titleformat{\section}{\large\bfseries}{}{0pt}{}
+\titlespacing*{\section}{0pt}{10pt}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{5pt}
+\definecolor{okc}{HTML}{1B6B3A}
+\definecolor{badc}{HTML}{B3261E}
+\definecolor{warnc}{HTML}{A84C08}
+\definecolor{mutec}{HTML}{46566A}
+\newcommand{\ok}[1]{\textcolor{okc}{\textbf{#1}}}
+\newcommand{\bad}[1]{\textcolor{badc}{\textbf{#1}}}
+\newcommand{\warn}[1]{\textcolor{warnc}{\textbf{#1}}}
+\newcommand{\mute}[1]{\textcolor{mutec}{#1}}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}p{1.35cm}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries Fox (ICML 2026): paper công bố so với tái lập}\\[4pt]
+CS2229 \,--\, LLaVA-1.5-7B, fp16, Kaggle 2$\times$T4 \,--\, 22/11/2026
+\end{center}
+
+\noindent\textbf{Cách đọc.} Mỗi bảng đặt \emph{số paper in} cạnh \emph{số chúng tôi đo được} theo cùng giao thức. $\Delta$ là ``của chúng tôi $-$ paper''. Mọi hàng đều là cột LLaVA-1.5. Mặc định lấy trung bình qua seed (số seed ghi ở cột $n$ hoặc chú thích). Ba nhãn kết luận: \ok{Khớp} (sai lệch nhỏ hoặc cùng hình dạng), \warn{Lệch} (có khác biệt nhưng chưa đủ để bác), \bad{Bị bác} (số đo trái với khẳng định). Chỉ riêng baseline POPE của ta là sampling, nên mọi mức tuyệt đối trên POPE nên đọc cùng cột \emph{gap so với sampling}.
+
+\section{Tóm tắt từng mục}
+\begin{center}\small
+\begin{tabular}{@{}l L{5.2cm} L{7.4cm}@{}}
+\toprule
+Mục & Kết luận & Ghi chú ngắn \\
+\midrule
+Table 1 (POPE) & \ok{Khớp} ở Sampling, ICD, Fox & Fox lệch $\le 0.17$ ở cả 3 split. VCD, CausalMM, SID, OPERA thấp hơn 1--3.4 điểm \\
+Table 2 (CHAIR) & \warn{Lệch} & Fox khớp (46.74 so với 46.40), Sampling thấp hơn 3.88. Hàng OPERA chưa chạy \\
+Table 3 / 10 (LVLM mới) & \mute{Chưa chạy} & Cần Qwen3-VL-8B và InternVL3-8B; còn một session kiểm tra \\
+Table 4 / 12 (anchor) & \bad{Bị bác} một hàng & Random token không tái lập; hàng trên cùng không phân giải được \\
+Table 5, Figure 6 (GPT-4V) & \mute{Không thể} & Giám khảo GPT-4V đã ngừng \\
+Table 6 (độ trễ) & \ok{Khớp} (tỉ lệ) & 2.03$\times$ so với 1.87$\times$ \\
+Table 7 ($\alpha$) & \ok{Khớp} hình dạng & Tăng rồi bão hòa từ $\alpha=2$ \\
+Table 8, 9 (F1, greedy) & \ok{Khớp} (POPE) & Gap greedy adversarial $+3.33$ so với $+3.34$. CHAIR của Fox lệch (46.2 so với 42.6) \\
+Table 11 (MMBench, MathVista) & \mute{Chưa chạy} & Cần bộ chấm trắc nghiệm; MathVista dùng LLM trích đáp án \\
+Table 13 (chẩn đoán) & \bad{Bị bác} & $m_{\mathrm{vis}}+m_{\mathrm{txt}}+m_{\mathrm{sys}}=1$ theo Eq.~11, paper cộng ra 2.01 \\
+Table 14 (cổng JSD) & \bad{Bị bác} & Thứ tự đảo ngược trên CHAIR \\
+Table 15 (cửa sổ lớp) & \bad{Bị bác} & L2--13 và L2--15 tương đương, chênh 0.66 không tái lập \\
+Figure 3/13 (ROC) & \bad{Bị bác} & Eq.~13 ra 0.1310 thay vì 0.8226 \\
+Figure 5, 18 (MME) & \warn{Khác hướng} & Can thiệp \emph{trừ} 58.4 điểm so với \texttt{fox off} \\
+Figure 7, 8, 9, 19 & \bad{Bị bác} / \warn{Lệch} & Xem các mục riêng \\
+Figure 16, 17, 21, 22 & \mute{Chưa chạy} & InstructBLIP và Shikra \\
+Figure 10, 11, 20 & \mute{Không có gì để tái lập} & Ví dụ định tính \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Table 1: độ chính xác POPE (sampling), LLaVA-1.5}
+\begin{center}\small
+\begin{tabular}{@{}l *{3}{cccc}@{}}
+\toprule
+& \multicolumn{4}{c}{Random} & \multicolumn{4}{c}{Popular} & \multicolumn{4}{c}{Adversarial} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+Phương pháp & Paper & Ta & $\Delta$ & $n$ & Paper & Ta & $\Delta$ & $n$ & Paper & Ta & $\Delta$ & $n$ \\
+\midrule
+Sampling & 85.13 & 85.12 & $-0.01$ & 3 & 82.53 & 82.57 & $+0.04$ & 3 & 76.77 & 76.72 & $-0.05$ & 10 \\
+VCD & 86.84 & 83.96 & $-2.88$ & 3 & 80.87 & 81.22 & $+0.35$ & 3 & 75.33 & 75.80 & $+0.47$ & 3 \\
+ICD & 86.27 & 85.58 & $-0.69$ & 3 & 83.57 & 83.63 & $+0.06$ & 3 & 77.90 & 77.20 & $-0.70$ & 3 \\
+OPERA & 89.27 & 89.37 & $+0.10$ & 1 & 86.80 & 85.93 & $-0.87$ & 1 & 81.13 & 79.10 & $-2.03$ & 1 \\
+CausalMM & 89.15 & 88.43 & $-0.72$ & 3 & 86.63 & 84.68 & $-1.95$ & 3 & 81.27 & 77.86 & $-3.41$ & 3 \\
+SID & 88.67 & 87.46 & $-1.21$ & 3 & 85.37 & 84.38 & $-0.99$ & 3 & 81.10 & 79.67 & $-1.43$ & 3 \\
+\textbf{Fox} & 89.33 & 89.28 & $-0.05$ & 3 & 86.70 & 86.70 & $0.00$ & 3 & 81.93 & 81.76 & $-0.17$ & 10 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Gap của Fox so với Sampling trên Adversarial: paper $+5.16$, ta $+5.04$. OPERA là một run greedy mỗi split, trong harness 1 token của Fox (paper in ô này); trong giao thức 10 token của chính OPERA ta đo được 81.13 trên Adversarial, cùng số với paper. VCD là VCD thật (quy tắc trừ). Hàng nào chỉ có 3 seed thì dùng seed 42--44.
+
+\section{Table 2: CHAIR trên 500 ảnh val2014 (sampling), LLaVA-1.5}
+\begin{center}\small
+\begin{tabular}{@{}lcccrcccr c@{}}
+\toprule
+& \multicolumn{4}{c}{CHAIR$_S$ $\downarrow$} & \multicolumn{4}{c}{CHAIR$_I$ $\downarrow$} & \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+Phương pháp & Paper & Ta & $\Delta$ & & Paper & Ta & $\Delta$ & & $n$ \\
+\midrule
+Sampling & 57.60 & 53.72 & $-3.88$ & & 17.18 & 16.39 & $-0.79$ & & 10 \\
+VCD & 54.00 & 55.13 & $+1.13$ & & 16.02 & 16.78 & $+0.76$ & & 3 \\
+ICD & 53.40 & 52.80 & $-0.60$ & & 15.67 & 15.21 & $-0.46$ & & 3 \\
+OPERA & 49.00 & \mute{chưa chạy} & --- & & 13.52 & \mute{chưa chạy} & --- & & 0 \\
+CausalMM & 47.60 & 51.33 & $+3.73$ & & 13.49 & 14.67 & $+1.18$ & & 3 \\
+SID & 53.40 & 52.13 & $-1.27$ & & 15.40 & 15.05 & $-0.35$ & & 3 \\
+\textbf{Fox} & 46.40 & 46.74 & $+0.34$ & & 12.90 & 13.72 & $+0.82$ & & 10 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Trên cùng ba seed 42--44, Sampling là 54.40 / 16.90 và Fox là 48.47 / 13.89. CHAIR trôi \textbf{5.20 điểm} giữa các lần rút 500 ảnh khác nhau (paper không nêu tập ảnh), nên khoảng cách giữa các phương pháp dưới mức này không kết luận được. Hàng OPERA cần 40.5 giờ GPU cho một run, được bỏ có chủ ý.
+
+\input{paper_vs_ours_t89}
+
+\section{Table 6: độ trễ mỗi token (sinh 1 token)}
+\begin{center}\small
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+& Sampling (ms) & Fox (ms) & Tỉ lệ & Phần cứng \\
+\midrule
+Paper & 110 & 206 & 1.87$\times$ & 8$\times$ A100 \\
+Ta & 538 & 1092 & 2.03$\times$ & 2$\times$ T4 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Không so được số tuyệt đối vì phần cứng khác; tỉ lệ thì tái lập. \ok{Khớp}.
+
+\section{Table 7: độ nhạy theo $\alpha$ (POPE accuracy)}
+\begin{center}\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+$\alpha$ & 0 & 1 & 2 (mặc định) & 3 & 4 \\
+\midrule
+Paper (trung bình 3 split) & 81.75 & 85.33 & 85.97 & 85.98 & --- \\
+Ta (adversarial, greedy, seed 42) & 79.10 & 81.83 & 82.37 & 82.37 & 82.37 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Paper lấy trung bình 3 split còn ta chỉ đo adversarial, nên chỉ so được \emph{hình dạng}: $\alpha=0$ rơi về baseline, bước 0$\to$1 là phần lớn hiệu ứng, và $\alpha\ge2$ bão hòa. \ok{Khớp hình dạng}.
+
+\section{Table 4 và 12: vị trí truy vấn (anchor), CHAIR$_S$}
+\noindent Hai bảng này in cùng một nội dung. POPE chỉ sinh một token nên ba hàng anchor trên POPE là cùng một phép tính; chỉ cột CHAIR đo được (3 seed, 500 ảnh).
+\begin{center}\small
+\begin{tabular}{@{}l c c c L{4.3cm}@{}}
+\toprule
+Query position & Paper CHAIR$_S$ & Ta & $\Delta$ so với bản phát hành & Kết luận \\
+\midrule
+Random token & 53.42 & 48.20 & $-0.27$ [$-2.60,+2.07$] & \bad{Bị bác}: paper kém hơn hai-anchor 7.02, ta $+1.27$ [$-0.93,+3.60$] \\
+Mean-pool & 52.06 & 47.60 & $-0.87$ [$-3.00,+1.33$] & \warn{Lệch} \\
+$x_{\mathrm{last}}$ only & 48.63 & 48.27 & $-0.20$ [$-2.53,+2.13$] & \ok{Khớp} \\
+$y_{t-1}$ only (bản phát hành) & 49.12 & 48.47 & --- & \ok{Khớp} \\
+$x_{\mathrm{last}}+y_{t-1}$ & 46.40 & 46.93 & $-1.53$ [$-3.80,+0.67$] & \warn{Không phân giải}: khoảng chứa 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Khoảng trong ngoặc là CI 90\% của hiệu so với bản phát hành. Không cặp nào có ý nghĩa; độ trải của ta là 1.53 so với 7.02 của paper. Thứ tự ở đầu bảng khớp: \texttt{both} là anchor tốt nhất của ta.
+
+\section{Table 13: chẩn đoán nguồn prior}
+\begin{center}\small
+\begin{tabular}{@{}lccL{6cm}@{}}
+\toprule
+Đại lượng & Paper & Ta & Ghi chú \\
+\midrule
+$m_{\mathrm{vis}}$ & $\approx 0.57$ & 0.1057 & Theo Eq.~11 ba số này tổng bằng 1 \\
+$m_{\mathrm{txt}}$ & $\approx 0.62$ & 0.1602 & Ta: 0.1057+0.1602+0.7341 = 1.0000 \\
+$m_{\mathrm{sys}}$ & $\approx 0.82$ & 0.7341 & Paper cộng ra 2.01 \\
+Tail ROC-AUC & 1.00 & 1.0000 & \ok{Khớp}, nhưng chỉ phân biệt token hệ thống với token khác, không nói gì về hallucination \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small \bad{Bị bác} với ba số $m$: paper in một đại lượng mà Eq.~11 không định nghĩa.
+
+\section{Table 14: chiến lược trộn (CHAIR$_S$)}
+\begin{center}\small
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+Chiến lược & Paper CHAIR$_S$ & Ta & Hạng (paper $\to$ ta) & \\
+\midrule
+Always fixed ($\lambda=\alpha$) & 49.20 & \textbf{32.20} & 3 $\to$ 1 & \bad{đảo ngược} \\
+Always dynamic ($\lambda=d_t$) & 47.68 & 49.47 & 2 $\to$ 3 & \\
+Hybrid, Eq.~(7) & 46.40 & 48.47 & 1 $\to$ 2 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Hybrid của ta (48.47) nằm trong độ trôi 5.20 điểm của 46.40, còn \emph{fixed} 32.20 cách xa 49.20 tới 17 điểm. Trên POPE cổng chỉ bật ở 0.2\% mẫu: \emph{fixed} hơn \emph{hybrid} $+0.36$ ($p=0.17$), \emph{dynamic} chỉ hơn baseline $+0.02$. \bad{Bị bác}.
+
+\section{Table 15: cửa sổ lớp thủ công và tự động (POPE-adversarial)}
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& L2--13 (paper: thủ công) & L2--15 (code phát hành) & Chênh \\
+\midrule
+Paper & 81.93 & 81.27 (cửa sổ tự động L3--15) & $-0.66$ \\
+Ta, greedy & 82.20 & 82.37 & $+0.17$ \\
+Ta, sampling 3 seed & 81.53 & 81.56 & $+0.03$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Hai cửa sổ tương đương, nên khoảng cách 0.66 không tái lập và câu hỏi ``số 81.93 đến từ cửa sổ nào'' không có đáp án. Paper nói code dùng L2--13 trong khi code phát hành chạy L2--15.
+
+\section{Các hình: paper nói gì, ta đo được gì}
+\begin{center}\small
+\begin{tabular}{@{}l L{4.6cm} L{6.6cm} l@{}}
+\toprule
+Hình & Paper & Ta đo được & Kết luận \\
+\midrule
+Figure 3/13 (ROC, Eq.~13) & 0.8226 & 0.1310 theo Eq.~13 nguyên văn (mẫu số $-2.88$ âm); 0.8690 nếu chia cho $\sum|\Delta\mathrm{AUC}|$ & \bad{Bị bác} \\
+Figure 7 (chọn lớp) & Lớp mạnh nhất ở khoảng L11--24 & L11--24 thấp hơn L2--15 tới 3.07 điểm, tệ hơn không can thiệp; lớp tác dụng nằm ở đầu & \bad{Bị bác} \\
+Figure 8 (chọn head) & Random head kém Fox rõ rệt & POPE: random kém 0.49 trên 5.03 (CI loại 0); CHAIR: random tốt hơn (42.27 so với 48.47) & \warn{Lệch} \\
+Figure 9 ($k,\tau_{JS},\beta$) & Ổn định trên dải rộng & Phẳng trên cả ba trục; $\beta$ giống hệt ở 0.05 và 0.2 & \ok{Khớp} \\
+Figure 19 (cổng JSD) & Luôn can thiệp thì tệ hơn & Luôn can thiệp ngang hoặc tốt hơn & \bad{Bị bác} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Figure 5 và 18: MME (10 seed, ba arm cùng seed)}
+\begin{center}\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Arm & Perception & Cognition & Tổng & Accuracy \\
+\midrule
+Baseline (sampling) & 1281.7 & 336.4 & 1618.1 & 71.48 \\
+Fox & 1377.5 & 303.6 & 1681.0 & 74.22 \\
+Fox, tắt can thiệp (\texttt{fox off}) & 1426.0 & 313.4 & 1739.4 & 76.66 \\
+\midrule
+\texttt{fox off} $-$ Fox & $+48.6$ & $+9.8$ & $+58.4$ [$+44.9,+71.9$] & \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent\small Paper chỉ in số cho Shikra trong văn bản (430.00 $\to$ 446.63); các số LLaVA nằm trong biểu đồ cột nên không đối chiếu được từng ô. Fox hơn baseline $+63.0$, nhưng phần lợi đến từ lượt chạy kép chứ không từ can thiệp: tắt can thiệp thì điểm \emph{tăng} thêm 58.4.
+
+\section{Chưa tái lập được}
+\begin{center}\small
+\begin{tabular}{@{}l L{5cm} L{6.4cm}@{}}
+\toprule
+Mục & Lý do & Trạng thái \\
+\midrule
+Table 3 / 10 & Backbone Qwen3-VL-8B, InternVL3-8B (Table 3 là bản trích của Table 10) & Code port xong, còn một session kiểm tra span ảnh \\
+Table 5, Figure 6 & Giám khảo GPT-4V đã ngừng, $n=50$ & Không ai tái lập được \\
+Table 11 & MathVista dùng LLM trích đáp án; MMBench cần bộ chấm trắc nghiệm & Chưa làm; MathVista cần khai deviation \\
+Figure 16, 17, 21, 22 & InstructBLIP, Shikra & Cần port, chưa làm \\
+Figure 10, 11, 20 & Ví dụ định tính & Không có gì để tái lập \\
+Table 2, hàng OPERA & 40.5 giờ GPU cho một run & Bỏ có chủ ý \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

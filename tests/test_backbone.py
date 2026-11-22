@@ -71,8 +71,11 @@ def ids(span_width: int, image_id: int = 32000, pre: int = 6, post: int = 4,
 class TestTheFixedWidthGuardSurvives(unittest.TestCase):
     """LLaVA produced every number in this repo; its check stays loud."""
 
-    def test_llava_is_the_only_fixed_width_backbone(self) -> None:
-        self.assertEqual(FIXED_SPAN_WIDTH, {"llava": 576})
+    def test_only_llava_and_instructblip_have_a_fixed_width(self) -> None:
+        # InstructBLIP: the Q-Former emits num_query_tokens = 32 whatever the
+        # image (tests/test_instructblip.py). Qwen3-VL and InternVL3 are
+        # dynamic and must stay absent.
+        self.assertEqual(FIXED_SPAN_WIDTH, {"llava": 576, "instructblip": 32})
 
     def test_a_llava_model_reports_576(self) -> None:
         self.assertEqual(expected_span_width(_Model(model_type="llava")), 576)
@@ -144,7 +147,7 @@ class TestAnUnknownBackboneIsRefused(unittest.TestCase):
 
     def test_the_known_layouts_are_the_probed_ones(self) -> None:
         self.assertEqual(sorted(_DECODER_SUBCONFIG),
-                         ["internvl", "llava", "qwen3_vl"])
+                         ["instructblip", "internvl", "llava", "qwen3_vl"])
 
     def test_every_layout_patches_text_and_leaves_vision_on_sdpa(self) -> None:
         for mt, (text, vision) in _DECODER_SUBCONFIG.items():

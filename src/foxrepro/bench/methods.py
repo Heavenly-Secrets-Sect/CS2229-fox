@@ -178,6 +178,46 @@ FOX_DEFAULTS: Dict[str, Any] = {
     "layers": (2, 15),      # paper says 2-13
 }
 
+#: The InstructBLIP copy of the release (``minigpt4/models/modeling_llama.py``),
+#: read at github.com/Cc2021start/Fox. Every value below is from THAT code:
+#:
+#: * ``layers``  ``4 <= layer_idx <= 10`` (line 197; a comment in the vendored
+#:   LLaVA copy says "llava 2-15 / shikra 3-10 / InstructBLIP 4-10"), so 4-10
+#:   INCLUSIVE, seven layers where LLaVA's window has fourteen.
+#: * ``ratio``   ``SELECT_RATIO = 0.4`` (line 221).
+#: * ``gamma``   ``PENALTY_VALUE = 10000.0`` (line 222), as for LLaVA.
+#: * ``alpha``   ``JS_PH_alpha`` default 2, ``beta`` ``cd_beta`` default 0.1
+#:   (``vcd_sample.py``), as for LLaVA.
+#: * ``tau_js``  ``JS_threshold`` defaults to **0.15** in ``vcd_sample.py`` and
+#:   ``blip2_vicuna_instruct.generate`` never passes one, so 0.15 is what the
+#:   release ran. The task brief for this port said 0.2; 0.2 is the PAPER's
+#:   LLaVA figure, and no 0.2 appears anywhere in the InstructBLIP path. The
+#:   code's value is used, consistent with ``FOX_DEFAULTS`` above, and the
+#:   disagreement is recorded in docs/DEVIATIONS.md Sec 3.16.
+#: * scoring     ``H_vis`` of the last query ALONE (``score_all =
+#:   metrics["HVis_tail"]``, line 219): no ``m_sys`` factor, hence
+#:   ``use_m_sys=False``.
+INSTRUCTBLIP_FOX_DEFAULTS: Dict[str, Any] = {
+    "gamma": 10000.0,
+    "ratio": 0.4,
+    "tau_js": 0.15,
+    "alpha": 2.0,
+    "beta": 0.1,
+    "layers": (4, 10),
+}
+
+#: InstructBLIP's prompt. ``INSTRUCTION_TEMPLATE["instructblip"]`` in the
+#: release is ``"USER: <ImageHere> <question> ASSISTANT:"`` and
+#: ``blip2_vicuna_instruct.generate`` then does
+#: ``prompt.replace('<ImageHere>', '')`` (lines 293/297) BEFORE tokenising, so
+#: the model receives ``"USER:  <question> ASSISTANT:"`` -- TWO spaces, where
+#: the placeholder stood -- and the 32 Q-Former features are concatenated in
+#: FRONT of it (``torch.cat([inputs_llm, inputs_embeds], dim=1)``, line 444),
+#: i.e. before BOS. There is no system message: ``instructblip_eval.yaml``
+#: has none and ``generate`` prepends none. The Q-Former reads the same string
+#: (``qformer_text_input``), which is what HF's processor does with ``text``.
+INSTRUCTBLIP_WRAPPER = "USER:  {instruction} ASSISTANT:"
+
 #: VCD's published noise schedule (Leng et al., CVPR 2024).
 VCD_NOISE_STEP_DEFAULT = 500
 
@@ -279,6 +319,9 @@ class _LlavaMethod(Method):
 
     name: ClassVar[str] = "abstract-llava"
     requires_gpu: ClassVar[bool] = True
+    #: Intervention window when ``--intervention-layers`` is not given.
+    #: ``None`` means LLaVA's (``FOX_DEFAULTS["layers"]``).
+    LAYER_DEFAULT: ClassVar[Optional[str]] = None
 
     def __init__(self, cfg: GenConfig) -> None:
         super().__init__(cfg)
@@ -300,7 +343,8 @@ class _LlavaMethod(Method):
         self._pin_report = pin_precision_flags()
 
         self._attn = attn
-        self._eager_layers = parse_layer_window(self.cfg.intervention_layers)
+        self._eager_layers = parse_layer_window(
+            self.cfg.intervention_layers or self.LAYER_DEFAULT)
         self.model, self.processor = attn.load_llava(
             self.cfg.model_id,
             dtype=self.cfg.dtype,
@@ -505,17 +549,23 @@ class FoxMethod(_LlavaMethod):
     """
 
     name = "fox"
+    HPARAM_DEFAULTS: ClassVar[Dict[str, Any]] = FOX_DEFAULTS
+    HPARAM_SOURCE: ClassVar[str] = (
+        "released code (layers 2-15, k=0.35, tau_js=0.15, gamma=1e4); the "
+        "paper states 2-13, 0.45, 0.2 and never states gamma"
+    )
 
     def _decode_kwargs(self) -> Dict[str, Any]:
         c = self.cfg
+        d = self.HPARAM_DEFAULTS
         return {
             "single_branch": False,
             "mode": c.mode,
-            "gamma": c.gamma if c.gamma is not None else FOX_DEFAULTS["gamma"],
-            "ratio": c.k if c.k is not None else FOX_DEFAULTS["ratio"],
-            "tau_js": c.tau_js if c.tau_js is not None else FOX_DEFAULTS["tau_js"],
-            "alpha": c.alpha if c.alpha is not None else FOX_DEFAULTS["alpha"],
-            "beta": c.beta if c.beta is not None else FOX_DEFAULTS["beta"],
+            "gamma": c.gamma if c.gamma is not None else d["gamma"],
+            "ratio": c.k if c.k is not None else d["ratio"],
+            "tau_js": c.tau_js if c.tau_js is not None else d["tau_js"],
+            "alpha": c.alpha if c.alpha is not None else d["alpha"],
+            "beta": c.beta if c.beta is not None else d["beta"],
             # Table 14 / Figure 19. None means the released rule, so the
             # default arm keeps the kwargs it had before this axis existed.
             "fuse_strategy": c.fuse_strategy or "hybrid",
@@ -526,10 +576,102 @@ class FoxMethod(_LlavaMethod):
     def describe(self) -> Dict[str, Any]:
         info = dict(super().describe())
         info["resolved_hyperparameters"] = self._decode_kwargs()
-        info["hyperparameter_source"] = (
-            "released code (layers 2-15, k=0.35, tau_js=0.15, gamma=1e4); the "
-            "paper states 2-13, 0.45, 0.2 and never states gamma"
-        )
+        info["hyperparameter_source"] = self.HPARAM_SOURCE
+        return info
+
+
+# --------------------------------------------------------------------------- #
+# InstructBLIP-vicuna-7b
+# --------------------------------------------------------------------------- #
+class _InstructBlipMixin:
+    """What differs for InstructBLIP, and nothing else.
+
+    Loading, sampling, the dual-branch loop and the fusion are the LLaVA
+    ones: ``attn.load_backbone`` already dispatches on ``model_type`` and
+    ``fox_generate`` on the model. What is left is the PROMPT (see
+    :data:`INSTRUCTBLIP_WRAPPER`) and, for Fox, a different method:
+    ``H_vis``-only head scoring, layers 4-10, k=0.4. It has its own method
+    NAME so no aggregation can pool its records with LLaVA's Fox, which it
+    would otherwise do silently -- same ``fox`` label, different Eq. 4.
+
+    ``system_prompt_id`` and ``wrapper_id`` are LLaVA concepts and are
+    refused unless they are the neutral values, so a run file can never
+    claim ``llava_v1`` for a prompt that does not contain it.
+    """
+
+    #: Which scoring the Fox arm uses; False is the InstructBLIP copy.
+    USE_M_SYS: ClassVar[bool] = False
+
+    def __init__(self, cfg: GenConfig) -> None:
+        if cfg.system_prompt_id != "none" or cfg.wrapper_id != "released":
+            raise ValueError(
+                f"{type(self).name} has no system prompt and one wrapper; "
+                f"pass --system-prompt none --wrapper released (got "
+                f"{cfg.system_prompt_id!r}, {cfg.wrapper_id!r}). The LLaVA "
+                f"system message is not part of InstructBLIP's prompt"
+            )
+        super().__init__(cfg)  # type: ignore[misc]
+
+    def load(self) -> None:
+        super().load()  # type: ignore[misc]
+        mt = getattr(self.model.config, "model_type", None)  # type: ignore[attr-defined]
+        if mt != "instructblip":
+            raise ValueError(
+                f"{type(self).name} needs an InstructBLIP checkpoint, but "
+                f"{self.cfg.model_id!r} loaded as model_type {mt!r}"  # type: ignore[attr-defined]
+            )
+
+    def _prepare(self, sample: Sample, prompt: str) -> Dict[str, Any]:
+        return self._encode(  # type: ignore[attr-defined]
+            sample, INSTRUCTBLIP_WRAPPER.format(instruction=prompt))
+
+    def describe(self) -> Dict[str, Any]:
+        info = dict(super().describe())  # type: ignore[misc]
+        info.update({
+            "backbone": "instructblip",
+            "wrapper": INSTRUCTBLIP_WRAPPER,
+            "system_prompt": "",
+            "image_tokens_precede_bos": True,
+        })
+        return info
+
+
+@register_method
+class InstructBlipSamplingMethod(_InstructBlipMixin, SamplingMethod):
+    """Plain nucleus sampling on InstructBLIP-vicuna-7b."""
+
+    name = "sampling_instructblip"
+
+
+@register_method
+class InstructBlipFoxMethod(_InstructBlipMixin, FoxMethod):
+    """Fox as the release's InstructBLIP copy runs it: ``H_vis`` only.
+
+    NOT the LLaVA method on another backbone. It drops ``m_sys`` from the
+    head score (Eq. 4) -- structurally forced, since the image precedes BOS
+    and there are no system keys to put mass on -- and uses layers 4-10 with
+    k=0.4. Recorded in every run's provenance as ``use_m_sys: false``.
+    """
+
+    name = "fox_instructblip"
+    HPARAM_DEFAULTS = INSTRUCTBLIP_FOX_DEFAULTS
+    HPARAM_SOURCE = (
+        "released InstructBLIP copy (layers 4-10, k=0.4, tau_js=0.15 by "
+        "default, gamma=1e4, H_vis-only scoring); not the paper's LLaVA "
+        "values, and the InstructBLIP tables are not stated to use these"
+    )
+    LAYER_DEFAULT = "{}-{}".format(*INSTRUCTBLIP_FOX_DEFAULTS["layers"])
+
+    def _decode_kwargs(self) -> Dict[str, Any]:
+        kw = dict(super()._decode_kwargs())
+        kw["use_m_sys"] = self.USE_M_SYS
+        return kw
+
+    def describe(self) -> Dict[str, Any]:
+        info = dict(super().describe())
+        info["use_m_sys"] = self.USE_M_SYS
+        info["scoring"] = "H_vis only (InstructBLIP copy); Eq. 4 is not used"
+        info["default_layer_window"] = self.LAYER_DEFAULT
         return info
 
 

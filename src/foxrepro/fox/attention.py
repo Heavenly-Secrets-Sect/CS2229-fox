@@ -865,7 +865,20 @@ def load_llava(
 #: transformers convention; a model that does not is a refusal, not a guess.
 _DECODER_SUBCONFIG = {"llava": ("text_config", "vision_config"),
                       "qwen3_vl": ("text_config", "vision_config"),
-                      "internvl": ("text_config", "vision_config")}
+                      "internvl": ("text_config", "vision_config"),
+                      "instructblip": ("text_config", "vision_config")}
+
+#: Sub-configs a backbone has BEYOND the decoder and the vision tower, and the
+#: implementation to pin them to. InstructBLIP has a third tower: the Q-Former
+#: sits between the ViT and the decoder, and a dict ``attn_implementation``
+#: that omits it leaves that sub-config unset. It is pinned to ``eager`` (the
+#: one implementation every attention class supports), never to ``fox``: the
+#: Q-Former produces the 32 query features the intervention then reads as KEYS,
+#: so patching it would change the thing being measured, exactly as patching
+#: the ViT would.
+_EXTRA_ATTN_PINS: Dict[str, Dict[str, str]] = {
+    "instructblip": {"qformer_config": "eager"},
+}
 
 
 def load_backbone(
@@ -922,14 +935,46 @@ def load_backbone(
     model, info = AutoModelForImageTextToText.from_pretrained(
         model_id,
         dtype=torch_dtype,            # `torch_dtype` is deprecated from 4.56
-        attn_implementation={text_key: ATTN_NAME, vision_key: "sdpa"},
+        attn_implementation={text_key: ATTN_NAME, vision_key: "sdpa",
+                             **_EXTRA_ATTN_PINS.get(mt, {})},
         device_map=device_map,
         output_loading_info=True,
     )
     _assert_fully_loaded(model_id, info)
     model = model.eval()
+    _ensure_decoder_is_patched(
+        model, {text_key: ATTN_NAME, vision_key: "sdpa",
+                **_EXTRA_ATTN_PINS.get(mt, {})}, text_key)
     processor = AutoProcessor.from_pretrained(model_id)
     return model, processor
+
+
+def _ensure_decoder_is_patched(model: Any, impl: Dict[str, str],
+                               text_key: str) -> None:
+    """Make the decoder run the Fox attention, or refuse.
+
+    ``from_pretrained(attn_implementation={...})`` is enough for LLaVA,
+    Qwen3-VL and InternVL3, but MEASURED on transformers 4.57.1 it is NOT for
+    InstructBLIP: the wrapper builds its decoder with
+    ``AutoModelForCausalLM.from_config(config.text_config)`` and the dict has
+    been lost by then, so the inner LLaMA comes up on ``sdpa`` while every
+    check that only reads the dict says ``fox``. A whole benchmark would then
+    run the unpatched model and report a plausible number. So the outcome is
+    read off the decoder's own config, re-applied with the post-construction
+    API if it is wrong, and read again.
+    """
+    sub = getattr(model.config, text_key)
+    if sub._attn_implementation == ATTN_NAME:
+        return
+    model.set_attn_implementation(impl)
+    got = getattr(model.config, text_key)._attn_implementation
+    if got != ATTN_NAME:
+        raise RuntimeError(
+            f"the decoder reports attn_implementation={got!r} after "
+            f"set_attn_implementation({impl}); Fox's attention is not running "
+            f"on this checkpoint and every number from it would be the "
+            f"unpatched model's"
+        )
 
 
 #: Checkpoints known to use the original LLaVA key layout rather than the
@@ -1014,6 +1059,20 @@ def _assert_fully_loaded(model_id: str, info: Dict[str, Any]) -> None:
     missing = list(info.get("missing_keys") or ())
     if not missing:
         return
+    # InstructBLIP-specific: the Q-Former and ``query_tokens`` are the tower
+    # that turns ViT features into the 32 image keys. Left random they produce
+    # fluent text that ignores the picture, so say so by name.
+    qformer_missing = [k for k in missing
+                       if "qformer" in k or "query_tokens" in k]
+    if qformer_missing:
+        raise RuntimeError(
+            f"{model_id!r} left {len(qformer_missing)} Q-Former / query_tokens "
+            f"parameters uninitialised (e.g. {qformer_missing[0]}), so the 32 "
+            f"image tokens are computed by a RANDOM Q-Former. The decoder "
+            f"would still answer fluently and ignore the image. Check "
+            f"--model-id and the fp16 copy's conversion "
+            f"(scripts/cast_checkpoint_fp16.py must keep every tensor)."
+        )
     shown = ", ".join(missing[:8])
     more = f" (+{len(missing) - 8} more)" if len(missing) > 8 else ""
     raise RuntimeError(
@@ -1036,7 +1095,13 @@ def _assert_fully_loaded(model_id: str, info: Dict[str, Any]) -> None:
 #: information: Qwen3-VL merges patches 2x2 at dynamic resolution, InternVL3
 #: tiles dynamically. For those the span is derived per sample and only its
 #: contiguity is asserted. The 576 was never logic -- it was always a guard.
-FIXED_SPAN_WIDTH: Dict[str, int] = {"llava": 576}
+#:
+#: InstructBLIP: the Q-Former emits ``num_query_tokens`` = 32 features whatever
+#: the image, and HF's processor writes exactly that many ``<image>`` ids,
+#: PREPENDED before BOS (the release does the same: ``torch.cat([inputs_llm,
+#: inputs_embeds])``). So the span is ``[0, 31]`` and there are no system
+#: keys before it.
+FIXED_SPAN_WIDTH: Dict[str, int] = {"llava": 576, "instructblip": 32}
 
 
 def expected_span_width(model: Any) -> Optional[int]:
@@ -1238,6 +1303,42 @@ def fox_diagnose(
 
 
 @torch.inference_mode()
+def _is_instructblip(model: Any) -> bool:
+    return getattr(getattr(model, "config", None), "model_type", "") \
+        == "instructblip"
+
+
+def _instructblip_step(model: Any, step: int, ids: torch.Tensor,
+                       mask: torch.Tensor, pixel_values: torch.Tensor,
+                       qf_ids: torch.Tensor, qf_mask: torch.Tensor,
+                       cache: Any) -> Tuple[Any, Any]:
+    """One decoder forward for InstructBLIP, with a KV cache.
+
+    The wrapper's own ``forward`` cannot be used after the prefill: it takes
+    ``pixel_values`` and ``qformer_input_ids`` unconditionally, re-runs the ViT
+    and the Q-Former, and scatters their 32 features into the placeholder
+    positions of ``input_ids`` -- which with a single new token would raise a
+    shape error at best. LLaVA's wrapper tolerates ``pixel_values=None``;
+    this one does not. So the prefill goes through the wrapper (it is the only
+    place the image is encoded) and every later step calls the inner
+    ``language_model`` on the new token with the cache, which is exactly what
+    ``generate()`` does for this class. The returned object exposes
+    ``.logits`` either way.
+    """
+    if step == 0:
+        out = model(
+            pixel_values=pixel_values, qformer_input_ids=qf_ids,
+            qformer_attention_mask=qf_mask, input_ids=ids,
+            attention_mask=mask, use_cache=True,
+        )
+        return out, out.language_model_outputs.past_key_values
+    out = model.language_model(
+        input_ids=ids[:, -1:], attention_mask=mask,
+        past_key_values=cache, use_cache=True,
+    )
+    return out, out.past_key_values
+
+
 def fox_generate(
     model: Any,
     inputs: Dict[str, torch.Tensor],
@@ -1274,6 +1375,7 @@ def fox_generate(
     cf_vision: bool = False,
     cf_edit: str = "shuffle",
     negative_only: bool = False,
+    use_m_sys: bool = True,
 ) -> Dict[str, Any]:
     """Generate with Fox: both branches batched, fused per token.
 
@@ -1334,6 +1436,13 @@ def fox_generate(
         collect_trace: record per-token ``d_t`` and ``lambda_t``, for the
             demo's conflict-trace panel.
 
+        use_m_sys: ``True`` scores heads by ``m_sys * H_vis`` (Eq. 4, LLaVA).
+            ``False`` scores by ``H_vis`` alone, which is what the release's
+            InstructBLIP copy does. It is a different METHOD, not a switch:
+            see docs/DEVIATIONS.md 3.16. Required for InstructBLIP, where the
+            image precedes BOS so there are no system keys and ``m_sys`` is
+            identically 0.
+
     Returns ``{"token_ids", "text"?, "n_prompt_tokens", "n_gen_tokens",
     "trace"?}``.
     """
@@ -1391,6 +1500,28 @@ def fox_generate(
         input_ids, image_token_id, expected_span_width(model))
     n_prompt = int(input_ids.shape[1])
 
+    qformer_ids = qformer_mask = None
+    if _is_instructblip(model):
+        if input_ids_do is not None or pixel_values_do is not None or sid \
+                or cf_vision:
+            raise ValueError(
+                "only plain sampling and Fox are ported to InstructBLIP; "
+                "VCD/ICD/SID/CausalMM need their own negative-branch plumbing "
+                "there and are out of scope"
+            )
+        qformer_ids = inputs["qformer_input_ids"].to(device)
+        qformer_mask = inputs["qformer_attention_mask"].to(device)
+    if use_m_sys and img_start == 0 and not single_branch:
+        # The image sits at key 0, so [0, img_start) is empty and m_sys is
+        # identically 0: every head ties on the score and top-k becomes an
+        # arbitrary index order. A run like that is plausible and wrong.
+        raise ValueError(
+            "use_m_sys=True with the image span starting at key 0: there are "
+            "no system keys, m_sys == 0 for every head, and head selection "
+            "would be a tie-break. Pass use_m_sys=False (the InstructBLIP "
+            "scoring), or fix the span"
+        )
+
     gen = None
     if seed is not None:
         # On the model's device, not CPU. The generator feeds both
@@ -1414,6 +1545,11 @@ def fox_generate(
         px2 = torch.cat([pixel_values, pixel_values_do.to(device)], dim=0)
     else:
         px2 = pixel_values.repeat(2, *([1] * (pixel_values.dim() - 1)))
+
+    qf_ids2 = qf_mask2 = None
+    if qformer_ids is not None:
+        qf_ids2 = qformer_ids.repeat(n_rows, 1)
+        qf_mask2 = qformer_mask.repeat(n_rows, 1)
 
     if split_pass:
         ids_do = input_ids_do.to(device)
@@ -1448,6 +1584,7 @@ def fox_generate(
     with FOX.configured(
         enabled=not single_branch, mode=mode, gamma=gamma, ratio=ratio,
         logit_dtype=logit_dtype, softmax_dtype=softmax_dtype,
+        use_m_sys=use_m_sys,
         img_start=img_start, img_end=img_end,
         branch_rows=(1,),
         eager_layers=eager_layers if eager_layers is not None else FOX.eager_layers,
@@ -1469,17 +1606,21 @@ def fox_generate(
             # Clearing it here is what makes a missed read raise instead of
             # silently reusing the previous token's ranking.
             FOX.sid_keep = None
-            if step == 0:
+            if qf_ids2 is not None:
+                out, cache = _instructblip_step(
+                    model, step, ids2, mask2, px2, qf_ids2, qf_mask2, cache)
+            elif step == 0:
                 out = model(
                     input_ids=ids2, attention_mask=mask2, pixel_values=px2,
                     use_cache=True,
                 )
+                cache = out.past_key_values
             else:
                 out = model(
                     input_ids=ids2[:, -1:], attention_mask=mask2,
                     past_key_values=cache, use_cache=True,
                 )
-            cache = out.past_key_values
+                cache = out.past_key_values
             if sid:
                 # Recorded per step because the ranking is recomputed per
                 # step: a run whose keep count drifts from sid_rank has hit

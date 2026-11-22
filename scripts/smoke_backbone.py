@@ -55,6 +55,12 @@ CANDIDATES = [
     "OpenGVLab/InternVL3-8B-hf",
 ]
 
+#: The InstructBLIP checkpoint the plan runs (the pre-cast fp16 copy, which is
+#: PRIVATE: it needs an HF token with read access, and must stay private --
+#: docs/DEVIATIONS.md 3.10). Not in CANDIDATES, so `--all` never touches it;
+#: ask for it with `--instructblip`.
+INSTRUCTBLIP_CANDIDATE = "kietnt0603/instructblip-vicuna-7b-fp16"
+
 #: Floor on the attention mass the image span must carry at every layer.
 #: Not a tolerance -- a correct span on a working backbone carries orders
 #: more than this, and only a degenerate span lands near it.
@@ -147,9 +153,215 @@ def smoke(model_id: str, n_samples: int = 5, dtype: str = "fp16") -> dict:
     """Download the checkpoint, then run every check against it."""
     from foxrepro.fox.attention import load_backbone
 
+    # load_backbone ends in _assert_fully_loaded, which raises on any missing
+    # key -- and names the Q-Former / query_tokens when those are the ones.
+    # Reaching the next line IS the "fully loaded" check; it is recorded below.
     model, processor = load_backbone(model_id, dtype=dtype)
+    if getattr(model.config, "model_type", None) == "instructblip":
+        out = smoke_instructblip_loaded(model, processor, model_id=model_id,
+                                        n_samples=n_samples)
+        out["checks"]["fully_loaded"] = True
+        return out
     return smoke_loaded(model, processor, model_id=model_id,
                         n_samples=n_samples)
+
+
+def smoke_instructblip_loaded(model, processor, *, model_id: str = "<loaded>",
+                              n_samples: int = 5) -> dict:
+    """The InstructBLIP checks, against a model that is already in memory.
+
+    InstructBLIP cannot go through :func:`smoke_loaded`: it has no chat
+    template, its processor takes the prompt string directly, and the image
+    ids sit BEFORE BOS, so there is no ``m_sys`` to partition against.
+
+    What each check means, and what it does not:
+
+    * span is exactly 32 and contiguous, and starts at key 0 -- read off the
+      processor's own placement of the image id, as the LLaVA check is;
+    * the patched forward FIRES on exactly the intervention window, counted
+      at the kernel, not inferred from a config string. (Measured: a config
+      that says ``fox`` can still be running sdpa; see
+      ``_ensure_decoder_is_patched``.);
+    * the Q-Former was NOT patched: none of its modules report ``fox``, and
+      the kernel never saw a layer index outside the decoder;
+    * ``query_tokens`` is not the all-zero tensor a missing key leaves
+      behind (the hard failure on missing keys is ``_assert_fully_loaded``,
+      which runs at load time, not here);
+    * ``m_sys == 0`` exactly and ``m_vis + m_txt == 1`` per layer. The task
+      brief says ``m_sys + m_vis + m_txt == 1`` "where m_sys is on"; here it
+      is not on (no key precedes the image), so the identity checked is the
+      two-term one, and the zero is itself the assertion that the span starts
+      at key 0. Like the LLaVA partition it is an identity for ANY span, so
+      the span check above, not this one, is what catches a misplaced span;
+    * two no-op comparisons against the baseline forward. ``k = 0`` does not
+      exist -- ``select_heads`` clamps to at least one head -- so the no-op is
+      reached two ways: ``mode="off"`` (the patch disabled, which must be
+      BIT-identical because both take the same SDPA path) and ``gamma=0``
+      (the eager path with nothing subtracted, which agrees to kernel
+      tolerance, not bit for bit: eager and SDPA are different kernels, and
+      the measured max difference is reported rather than asserted to be 0).
+    """
+    import torch
+    from PIL import Image
+
+    import foxrepro.fox.attention as A
+    from foxrepro.fox.attention import FOX
+
+    out: dict = {"model_id": model_id, "ok": False, "checks": {}}
+    out["model_type"] = getattr(model.config, "model_type", None)
+    if out["model_type"] != "instructblip":
+        raise AssertionError(
+            f"smoke_instructblip_loaded got model_type {out['model_type']!r}")
+
+    image_token_id = A.resolve_image_token_id(model)
+    out["image_token_id"] = image_token_id
+    width = A.expected_span_width(model)
+    out["expected_width"] = width
+    if width != 32:
+        raise AssertionError(f"FIXED_SPAN_WIDTH says {width}, want 32")
+
+    from foxrepro.bench.methods import INSTRUCTBLIP_WRAPPER
+
+    img = Image.new("RGB", (448, 448), (127, 127, 127))
+    text = INSTRUCTBLIP_WRAPPER.format(instruction="Is there a dog in the image?")
+    batch = processor(images=img, text=text, return_tensors="pt")
+    dev = next(model.parameters()).device
+    batch = {k: (v.to(dev) if hasattr(v, "to") else v)
+             for k, v in batch.items()}
+    ids = batch["input_ids"]
+    out["n_prompt_tokens"] = int(ids.shape[-1])
+    out["n_image_tokens"] = int((ids == image_token_id).sum())
+
+    # ---- span ---------------------------------------------------------- #
+    start, end = A.locate_image_span(ids, image_token_id, width)
+    out["img_start"], out["img_end"] = int(start), int(end)
+    out["derived_width"] = int(end) - int(start) + 1
+    check_span_matches_tokens(ids, image_token_id, int(start), int(end) + 1)
+    if out["derived_width"] != 32 or out["n_image_tokens"] != 32:
+        raise AssertionError(
+            f"want exactly 32 contiguous image tokens, got "
+            f"{out['n_image_tokens']} spanning {out['derived_width']}")
+    if int(start) != 0:
+        raise AssertionError(
+            f"the image span starts at key {start}, not 0: the processor no "
+            f"longer prepends the image ids before BOS, so the m_sys-free "
+            f"scoring and the release's layout no longer match")
+    out["checks"]["span_exactly_32_contiguous_from_0"] = True
+
+    # ---- the patch fires on the window and nowhere else ---------------- #
+    window = frozenset(range(4, 11))
+    seen: list = []
+    orig = A.intervene
+
+    def counting(*a, **kw):
+        seen.append(kw.get("layer"))
+        return orig(*a, **kw)
+
+    A.intervene = counting
+    try:
+        with FOX.configured(img_start=int(start), img_end=int(end),
+                            enabled=True, mode="as_implemented",
+                            use_m_sys=False, eager_layers=window,
+                            diagnose=False, ratio=0.4):
+            with torch.no_grad():
+                model(**batch)
+    finally:
+        A.intervene = orig
+    n_dec = model.config.text_config.num_hidden_layers
+    if set(seen) != set(window):
+        raise AssertionError(
+            f"the intervention ran on layers {sorted(set(seen))}, wanted "
+            f"exactly {sorted(window)}: the Fox attention is not what the "
+            f"decoder is running")
+    if len(seen) != len(window):
+        raise AssertionError(
+            f"{len(seen)} intervention calls for {len(window)} layers in one "
+            f"forward")
+    if max(seen) >= n_dec:
+        raise AssertionError("intervention saw a layer beyond the decoder")
+    out["checks"]["patched_forward_fires_on_4_to_10"] = True
+
+    # ---- the Q-Former was not patched ---------------------------------- #
+    bad = [n for n, m in model.qformer.named_modules()
+           if getattr(getattr(m, "config", None), "_attn_implementation", None)
+           == A.ATTN_NAME]
+    if bad:
+        raise AssertionError(f"Q-Former modules report the Fox attention: {bad[:3]}")
+    if model.language_model.config._attn_implementation != A.ATTN_NAME:
+        raise AssertionError("the decoder is not on the Fox attention")
+    out["checks"]["qformer_not_patched"] = True
+
+    # ---- query_tokens is trained, not the zeros a missing key leaves ---- #
+    if float(model.query_tokens.detach().float().abs().sum()) == 0.0:
+        raise AssertionError(
+            "query_tokens is all zeros: the key was probably missing and the "
+            "Q-Former is not producing the checkpoint's image tokens")
+    out["checks"]["query_tokens_nonzero"] = True
+
+    # ---- masses ---------------------------------------------------------- #
+    with FOX.configured(img_start=int(start), img_end=int(end), enabled=False,
+                        diagnose=True, collect=True, eager_layers=frozenset()):
+        FOX.reset_diagnostics()
+        with torch.no_grad():
+            model(**batch)
+        diags = {k: {kk: vv.clone() for kk, vv in v.items()}
+                 for k, v in FOX.diagnostics.items()}
+    if len(diags) != n_dec:
+        raise AssertionError(f"{len(diags)} of {n_dec} layers reported")
+    worst_sum = 0.0
+    for layer, row in sorted(diags.items()):
+        ms = float(row["m_sys_t1"].float().mean())
+        mv = float(row["m_vis_t1"].float().mean())
+        mt = float(row["m_txt_t1"].float().mean())
+        if ms != 0.0:
+            raise AssertionError(f"layer {layer}: m_sys = {ms}, want exactly 0")
+        worst_sum = max(worst_sum, abs(ms + mv + mt - 1.0))
+    if worst_sum > 1e-3:
+        raise AssertionError(f"m_sys + m_vis + m_txt off 1 by {worst_sum}")
+    out["mass_sum_max_abs_error"] = worst_sum
+    out["n_layers_measured"] = len(diags)
+    out["min_visual_mass"] = check_diagnostics_usable(diags, MIN_VISUAL_MASS)
+    out["checks"]["m_sys_zero_and_masses_partition"] = True
+
+    # ---- no-op arms against the baseline forward ------------------------ #
+    def logits(**cfg):
+        with FOX.configured(img_start=int(start), img_end=int(end), **cfg):
+            with torch.no_grad():
+                return model(**batch).logits[0, -1].float().cpu()
+
+    base = logits(enabled=False)
+    off = logits(enabled=True, mode="off", use_m_sys=False, ratio=0.4,
+                 eager_layers=window)
+    if not torch.equal(base, off):
+        raise AssertionError(
+            f"mode='off' is not bit-identical to the baseline forward (max "
+            f"|diff| {float((base - off).abs().max())}): the patch is not "
+            f"inert when disabled")
+    out["checks"]["mode_off_bit_identical_to_baseline"] = True
+    noop = logits(enabled=True, mode="as_implemented", gamma=0.0,
+                  use_m_sys=False, ratio=0.4, eager_layers=window)
+    out["gamma0_max_abs_diff"] = float((base - noop).abs().max())
+    out["gamma0_bit_identical"] = bool(torch.equal(base, noop))
+    if int(base.argmax()) != int(noop.argmax()):
+        raise AssertionError(
+            f"gamma=0 changes the argmax (max |diff| "
+            f"{out['gamma0_max_abs_diff']}): the eager path is not a no-op")
+    out["checks"]["gamma0_same_argmax"] = True
+
+    # ---- and it generates ------------------------------------------------ #
+    with torch.no_grad():
+        gen = A.fox_generate(
+            model, batch, max_new_tokens=n_samples, seed=0,
+            eager_layers=window, use_m_sys=False, ratio=0.4)
+    if gen["n_gen_tokens"] < 1 or tuple(gen["image_span"]) != (0, 31):
+        raise AssertionError(f"fox_generate gave {gen['n_gen_tokens']} tokens, "
+                             f"span {gen['image_span']}")
+    out["sample_output"] = processor.tokenizer.decode(
+        gen["token_ids"], skip_special_tokens=True)
+    out["checks"]["intervention_generates"] = True
+
+    out["ok"] = True
+    return out
 
 
 def smoke_loaded(model, processor, *, model_id: str = "<loaded>",
@@ -208,11 +420,16 @@ def smoke_loaded(model, processor, *, model_id: str = "<loaded>",
     # THE check. Raises on a non-contiguous span.
     start, end = locate_image_span(ids, image_token_id, expected_width=width)
     out["img_start"], out["img_end"] = int(start), int(end)
-    out["derived_width"] = int(end) - int(start)
+    out["derived_width"] = int(end) - int(start) + 1
     out["checks"]["span_contiguous"] = True
     # Exact, against the processor's own placement. This is the check the
     # script is for; everything after it only confirms the span is usable.
-    check_span_matches_tokens(ids, image_token_id, int(start), int(end))
+    # `end` is INCLUSIVE here (locate_image_span's contract) while the
+    # checker's is exclusive, so pass end + 1. This call passed `end` as
+    # returned until now, which would have raised "span is [a, b) but the
+    # image tokens occupy [a, b+1)" on the first real backbone: the check was
+    # never driven end to end, only with hand-built exclusive ends.
+    check_span_matches_tokens(ids, image_token_id, int(start), int(end) + 1)
     out["checks"]["span_is_exactly_the_image_tokens"] = True
 
     # One diagnostic forward, every layer measured, nothing edited.
@@ -256,14 +473,19 @@ def main(argv=None) -> int:
     ap.add_argument("--model-id", action="append", default=[])
     ap.add_argument("--all", action="store_true",
                     help=f"every candidate: {', '.join(CANDIDATES)}")
+    ap.add_argument("--instructblip", action="store_true",
+                    help=f"also check {INSTRUCTBLIP_CANDIDATE} (private; "
+                         f"needs an HF token)")
     ap.add_argument("--n-samples", type=int, default=5)
     ap.add_argument("--dtype", default="fp16", choices=["fp16", "bf16", "fp32"])
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
-    ids = args.model_id or (CANDIDATES if args.all else [])
+    ids = list(args.model_id or (CANDIDATES if args.all else []))
+    if args.instructblip and INSTRUCTBLIP_CANDIDATE not in ids:
+        ids.append(INSTRUCTBLIP_CANDIDATE)
     if not ids:
-        ap.error("pass --model-id or --all")
+        ap.error("pass --model-id, --all or --instructblip")
 
     results = []
     for mid in ids:
@@ -295,7 +517,7 @@ def _print(r: dict) -> None:
     print(f"    image token    : {r['image_token_id']}  "
           f"x{r['n_image_tokens']} of {r['n_prompt_tokens']} prompt tokens")
     exp = r["expected_width"]
-    print(f"    span           : [{r['img_start']}, {r['img_end']}) "
+    print(f"    span           : [{r['img_start']}, {r['img_end']}] "
           f"width {r['derived_width']}"
           + (f"  (expected {exp})" if exp else "  (dynamic, no expectation)"))
     print(f"    layers measured: {r['n_layers_measured']}")
