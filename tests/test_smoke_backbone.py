@@ -163,6 +163,140 @@ class TestTheCandidateIdsAreTheVerifiedOnes(unittest.TestCase):
     def test_internvl_without_the_hf_suffix_is_not_listed(self) -> None:
         self.assertNotIn("OpenGVLab/InternVL3-8B", SMOKE.CANDIDATES)
 
+    def test_instructblip_is_opt_in_and_is_the_private_fp16_copy(self) -> None:
+        self.assertEqual(SMOKE.INSTRUCTBLIP_CANDIDATE,
+                         "kietnt0603/instructblip-vicuna-7b-fp16")
+        self.assertNotIn(SMOKE.INSTRUCTBLIP_CANDIDATE, SMOKE.CANDIDATES)
+
+
+class _IBProcessor:
+    """Stands in for InstructBlipProcessor: the layout it really writes."""
+
+    def __init__(self, shift: int = 0, short: bool = False) -> None:
+        from tests.test_instructblip import EOS, tiny_inputs
+        self._inputs = tiny_inputs
+        self.seen: list = []
+        self.shift, self.short = shift, short
+
+        class _Tok:
+            @staticmethod
+            def decode(ids, skip_special_tokens=True):
+                return " ".join(f"t{i}" for i in ids if i != EOS)
+        self.tokenizer = _Tok()
+
+    def __call__(self, images, text, return_tensors="pt"):
+        self.seen.append(text)
+        b = self._inputs()
+        if self.shift:      # a text token in front: image no longer at key 0
+            ids = b["input_ids"]
+            b["input_ids"] = torch.cat([torch.tensor([[1] * self.shift]), ids], 1)
+            b["attention_mask"] = torch.ones_like(b["input_ids"])
+        if self.short:      # 31 image tokens
+            b["input_ids"][0, 31] = 9
+        return b
+
+
+class TestTheInstructBlipEntry(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        from tests.test_instructblip import tiny_instructblip
+        cls.model = tiny_instructblip()
+
+    def test_every_check_passes_on_a_correct_layout(self) -> None:
+        proc = _IBProcessor()
+        r = SMOKE.smoke_instructblip_loaded(self.model, proc, n_samples=3)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual((r["img_start"], r["img_end"], r["derived_width"]),
+                         (0, 31, 32))
+        for name in ("span_exactly_32_contiguous_from_0",
+                     "patched_forward_fires_on_4_to_10", "qformer_not_patched",
+                     "query_tokens_nonzero",
+                     "m_sys_zero_and_masses_partition",
+                     "mode_off_bit_identical_to_baseline",
+                     "gamma0_same_argmax", "intervention_generates"):
+            self.assertTrue(r["checks"].get(name), name)
+        # The release prompt, with the placeholder's double space.
+        self.assertEqual(proc.seen,
+                         ["USER:  Is there a dog in the image? ASSISTANT:"])
+        # Measured, not asserted to be zero; recorded for the report.
+        self.assertIn("gamma0_max_abs_diff", r)
+
+    def test_a_short_span_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):          # locate_image_span
+            SMOKE.smoke_instructblip_loaded(
+                self.model, _IBProcessor(short=True))
+
+    def test_an_image_not_at_key_zero_is_rejected(self) -> None:
+        with self.assertRaisesRegex(AssertionError, "not 0"):
+            SMOKE.smoke_instructblip_loaded(
+                self.model, _IBProcessor(shift=2))
+
+    def test_an_unpatched_decoder_is_rejected(self) -> None:
+        """The failure the config string cannot show: attn says fox, runs sdpa."""
+        m = self.model
+        sub = m.language_model.config
+        before = sub._attn_implementation_internal
+        sub._attn_implementation_internal = "sdpa"
+        try:
+            with self.assertRaises(AssertionError):
+                SMOKE.smoke_instructblip_loaded(m, _IBProcessor())
+        finally:
+            sub._attn_implementation_internal = before
+
+    def test_zeroed_query_tokens_are_rejected(self) -> None:
+        saved = self.model.query_tokens.data.clone()
+        self.model.query_tokens.data.zero_()
+        try:
+            with self.assertRaisesRegex(AssertionError, "query_tokens"):
+                SMOKE.smoke_instructblip_loaded(self.model, _IBProcessor())
+        finally:
+            self.model.query_tokens.data.copy_(saved)
+
+    def test_a_patched_qformer_is_rejected(self) -> None:
+        q = self.model.qformer.config
+        before = q._attn_implementation_internal
+        q._attn_implementation_internal = A.ATTN_NAME
+        try:
+            with self.assertRaisesRegex(AssertionError, "Q-Former"):
+                SMOKE.smoke_instructblip_loaded(self.model, _IBProcessor())
+        finally:
+            q._attn_implementation_internal = before
+
+
+class TestTheLlavaSmokeEndToEnd(unittest.TestCase):
+    """``smoke_loaded`` had never been run as a whole; its helpers were tested
+    with hand-built exclusive ends while it passed ``locate_image_span``'s
+    INCLUSIVE end straight in, which would have failed on a real backbone."""
+
+    def test_a_correct_llava_passes_the_whole_script(self) -> None:
+        model = tiny_llava()
+        A.register()
+        model.set_attn_implementation(
+            {"text_config": A.ATTN_NAME, "vision_config": "sdpa"})
+        px = torch.randn(1, 3, 336, 336)
+        ids = torch.tensor([[1] * 6 + [IMAGE_TOKEN_ID] * N_IMG + [2] * 4])
+
+        class Proc:
+            class tokenizer:                                    # noqa: N801
+                pass
+
+            def apply_chat_template(self, msgs, tokenize=False,
+                                    add_generation_prompt=True):
+                return "x"
+
+            def __call__(self, images, text, return_tensors="pt"):
+                return {"input_ids": ids,
+                        "attention_mask": torch.ones_like(ids),
+                        "pixel_values": px}
+
+            def decode(self, t, skip_special_tokens=True):
+                return "ok"
+
+        r = SMOKE.smoke_loaded(model, Proc(), n_samples=2)
+        self.assertTrue(r["ok"])
+        self.assertEqual((r["img_start"], r["img_end"]), (6, 6 + N_IMG - 1))
+        self.assertEqual(r["derived_width"], N_IMG)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

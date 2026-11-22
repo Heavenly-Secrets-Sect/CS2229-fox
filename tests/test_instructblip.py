@@ -65,11 +65,14 @@ def tiny_instructblip(seed: int = 0) -> "InstructBlipForConditionalGeneration":
         image_token_index=IMAGE_TOKEN_ID)
     A.register()          # must precede construction, as in load_backbone
     torch.manual_seed(seed)
-    return InstructBlipForConditionalGeneration._from_config(
+    m = InstructBlipForConditionalGeneration._from_config(
         cfg, attn_implementation={
             "text_config": A.ATTN_NAME, "vision_config": "sdpa",
             "qformer_config": "eager"},
     ).eval()
+    # HF initialises query_tokens to zeros; a trained checkpoint's are not.
+    m.query_tokens.data.normal_(0, 0.5)
+    return m
 
 
 def tiny_inputs(n_text: int = 6) -> Dict[str, torch.Tensor]:
