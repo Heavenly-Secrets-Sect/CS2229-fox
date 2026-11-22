@@ -2192,3 +2192,34 @@ The validation tier sits **before** the table rows in `plan.PLAN`, so it
 lands in session 1. That ordering is deliberate: running it last would risk
 spending 40 h producing table rows from an implementation that one of these
 arms would have shown to be wrong in the first hour.
+
+## V18, V19 and the OPERA protocol arms — what r24 asks before it runs
+
+Written before r24 ran. The baseline audit (docs/PAPER_AUDIT.md, triage
+section) found no decoding-rule defect in our compared methods, only protocol
+differences never run. Each arm below isolates one, and each states what would
+count as the difference not mattering.
+
+**V18 — CausalMM under its own POPE harness** (suffix "Please answer this
+question with one word.", `top_p = 1`), adversarial and popular, 3 seeds.
+Our CausalMM scores 77.86 on adversarial against the paper's 81.27 (−3.41).
+
+*Prediction: adversarial accuracy rises by at least 1.5 points, with a paired
+90 % interval excluding zero.* The mechanism is concrete: without the suffix
+the first token can be neither Yes nor No, and the released parser scores such
+answers as "yes", which is a bias on a benchmark whose adversarial split is
+the hardest. If the rise is under 1.5 points the protocol does not explain the
+gap, it is recorded as unexplained, and no further CausalMM arm is run.
+
+**V19 — SID at `cd_alpha = 1.0`**, adversarial, 3 seeds. The release parses
+`--cd-alpha 1` and never passes it on, so it ran 0.5; whether the paper's row
+used 1.0 cannot be recovered. This is a sweep over a guessed value, not a test
+of a stated cause, so it has **no directional prediction**. It is reported as
+what α does to SID, and if SID lands within 0.5 of the paper's 81.10 the
+result is stated as "consistent with", never "explained by".
+
+**OPERA at its own 10-token protocol, random and popular.** On adversarial
+this reproduces the paper's 81.13 exactly. *Prediction: random and popular land
+within 0.5 of the paper's 89.27 and 86.80.* If either misses by more, the
+"Fox copied OPERA's own numbers" reading is wrong for that split and the
+adversarial match was one coincidence.

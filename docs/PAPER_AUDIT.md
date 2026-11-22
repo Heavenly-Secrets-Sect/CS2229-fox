@@ -457,6 +457,48 @@ specified — `shuffle` 76.67 vs `cf_blind` 77.53, p = 1.6e-4.
 
 ---
 
+## Triage after the paper-vs-ours comparison (2026-11-22)
+
+The rule set for the project is: **a gap caused by our code or an unrun
+protocol gets an experiment; a gap caused by information the paper or its
+release does not contain is explained and left.** Every non-reproduction was
+sorted by that rule, and the baseline code was audited line by line against
+the reference checkouts before anything was called unfixable.
+
+**Result of the code audit.** Our CausalMM, SID, VCD, ICD and OPERA decoding
+rules match their references (tests assert bit-equality where an oracle
+exists), and our sampling baseline is within 0.05 of the paper on every POPE
+split. So no baseline gap is explained by a decoding bug. What the audit did
+find is protocol differences that had never been run:
+
+| gap | cause found | action |
+|---|---|---|
+| CausalMM, POPE adv −3.41, pop −1.95 | its own harness appends "Please answer this question with one word." and samples at `top_p=1`; ours sends the bare question at 0.9 | **V18**, r24: 2 splits × 3 seeds |
+| SID, POPE −1.4 (and −1.54 under greedy) | `pope_eval.py` parses `--cd-alpha 1` but never passes it, so the release ran 0.5; which value the paper used is not recoverable | **V19**, r24: `cd_alpha=1.0`, adversarial, 3 seeds. A sweep over a guessed value, labelled as one |
+| Table 9, VCD and SID on random and popular | never run greedy | r24: four jobs |
+| Table 1, OPERA 79.10 vs 81.13 | Fox's OPERA cells match OPERA's own 10-token protocol (81.13 to the digit on adversarial), not its own 1-token harness | r24: 10-token run on random and popular, to test that on cells where it is not yet known |
+
+**Not reproducible, and why (information, not code).**
+
+| item | why it cannot be recovered |
+|---|---|
+| CHAIR absolute values (Table 2, 4, 9, 12, 14) | the 500 val2014 images are not named anywhere; CHAIR_S moves 5.20 points across five draws of them, more than most claimed gaps |
+| VCD and ICD rows of Table 1 | the release's flags for both are dead (`pope_eval.py:137`, `vcd_sample.py:142`), so its own code cannot have produced them; where they came from is not determinable |
+| VCD random split (−2.88) | what Fox's harness feeds the noiser is not visible; a one-line variant (`min` in the cutoff) exists only in the dead branch, and its effect would be unattributable |
+| Table 13 and Figure 3/13, Eq. 13 | the paper's own quantities are inconsistent (the three `m` do not sum to 1 under Eq. 11; Eq. 13's denominator is negative as written) |
+| Table 5, Figure 6 | the GPT-4V judge is deprecated. A substitute judge would measure a different instrument, so it needs the user's decision (API spend, declared deviation) before it is planned |
+| Table 2, OPERA CHAIR row | needs the rollback this project audited but never built, plus 40.5 GPU-hours; deferred, not declined |
+
+**Code-limited, now in progress.** Backbones: Qwen3-VL-8B and InternVL3-8B
+(Tables 3 and 10, Table 15 rows) wait only on the smoke session;
+InstructBLIP (Tables 1, 2, 8 and Figures 16, 21) is a port on the modern stack
+and is being implemented; Shikra (Figures 17, 22) needs a bespoke projector and
+checkpoint merge and comes after InstructBLIP. MMBench and MathVista's
+multiple-choice subset (Table 11) are being implemented with a declared
+rule-based answer extractor.
+
+---
+
 ## Reachable now, which these were not
 
 | | state |
