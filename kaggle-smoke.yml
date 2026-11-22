@@ -1,0 +1,15 @@
+# Backbone pre-flight sessions, one per case in scripts/ci_smoke.sh. Published
+# by a release whose tag starts with `smoke` (e.g. smoke-r25); the workflow
+# then sends THIS manifest instead of kaggle-run.yml and skips the plan check,
+# because a smoke session is not in the frozen plan.
+#
+# Cheap by design: each session downloads one checkpoint and runs five samples.
+# `sessions` must equal the number of cases in scripts/ci_smoke.sh.
+notebook: ml-fox-ci
+sessions: 3
+accelerator: gpu
+internet: true
+budget_hours: 2
+est_hours: 0.5
+setup: ""
+run: FOX_PERSIST_ROOT=/kaggle/temp/fox-persist bash scripts/ci_smoke.sh {session}

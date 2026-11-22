@@ -24,8 +24,16 @@ jobs:
       # hoặc có job không ai chạy. Rẻ hơn nhiều khi chặn ở đây so với lúc nhận
       # tin tổng kết.
       - name: Manifest phải khớp plan đã đóng băng
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
+          # Một release gắn tag smoke* gửi kaggle-smoke.yml (mỗi session một
+          # backbone, xem scripts/ci_smoke.sh) và không nằm trong plan đóng
+          # băng, nên không có gì để so. Số session của nó do một test giữ.
+          case "${RELEASE_TAG:-}" in
+            smoke*) echo "tag '${RELEASE_TAG}': kaggle-smoke.yml, bỏ qua kiểm tra plan"; exit 0 ;;
+          esac
           want=$(jq -r '.n_sessions' scripts/run_plan.json)
           got=$(yq -r '.sessions' kaggle-run.yml)
           round=$(jq -r '.round' scripts/run_plan.json)
@@ -71,7 +79,9 @@ jobs:
             echo "::warning title=Diễn tập, không chạy thật::$why. Bot chỉ in kế hoạch chọn tài khoản; KHÔNG có session nào được đẩy lên Kaggle. Muốn chạy thật: Actions -> kaggle-run -> Run workflow, bỏ tick dry_run. (Bỏ tick pre-release rồi Lưu sẽ KHÔNG kích hoạt lại: GitHub bắn 'released', workflow này nghe 'published'.)"
           fi
           tag=${RELEASE_TAG:-$(git rev-parse --short HEAD)}
-          body=$(yq -o=json kaggle-run.yml | jq -c --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg tag "$tag" --argjson dry "$dry" \
+          manifest=kaggle-run.yml
+          case "$tag" in smoke*) manifest=kaggle-smoke.yml ;; esac
+          body=$(yq -o=json "$manifest" | jq -c --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg tag "$tag" --argjson dry "$dry" \
             '{repo:$repo, sha:$sha, tag:$tag, manifest:., dry_run:$dry}')
           ts=$(date +%s)000
           sig=$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$CI_RUN_SECRET" -hex | sed 's/^.* //')

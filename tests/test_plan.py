@@ -1885,3 +1885,42 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
                     fh.write(json.dumps(rec) + "\n")
             got = measured_cost(runs)
         self.assertEqual(got, {"pope/dual-instructblip": 0.5})
+
+
+class TestTheSmokeManifestAndTheTagGuard(unittest.TestCase):
+    """A smoke release dispatches one session per case in ci_smoke.sh, and the
+    workflow's tag guard must actually receive the tag.
+
+    The second half exists because the guard shipped without
+    RELEASE_TAG in its step's env: `${RELEASE_TAG:-}` was always empty, the
+    guard printed "không phải tag round" on every release, and r23 and r24
+    were published with a guard that could not fire.
+    """
+
+    def test_smoke_sessions_equal_the_cases_in_the_script(self) -> None:
+        import re
+        script = (REPO_ROOT / "scripts" / "ci_smoke.sh").read_text()
+        cases = re.findall(r"^  (\d+\)) ARGS=", script, flags=re.M)
+        manifest = TestTheKaggleCiManifest._scalars(REPO_ROOT / "kaggle-smoke.yml")
+        self.assertEqual(int(manifest["sessions"]), len(cases))
+        self.assertGreater(len(cases), 0)
+        self.assertIn("{session}", manifest["run"])
+        self.assertIn("scripts/ci_smoke.sh", manifest["run"])
+
+    def test_smoke_output_cannot_overwrite_a_rounds_zip(self) -> None:
+        script = (REPO_ROOT / "scripts" / "ci_smoke.sh").read_text()
+        self.assertIn("fox_smoke_s", script)
+        # The comment may name the pattern; no command may write it.
+        self.assertNotIn("$OUTDIR/fox_runs", script)
+
+    def test_the_tag_guard_step_receives_the_release_tag(self) -> None:
+        text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()
+        head = text.index("Manifest phải khớp plan đã đóng băng")
+        run = text.index("run: |", head)
+        self.assertIn("RELEASE_TAG: ${{ github.event.release.tag_name }}",
+                      text[head:run])
+
+    def test_a_smoke_tag_selects_the_smoke_manifest(self) -> None:
+        text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()
+        self.assertIn("kaggle-smoke.yml", text)
+        self.assertIn("smoke*)", text)
