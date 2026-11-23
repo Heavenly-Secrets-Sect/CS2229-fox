@@ -1907,7 +1907,9 @@ class TestTheSmokeManifestAndTheTagGuard(unittest.TestCase):
         script = (REPO_ROOT / "scripts" / "ci_smoke.sh").read_text()
         cases = re.findall(r"^  (\d+\)) ARGS=", script, flags=re.M)
         manifest = TestTheKaggleCiManifest._scalars(REPO_ROOT / "kaggle-smoke.yml")
-        self.assertEqual(int(manifest["sessions"]), len(cases))
+        verify = TestTheKaggleCiManifest._scalars(REPO_ROOT / "kaggle-verify.yml")
+        self.assertEqual(
+            int(manifest["sessions"]) + int(verify["sessions"]), len(cases))
         self.assertGreater(len(cases), 0)
         self.assertIn("{session}", manifest["run"])
         self.assertIn("scripts/ci_smoke.sh", manifest["run"])
@@ -1933,6 +1935,13 @@ class TestTheSmokeManifestAndTheTagGuard(unittest.TestCase):
         self.assertIn(".already | length", text)
         self.assertIn(".registered | length", text)
         self.assertIn("bot không đăng ký gì mới", text)
+
+    def test_a_verify_tag_selects_the_verify_manifest_and_runs_case_4(self) -> None:
+        text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()
+        self.assertIn("kaggle-verify.yml", text)
+        self.assertIn("verify*)", text)
+        verify = TestTheKaggleCiManifest._scalars(REPO_ROOT / "kaggle-verify.yml")
+        self.assertIn("scripts/ci_smoke.sh 4", verify["run"])
 
     def test_a_smoke_tag_selects_the_smoke_manifest(self) -> None:
         text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()

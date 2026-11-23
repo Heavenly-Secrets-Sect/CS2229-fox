@@ -1465,12 +1465,13 @@ def _build_plan() -> List[Job]:
     # samples each. If the OLD config also dies, the code regressed or the
     # headroom was always this thin; if only the suffix dies, it is the margin.
     for label, kw in (
-        ("shared protocol, seed 45 (control)", {}),
+        ("shared protocol, seed 98 (control)", {}),
         ("suffix only", {"prompt_template_id": "pope_causalmm"}),
         ("top_p=1 only", {"top_p": 1.0}),
     ):
         jobs.append(Job(
-            "causalmm_oom_probe", "causalmm", "pope", "adversarial", seed=45,
+            "causalmm_oom_probe", "causalmm", "pope", "adversarial",
+            seed=98 if not kw else 45,
             limit=20, note=f"OOM probe, 20 samples: {label}", **kw))
 
     # r25 showed the control above OOMs too, on both GPUs, so suffix and top_p
@@ -1610,6 +1611,21 @@ def _build_plan() -> List[Job]:
                 "table11_mathvista", method, "mathvista", "testmini_mc500",
                 seed=seed, note=f"V20: MathVista MC500, {method}",
             ))
+
+    # ---- Table 1, compared methods at the paper's ten seeds -------------- #
+    # The paper's Tables 1 and 2 are "the best results averaged over 10
+    # independent runs". Sampling and Fox have ten seeds on adversarial;
+    # VCD, ICD, SID and CausalMM have three, so their intervals were wider than
+    # the two arms they are compared with. Seven more seeds each, adversarial
+    # only (where the gaps live), at the shared protocol. SID stays at the
+    # released cd_alpha=0.5 and CausalMM at the shared protocol, because V18 and
+    # V19 test the alternatives separately and must not be mixed into these.
+    for method in ("vcd", "icd", "sid", "causalmm"):
+        for seed in SEEDS_FULL[3:]:
+            jobs.append(Job(
+                "table1_methods_10seeds", method, "pope", "adversarial",
+                seed=seed,
+                note=f"{method}: seeds 45-51, to match the ten of Sampling and Fox"))
 
     return jobs
 

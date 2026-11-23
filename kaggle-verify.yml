@@ -1,0 +1,13 @@
+# Bit-for-bit verification of greedy reruns against the archive, one session.
+# Published by a release whose tag starts with `verify` (e.g. verify-r29); the
+# workflow then sends THIS manifest and skips the plan check. It runs case 4 of
+# scripts/ci_smoke.sh. `sessions` plus kaggle-smoke.yml's must equal the number
+# of cases in that script.
+notebook: ml-fox-ci
+sessions: 1
+accelerator: gpu
+internet: true
+budget_hours: 2
+est_hours: 0.5
+setup: ""
+run: FOX_PERSIST_ROOT=/kaggle/temp/fox-persist bash scripts/ci_smoke.sh 4

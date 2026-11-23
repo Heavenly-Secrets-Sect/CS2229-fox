@@ -33,6 +33,7 @@ jobs:
           # băng, nên không có gì để so. Số session của nó do một test giữ.
           case "${RELEASE_TAG:-}" in
             smoke*) echo "tag '${RELEASE_TAG}': kaggle-smoke.yml, bỏ qua kiểm tra plan"; exit 0 ;;
+            verify*) echo "tag '${RELEASE_TAG}': kaggle-verify.yml, bỏ qua kiểm tra plan"; exit 0 ;;
           esac
           want=$(jq -r '.n_sessions' scripts/run_plan.json)
           got=$(yq -r '.sessions' kaggle-run.yml)
@@ -80,7 +81,7 @@ jobs:
           fi
           tag=${RELEASE_TAG:-$(git rev-parse --short HEAD)}
           manifest=kaggle-run.yml
-          case "$tag" in smoke*) manifest=kaggle-smoke.yml ;; esac
+          case "$tag" in smoke*) manifest=kaggle-smoke.yml ;; verify*) manifest=kaggle-verify.yml ;; esac
           body=$(yq -o=json "$manifest" | jq -c --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg tag "$tag" --argjson dry "$dry" \
             '{repo:$repo, sha:$sha, tag:$tag, manifest:., dry_run:$dry}')
           ts=$(date +%s)000
