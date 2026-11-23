@@ -280,6 +280,9 @@ if the download time ever matters.
 
 ### 3.11 How the release runs three backbones with one patch
 
+> **Superseded in one respect by §3.20:** the release's Shikra visual keys are the 256
+> patches `[img_s + 1, img_e)`, not the 258 tokens between and including the markers.
+
 Worth understanding, because it was got wrong here first and because it
 explains a hardcoded constant that otherwise looks arbitrary.
 
@@ -1136,12 +1139,181 @@ images and our captions sent to OpenAI for this purpose only).
 refused by the API with `insufficient_quota` ("no credits remaining"), so no
 score exists yet; nothing was retried. 50 images in both orders is 100 calls.
 
+### 3.20 Shikra-7B: a port on the modern stack, a session-time merge, and a correction to 3.11
+
+**Status:** code, tests on tiny stand-ins, a smoke entry and 24 plan jobs
+exist (not frozen into any round). **Nothing here has run on the real
+checkpoint**; the list of what is therefore unverified is at the end.
+
+**What was built.** `src/foxrepro/fox/shikra.py` loads Shikra as three stock
+parts behind one wrapper (`ShikraForFox`): a `LlamaForCausalLM` carrying the
+Fox attention, a `CLIPVisionModel` (never patched, for the reason every other
+backbone's vision tower is not), and a `nn.Linear(1024, 4096)` holding the
+checkpoint's two `mm_projector` tensors. `forward(input_ids, attention_mask,
+pixel_values, past_key_values, use_cache)` is the signature `fox_generate`
+already drives, so the dual-branch loop, the fusion and the sampler are the
+shared ones. Methods are `sampling_shikra` and `fox_shikra`: own names, never
+pooled with `fox`, because the window, k and tau_js differ.
+
+**The prompt is read from the release, not assumed.** `pope_eval.py:63` and
+`char_eval.py:35` (github.com/Cc2021start/Fox, read 2026-11-24):
+`INSTRUCTION_TEMPLATE["shikra"] = "USER: <im_start><ImageHere><im_end>
+<question> ASSISTANT:"`, CHAIR's question being "Please describe this image in
+detail." `minigpt4/models/shikra.py` then replaces `<ImageHere>` by 256
+`<im_patch>`, prepends `system_message` with a bare `+` (the string in
+`eval_configs/shikra_eval.yaml`, which is byte-identical to the `llava_v1`
+system message, so runs keep `system_prompt_id=llava_v1` truthfully) and
+prepends BOS. No assumption remains in the template.
+
+**Correction to 3.11: the release's visual keys are the 256 patches, not 258.**
+3.11 said the hard-coded `img_s == 33 and img_e == 290` span is
+"256 + 2 = 258". The numbers are right and the reading is not: `33` and `290`
+are the positions of `<im_start>` and `<im_end>`, and `Uncertain_head.py`
+(`_span_visual_text`, `is_shikra` branch) then takes the visual keys as
+`[img_s + 1, img_e)` = positions 34..289 = the 256 patches. The markers are in
+none of its three regions (system is `[0, img_s)`, text starts at
+`img_e + 1`), so its three masses do not sum to 1 for Shikra, which they do
+for LLaVA. Here the span is **derived from the `<im_patch>` ids** exactly as
+LLaVA's is from `<image>`: `(34, 289)`, width 256, asserted by
+`FIXED_SPAN_WIDTH["shikra"] = 256`, with `<im_start>`/`<im_end>` checked to
+flank it at splice time. That equals the release's visual set. What differs,
+by one key at each end: `<im_start>` (key 33) falls in `[0, img_start)` and so
+counts toward `m_sys` (the release's `m_sys` is `[0, 33)`), and `<im_end>`
+counts toward `m_txt`. `H_vis` and the head selection's visual set are the
+same; only `m_sys` can differ, by the attention mass on one marker key, in a
+product `m_sys * H_vis` used to rank heads. The size of that effect is
+unknown. Making it exact needs a `sys_end` argument through
+`head_scores`/`intervene` (kernel code with a bit-equality oracle behind it),
+not done here; the alternative reading, a 258-wide span, was rejected because
+it would put two marker keys into `H_vis`, which the release does not.
+
+**The tokenizer detail that makes the markers land on 33 and 290.** The
+release runs the 2023 tokenizer, whose `tokenize()` strips the whitespace on
+both sides of an added token ("We strip left and right by default",
+`transformers/tokenization_utils.py:533`). The current `LlamaTokenizer` does
+not: `"USER: <im_start>"` gains a lone `"▁"` token before the marker and a
+second after `<im_end>`, which moves the markers to 34 and 291 and changes the
+text the model reads. `encode_prompt` therefore splits at the markers, strips,
+encodes the two text pieces separately and assembles the ids. Measured against
+the real tokenizer files of `shikras/shikra-7b-delta-v1-0708` (vocab 32003,
+ids 32000/32001/32002): `<im_start>` at 33, `<im_end>` at 290, 256 patches
+between them, for both the POPE and the CHAIR question. The smoke entry asserts
+the pair against the release's numbers, so a tokenizer upgrade that shifts them
+fails loudly. The stub tokenizer in `tests/test_shikra.py` cannot show this
+(it was measured once, by hand); `build_shikra_checkpoint.py --verify` repeats
+the measurement on the real files.
+
+**Hyperparameters are the paper's, and the release says something else.**
+`fox_shikra` runs layers 3-10 (Table 15, manual), k=0.4, tau_JS=0.2, alpha=2,
+beta=0.1, gamma=1e4 (the code's; never stated in the paper), `m_sys * H_vis`
+scoring. The release's own Shikra path is the shared LLaVA attention in
+`transformers/models/llama/modeling_llama.py:337`: hard-coded
+`2 <= layer_idx <= 15` and `SELECT_RATIO = 0.35`, with the comment
+"llava2-15/shikra 3-10" beside the condition, so the code that produced the
+paper's Shikra numbers may have run 2-15 with 0.35 and the text says 3-10 with
+0.4. Not run both ways (the brief fixed the paper's values, as for the 0.2 arm
+of 3.16); a `--intervention-layers 2-15 --k 0.35 --tau-js 0.15` job is the
+cheap way to measure the distance and is not in the plan. k, tau_js and the
+window are left `None` in the jobs on purpose (`pair_key` includes k and
+tau_js; setting them on the fox arm would split it from its baseline), and
+the method records the resolved values in every record.
+
+**The checkpoint, and how a session gets it.** The Hub holds a delta only.
+`load_shikra("shikras/shikra-7b-delta-v1-0708")` merges it itself, in RAM,
+with no file written and no token: public repos, `snapshot_download` of
+exactly `pytorch_model-*.bin` + indices + tokenizer files for the delta and
+`model-*.safetensors` + index for `huggyllama/llama-7b` (its duplicate `.bin`
+set is skipped). Nothing is hosted, so the licensing question of 3.10 does not
+arise and the private-repo problem does not either. The arithmetic is the
+release's `apply_delta.py` (fetched from github.com/shikras/shikra, read
+2026-11-24) rewritten to stream: fp16 `+=`; `embed_tokens` and `lm_head`, whose
+first axis grew from 32000 to 32003, get the base added to the first 32000 rows
+and the delta alone for the last three (the trained marker embeddings);
+`model.mm_projector.*` pass through. `tests/test_shikra.py` proves bit-equality
+against a literal transcription of that function. The 32 `rotary_emb.inv_freq`
+tensors of the delta (325 = 291 + 32 + 2) are dropped: today's
+`LlamaRotaryEmbedding` recomputes them in fp32. The 2023 stack loaded the
+checkpoint's fp16 buffer instead, so cos/sin differ in the last bits of fp16
+rounding; `--verify` prints the measured gap. The same effect exists for
+LLaVA-1.5 on the converted `llava-hf` checkpoint and was accepted there.
+
+Footprint, from the Hub file listings of 2026-11-24 (exact bytes):
+
+| item | bytes | GiB |
+|---|---|---|
+| delta `.bin` shards | 13,485,396,661 | 12.56 |
+| `huggyllama/llama-7b` safetensors | 13,476,876,661 | 12.55 |
+| `openai/clip-vit-large-patch14` `model.safetensors` (whole CLIP; only the vision half is used) | 1,710,540,580 | 1.59 |
+| **fetched per session** | **28,672,813,902** | **26.70** |
+| merged weights held in RAM, never on disk | ~13.49 GB | 12.56 |
+
+Disk: the 26.7 GiB sits in the HF cache (`/kaggle/temp`, `FOX_HF_HOME`), below
+the 29.5 GiB that `Salesforce/instructblip-vicuna-7b` downloads in the same CI
+and that its smoke session (smoke-r29) completed, so on that evidence the disk
+holds it; the free space on a session's `/kaggle/temp` was not measured here
+(`scripts/probe_host.py` `check_disk` measures it, and now knows the Shikra
+sizes). The "~40 GB transient" of 3.11 applies to writing a merged copy to disk
+(`build_shikra_checkpoint.py`: 26.7 + 12.6 = 37.7 GiB with sources kept); a
+session does not write one. RAM: the merge peaks at the merged 12.56 GiB plus
+one tensor, with the 10 GB delta shard memory-mapped (page cache, reclaimable);
+if the mmap of the 2023 pickle is refused `_load_bin` reads the shard into RAM
+and prints a warning, raising the peak by about 10 GB. Kaggle's T4x2 host RAM
+(about 29 GB, recalled, not measured) holds either; that is the number to
+check first on the smoke session. Cost: a ~26.7 GiB download per session that
+loads Shikra, which is not in the per-sample estimate.
+
+If the session merge turns out not to fit (RAM, disk or time), the least bad
+fallback is `scripts/build_shikra_checkpoint.py` once on a big-disk host and a
+**private Kaggle Dataset** attached to the notebook, not a private HF repo
+(which the owner found unreadable from Kaggle). That only works for sessions
+run under accounts that can read the dataset, and it is a redistribution of
+LLaMA-derived weights to the extent that dataset is shared; keep it private to
+the owner. Not built, and not needed unless the smoke session says so.
+
+**What the plan contains (not frozen).** 24 jobs: POPE x 3 splits x
+{sampling_shikra, fox_shikra} x seeds 42-44 (targets `table1_shikra`, feeding
+Tables 1 and 8) and CHAIR val2014_500 x the same (`table2_shikra`, Table 2).
+Cost factors 0.6 (POPE) and 0.95 (CHAIR) on LLaVA's per-sample cost are
+**estimates from token counts**, not measurements; `measured_cost` buckets
+Shikra apart (`-shikra`) for `--calibrate`. Figures 17 and 22 (sensitivity and
+the Shikra panels beyond the main tables) are not planned: they are sweeps that
+only make sense once the base column runs.
+
+**Provenance.** Every record's `describe()` carries: the projector
+("linear 1024 -> 4096"), the vision tower and its dtype, `select_layer -2`,
+`drop_cls`, 256 patches, the marker ids, the template and where it came from,
+the tokenisation rule, the span rule, the merge rule, and from the loader the
+delta and base snapshot revisions (Hub commit hashes) and the CLIP id.
+
+**EOS.** The delta's `config.json` says `bos_token_id 0, eos_token_id 1`. The
+release generates with the tokenizer's ids (`eos_token_id =
+llama_tokenizer.eos_token_id` = 2, BOS 1), and so does this port; the config's
+values would stop generation on `<s>`.
+
+**Not verified (stubs only).** (1) That the real delta loads, merges and fits
+in RAM and disk on a Kaggle host, including `torch.load(..., mmap=True)` on the
+2023 shards. (2) The GPU dispatch in `_dispatch` (`get_balanced_memory` +
+`infer_auto_device_map` + `dispatch_model`, one GiB reserved on GPU 0 for CLIP
+and the projector): written against accelerate's API on a host that has no
+accelerate. (3) That `LlamaForCausalLM.from_pretrained(None, state_dict=...)`
+loads 6.7B parameters as it does the toy (it does for the toy, on CPU).
+(4) Any number a benchmark would report; the vision tower runs `sdpa` in fp16
+where the release ran its eager attention in fp16. (5) Whether `<im_start>` in
+`m_sys` moves head selection. (6) The 0.6/0.95 cost factors. The smoke session
+(`bash scripts/ci_smoke.sh 4`, i.e. `scripts/smoke_backbone.py --shikra`, case 4
+of `kaggle-smoke.yml`) asserts, on the real model: span 256 and
+flanked, markers at 33 and 290, the patch firing on layers 3-10 only and not on
+CLIP, `m_sys + m_vis + m_txt = 1` with `m_sys > 0`, splice differs from
+text-only and from another image, all weights present (key set, marker rows,
+projector nonzero), `mode=off` bit-identical to the baseline forward, `gamma=0`
+keeps the argmax, and generation returns the same span.
+
 ## 4. In the release, absent here
 
 | | Why |
 |---|---|
 | InstructBLIP path | **Ported, see §3.16.** It is a **second, divergent copy** of the intervention (`minigpt4/models/modeling_llama.py`) that drops `m_sys` from Eq. 4 entirely and uses layers 4–10 with k=0.4. A different method, not a backbone swap. |
-| Shikra path | **Correction, see §3.11.** Earlier notes here called this a Track A job needing transformers 4.29.2. That was wrong: `ShikraLlamaForCausalLM` has no transformers class, but its decoder is a plain LLaMA-7B and the checkpoint carries exactly two tensors beyond one — `model.mm_projector.{weight,bias}`. It is a port on the modern stack, not a vendored environment. It is still a delta needing `huggyllama/llama-7b` merged in. |
+| Shikra path | **Ported, see §3.20** (which also corrects the 258-token reading below). **Correction, see §3.11.** Earlier notes here called this a Track A job needing transformers 4.29.2. That was wrong: `ShikraLlamaForCausalLM` has no transformers class, but its decoder is a plain LLaMA-7B and the checkpoint carries exactly two tensors beyond one — `model.mm_projector.{weight,bias}`. It is a port on the modern stack, not a vendored environment. It is still a delta needing `huggyllama/llama-7b` merged in. |
 | InstructBLIP path, practically | `Salesforce/instructblip-vicuna-7b` is public and transformers ships `InstructBlipForConditionalGeneration`, so unlike Shikra it can run on the modern stack. Costs: 31.7 GB to download (stored fp32; ~15.8 GB in VRAM once cast, which 2x T4 holds sharded). The work is porting, not hosting — see the row above on the second intervention copy, and note the visual span is **32 Q-Former query tokens**, not 576 patch tokens, so `H_vis` is an entropy over 32 positions instead of 576. |
 | FastV / OPERA plumbing | Present in the release as argparse flags, all `default=False`, with no reweighting behind the SID one. |
 | HF `logits_processor` | We apply the warpers (temperature, top-p) but not the processor list, which is empty by default for this configuration. |
