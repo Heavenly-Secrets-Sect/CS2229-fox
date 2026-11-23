@@ -1627,6 +1627,20 @@ def _build_plan() -> List[Job]:
                 seed=seed,
                 note=f"{method}: seeds 45-51, to match the ten of Sampling and Fox"))
 
+    # ---- Table 11 follow-up: `fox off` ------------------------------------ #
+    # The same split V17 made on MME and V8/V15 made on POPE: Fox minus
+    # baseline mixes the dual-pass fusion with the intervention, and `off` runs
+    # the fusion alone. Table 11 has no such arm, so it is ours, and cheap
+    # (MMBench is one pass of a short answer; MathVista MC500 is a few minutes).
+    for seed in SEEDS_BREADTH:
+        jobs.append(Job(
+            "table11_mmbench_off", "fox", "mmbench", "dev", seed=seed,
+            mode="off", note="MMBench: fusion only, no intervention"))
+        jobs.append(Job(
+            "table11_mathvista_off", "fox", "mathvista", "testmini_mc500",
+            seed=seed, mode="off",
+            note="MathVista MC500: fusion only, no intervention"))
+
     return jobs
 
 

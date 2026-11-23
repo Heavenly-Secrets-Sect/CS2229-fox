@@ -665,6 +665,26 @@
       "n_samples": 3000,
       "measured": false
     },
+    "table11_mathvista_off:fox:mathvista:testmini_mc500:off": {
+      "id": "table11_mathvista_off:fox:mathvista:testmini_mc500:off",
+      "target": "table11_mathvista_off",
+      "note": "MathVista MC500: fusion only, no intervention",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode off --logit-dtype native",
+      "est_s": 1000.0,
+      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-42__dt-fp16__v-sampling-18b4b90b.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table11_mathvista_off:fox:mathvista:testmini_mc500:off:s43": {
+      "id": "table11_mathvista_off:fox:mathvista:testmini_mc500:off:s43",
+      "target": "table11_mathvista_off",
+      "note": "MathVista MC500: fusion only, no intervention",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode off --logit-dtype native",
+      "est_s": 1000.0,
+      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-43__dt-fp16__v-sampling-18b4b90b.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
     "table10_qwen3vl:sampling_qwen3vl:chair:val2014_500:q3vl:spnone:s44": {
       "id": "table10_qwen3vl:sampling_qwen3vl:chair:val2014_500:q3vl:spnone:s44",
       "target": "table10_qwen3vl",
@@ -763,6 +783,16 @@
       "est_s": 3300.0,
       "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-a9aa72be.jsonl",
       "n_samples": 3000,
+      "measured": false
+    },
+    "table11_mathvista_off:fox:mathvista:testmini_mc500:off:s44": {
+      "id": "table11_mathvista_off:fox:mathvista:testmini_mc500:off:s44",
+      "target": "table11_mathvista_off",
+      "note": "MathVista MC500: fusion only, no intervention",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode off --logit-dtype native",
+      "est_s": 1000.0,
+      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-44__dt-fp16__v-sampling-18b4b90b.jsonl",
+      "n_samples": 500,
       "measured": false
     },
     "table10_internvl3:sampling_internvl3:chair:val2014_500:ivl3:spnone:s43": {
@@ -925,6 +955,16 @@
       "n_samples": 3000,
       "measured": false
     },
+    "table11_mmbench_off:fox:mmbench:dev:off": {
+      "id": "table11_mmbench_off:fox:mmbench:dev:off",
+      "target": "table11_mmbench_off",
+      "note": "MMBench: fusion only, no intervention",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter --mode off --logit-dtype native",
+      "est_s": 5471.2,
+      "run_file": "m-fox__b-mmbench__s-dev__seed-42__dt-fp16__v-sampling-c32dfdf6.jsonl",
+      "n_samples": 4377,
+      "measured": false
+    },
     "table1_methods_10seeds:vcd:pope:adversarial:s48": {
       "id": "table1_methods_10seeds:vcd:pope:adversarial:s48",
       "target": "table1_methods_10seeds",
@@ -1003,6 +1043,16 @@
       "est_s": 3300.0,
       "run_file": "m-causalmm__b-pope__s-adversarial__seed-49__dt-fp16__v-sampling-2d07edcb.jsonl",
       "n_samples": 3000,
+      "measured": false
+    },
+    "table11_mmbench_off:fox:mmbench:dev:off:s43": {
+      "id": "table11_mmbench_off:fox:mmbench:dev:off:s43",
+      "target": "table11_mmbench_off",
+      "note": "MMBench: fusion only, no intervention",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter --mode off --logit-dtype native",
+      "est_s": 5471.2,
+      "run_file": "m-fox__b-mmbench__s-dev__seed-43__dt-fp16__v-sampling-c32dfdf6.jsonl",
+      "n_samples": 4377,
       "measured": false
     },
     "table1_methods_10seeds:vcd:pope:adversarial:s50": {
@@ -1084,6 +1134,16 @@
       "run_file": "m-causalmm__b-pope__s-adversarial__seed-51__dt-fp16__v-sampling-2d07edcb.jsonl",
       "n_samples": 3000,
       "measured": false
+    },
+    "table11_mmbench_off:fox:mmbench:dev:off:s44": {
+      "id": "table11_mmbench_off:fox:mmbench:dev:off:s44",
+      "target": "table11_mmbench_off",
+      "note": "MMBench: fusion only, no intervention",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter --mode off --logit-dtype native",
+      "est_s": 5471.2,
+      "run_file": "m-fox__b-mmbench__s-dev__seed-44__dt-fp16__v-sampling-c32dfdf6.jsonl",
+      "n_samples": 4377,
+      "measured": false
     }
   },
   "sessions": [
@@ -1099,9 +1159,11 @@
         "table10_qwen3vl:sampling_qwen3vl:chair:val2014_500:q3vl:spnone:s43",
         "table10_qwen3vl:fox_qwen3vl:chair:val2014_500:q3vl:spnone:s43",
         "table10_qwen3vl:sampling_qwen3vl:pope:adversarial:q3vl:spnone:s44",
-        "table10_qwen3vl:fox_qwen3vl:pope:adversarial:q3vl:spnone:s44"
+        "table10_qwen3vl:fox_qwen3vl:pope:adversarial:q3vl:spnone:s44",
+        "table11_mathvista_off:fox:mathvista:testmini_mc500:off",
+        "table11_mathvista_off:fox:mathvista:testmini_mc500:off:s43"
       ],
-      "est_hours": 9.43
+      "est_hours": 9.99
     },
     {
       "session": 2,
@@ -1115,9 +1177,10 @@
         "table10_internvl3:sampling_internvl3:pope:adversarial:ivl3:spnone:s43",
         "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s43",
         "table10_internvl3:sampling_internvl3:pope:adversarial:ivl3:spnone:s44",
-        "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s44"
+        "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s44",
+        "table11_mathvista_off:fox:mathvista:testmini_mc500:off:s44"
       ],
-      "est_hours": 9.43
+      "est_hours": 9.71
     },
     {
       "session": 3,
@@ -1143,9 +1206,10 @@
         "table1_methods_10seeds:vcd:pope:adversarial:s47",
         "table1_methods_10seeds:icd:pope:adversarial:s47",
         "table1_methods_10seeds:sid:pope:adversarial:s47",
-        "table1_methods_10seeds:causalmm:pope:adversarial:s47"
+        "table1_methods_10seeds:causalmm:pope:adversarial:s47",
+        "table11_mmbench_off:fox:mmbench:dev:off"
       ],
-      "est_hours": 7.33
+      "est_hours": 8.85
     },
     {
       "session": 5,
@@ -1157,9 +1221,10 @@
         "table1_methods_10seeds:vcd:pope:adversarial:s49",
         "table1_methods_10seeds:icd:pope:adversarial:s49",
         "table1_methods_10seeds:sid:pope:adversarial:s49",
-        "table1_methods_10seeds:causalmm:pope:adversarial:s49"
+        "table1_methods_10seeds:causalmm:pope:adversarial:s49",
+        "table11_mmbench_off:fox:mmbench:dev:off:s43"
       ],
-      "est_hours": 7.33
+      "est_hours": 8.85
     },
     {
       "session": 6,
@@ -1171,9 +1236,10 @@
         "table1_methods_10seeds:vcd:pope:adversarial:s51",
         "table1_methods_10seeds:icd:pope:adversarial:s51",
         "table1_methods_10seeds:sid:pope:adversarial:s51",
-        "table1_methods_10seeds:causalmm:pope:adversarial:s51"
+        "table1_methods_10seeds:causalmm:pope:adversarial:s51",
+        "table11_mmbench_off:fox:mmbench:dev:off:s44"
       ],
-      "est_hours": 7.33
+      "est_hours": 8.85
     }
   ]
 }

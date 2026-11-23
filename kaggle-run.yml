@@ -11,7 +11,7 @@ sessions: 6
 accelerator: gpu
 internet: true
 budget_hours: 10
-est_hours: 49.8
+est_hours: 55.2
 
 # Rỗng có chủ ý. run_kaggle_fox.sh tự `pip install -e .`, chặn host không có
 # GPU, kiểm tra checkpoint đã convert và tải ảnh mà đúng session này cần.
