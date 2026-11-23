@@ -450,7 +450,7 @@ specified — `shuffle` 76.67 vs `cf_blind` 77.53, p = 1.6e-4.
 
 | | why |
 |---|---|
-| Figure 6 and Table 5, GPT-4V judge | GPT-4V is deprecated, so not reproducible as such. A substitute-judge harness exists (DEVIATIONS 3.18, `scripts/gpt_judge.py`: Table 5 prompt verbatim, first 50 images of the 500-image caption set, both orders, LLaVA-1.5 only); **no score yet**, the API account returned `insufficient_quota` on the first call |
+| Figure 6 and Table 5, GPT-4V judge | the original instrument is gone (GPT-4V is deprecated). A substitute-judge measurement was run instead; see the Table 5 / Figure 6 row under "Reachable now" |
 | Figures 16, 17, 21, 22 | InstructBLIP and Shikra |
 | Figures 10, 11, 20 | qualitative examples, nothing to reproduce |
 
@@ -485,7 +485,7 @@ find is protocol differences that had never been run:
 | VCD and ICD rows of Table 1 | the release's flags for both are dead (`pope_eval.py:137`, `vcd_sample.py:142`), so its own code cannot have produced them; where they came from is not determinable |
 | VCD random split (−2.88) | what Fox's harness feeds the noiser is not visible; a one-line variant (`min` in the cutoff) exists only in the dead branch, and its effect would be unattributable |
 | Table 13 and Figure 3/13, Eq. 13 | the paper's own quantities are inconsistent (the three `m` do not sum to 1 under Eq. 11; Eq. 13's denominator is negative as written) |
-| Table 5, Figure 6 | the GPT-4V judge is deprecated; the user authorised a substitute judge (a different instrument, declared in DEVIATIONS 3.18). Harness and tests done; the run is waiting on OpenAI API credit (`insufficient_quota`). Even when run it covers LLaVA-1.5 only, not the across-backbone trend |
+| Table 5, Figure 6 | the GPT-4V instrument cannot be reproduced; measured with `gpt-4.1-2025-04-14` instead, a different instrument declared in DEVIATIONS 3.18. Result: no detectable Fox effect, and a first-position bias larger than any effect. LLaVA-1.5 only, so the across-backbone trend of Figure 6 is not drawn |
 | Table 2, OPERA CHAIR row | needs the rollback this project audited but never built, plus 40.5 GPU-hours; deferred, not declined |
 
 **Code-limited, now in progress.** Backbones: Qwen3-VL-8B and InternVL3-8B
@@ -506,6 +506,7 @@ rule-based answer extractor.
 | **Table 10, recent backbones** | **smoke passed (smoke-r27, r29): Qwen3-VL-8B and InternVL3-8B load, the Fox patch reaches the decoder, the image span is contiguous (196 and 256 tokens) and the intervention generates.** What is left is writing the Sampling/Fox (and VCD/SID) methods for these two backbones: `_LlavaMethod` is LLaVA-specific, so the plan has no Table 10 jobs yet. Table 3 is the main-text copy of this table |
 | **Table 11, MMBench** <!-- plan-targets: table11_mmbench --> | **harness done, no run yet** (V20, 9 jobs, ~11.6 GPU-h estimated). `lmms-lab/MMBench_EN` dev (4377 questions; `test` has no answers), single-pass accuracy, rule-based letter extraction, perception/reasoning on the dataset's own l2-category. Differs from the paper's protocol in ways that can move the number: DEVIATIONS §3.16 |
 | **Table 11, MathVista** <!-- plan-targets: table11_mathvista --> | **harness done, no run yet** (V20, 6 jobs, ~1.3 GPU-h estimated). Its official protocol extracts answers with an LLM, the same dependency that makes Table 5 irreproducible, so this is **only the multiple-choice subset** (a fixed random 500 of 540 `testmini` MC rows) with a rule-based extractor, declared in DEVIATIONS §3.16. Levels are not comparable to the paper's 19.53 (multiple choice has a ~30% chance floor); the Fox-minus-baseline difference is the comparable quantity, and at 500 questions it resolves roughly 3 points |
+| **Table 5 and Figure 6, GPT-judge** | **measured with a substitute judge (`gpt-4.1-2025-04-14`, 50 images, 100 calls, 0 unparsed, ~$0.39), LLaVA-1.5 only.** With the paper's single order (Assistant 1 = Sampling) Fox scores *lower* on accuracy (6.26 vs 5.76, −0.50 [−1.02, +0.02]); with the order swapped Fox scores *higher* (+1.32 [+0.78, +1.86]); the order-averaged difference is +0.41 [−0.10, +0.92] on accuracy and −0.09 [−0.37, +0.20] on detailedness, both including zero. Whoever is shown first gains about 0.9 points, more than any Fox effect. So the judge detects no hallucination or detail difference between Sampling and Fox, and the paper's single-order protocol cannot be told apart from position bias |
 
 ---
 

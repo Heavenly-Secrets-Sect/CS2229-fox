@@ -1136,6 +1136,17 @@ images and our captions sent to OpenAI for this purpose only).
 refused by the API with `insufficient_quota` ("no credits remaining"), so no
 score exists yet; nothing was retried. 50 images in both orders is 100 calls.
 
+**Result (2026-11-24, 100 calls, ~$0.39, 0 unparsed).** Accuracy, Fox minus
+Sampling: paper order (Assistant 1 = Sampling) −0.50 [−1.02, +0.02]; swapped
+order +1.32 [+0.78, +1.86]; order-averaged +0.41 [−0.10, +0.92]. Detailedness:
+−0.12, −0.06 and −0.09, all including zero. The two single orders disagree in
+sign: the response shown first scores about 0.9 higher, which is larger than any
+Fox effect, so a single-order protocol (the paper does not say which order, or
+whether it varied it) measures position as much as method. The order-averaged
+reading is the one to quote, and it shows no detectable difference. Different
+instrument from GPT-4V: the numbers are not comparable to Figure 6, only the
+direction and the bias are informative.
+
 ## 4. In the release, absent here
 
 | | Why |
