@@ -15,8 +15,10 @@ Status values:
 | **BLOCKED** | needs a model, dataset, or codebase not available here |
 
 Backbone coverage throughout: **LLaVA-1.5 only**. InstructBLIP runs a second,
-divergent copy of the intervention (§3.11) and Shikra needs a port; neither is
-a configuration change. Every row below is the LLaVA-1.5 column unless stated.
+divergent copy of the intervention (§3.11); Shikra is ported (DEVIATIONS 3.20,
+code and 24 jobs, **not yet run**: nothing from the real checkpoint exists).
+Neither is a configuration change. Every row below is the LLaVA-1.5 column
+unless stated.
 
 ---
 
@@ -451,7 +453,7 @@ specified — `shuffle` 76.67 vs `cf_blind` 77.53, p = 1.6e-4.
 | | why |
 |---|---|
 | Figure 6 and Table 5, GPT-4V judge | the original instrument is gone (GPT-4V is deprecated). A substitute-judge measurement was run instead; see the Table 5 / Figure 6 row under "Reachable now" |
-| Figures 16, 17, 21, 22 | InstructBLIP and Shikra |
+| Figures 16, 17, 21, 22 | InstructBLIP and Shikra sweeps and panels. Both base columns are ported (DEVIATIONS 3.16, 3.20) and the sweeps wait on them running; none is planned |
 | Figures 10, 11, 20 | qualitative examples, nothing to reproduce |
 
 ---
@@ -491,8 +493,12 @@ find is protocol differences that had never been run:
 **Code-limited, now in progress.** Backbones: Qwen3-VL-8B and InternVL3-8B
 (Tables 3 and 10, Table 15 rows) wait only on the smoke session;
 InstructBLIP (Tables 1, 2, 8 and Figures 16, 21) is a port on the modern stack
-and is being implemented; Shikra (Figures 17, 22) needs a bespoke projector and
-checkpoint merge and comes after InstructBLIP. MMBench and MathVista's
+(36 jobs frozen in r28); Shikra (Tables 1, 2, 8 and Figures 17, 22) is ported
+the same way (own projector, a session-time delta merge; DEVIATIONS 3.20) and
+waits on its smoke session and a frozen round. **RUNNABLE, not run:** 24 jobs
+(`table1_shikra`, `table2_shikra`, seeds 42-44, costs estimated) with the
+paper's hyperparameters (layers 3-10, k=0.4, tau_JS=0.2) where the release's
+shared code says 2-15 / 0.35; nothing from the real checkpoint exists yet. MMBench and MathVista's
 multiple-choice subset (Table 11) are being implemented with a declared
 rule-based answer extractor.
 

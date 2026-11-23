@@ -48,7 +48,7 @@ def cfg_from_command(cmd: str) -> GenConfig:
             i += 1
     bench = args["benchmark"]
     is_fox = str(args["method"]) in ("fox", "fox_instructblip", "fox_qwen3vl",
-                                     "fox_internvl3")
+                                     "fox_internvl3", "fox_shikra")
     return GenConfig(
         method=str(args["method"]), benchmark=str(bench), split=str(args["split"]),
         seed=int(str(args["seed"])), dtype=str(args["dtype"]),
@@ -103,6 +103,11 @@ class TestPlanMatchesTheCli(unittest.TestCase):
         for job in PLAN:
             if job.method.endswith(("_qwen3vl", "_internvl3")):
                 self.assertIn(job.model_id, job.command())
+                self.assertNotIn("llava-hf", job.command())
+            elif job.method.endswith("_shikra"):
+                # A DELTA repo, merged in the session (DEVIATIONS 3.20): the
+                # id must be the delta and never an unmerged LLaVA repo.
+                self.assertIn("shikras/shikra-7b-delta-v1-0708", job.command())
                 self.assertNotIn("llava-hf", job.command())
             elif job.method.endswith("_instructblip"):
                 # The pre-cast fp16 copy (DEVIATIONS 3.10), never a quantized
@@ -726,7 +731,9 @@ class TestSessionBudget(unittest.TestCase):
         ]
 
     def _smallest_fitting(self) -> int:
-        for n in range(1, 61):
+        # The whole plan passed 600 GPU-h with the extra backbones, which is
+        # more than sixty ten-hour sessions, so the search range grew with it.
+        for n in range(1, 121):
             if max(self._loads(n)) <= self.WALL_HOURS:
                 return n
         self.fail("no split of the plan fits a 10 h session")
@@ -1936,12 +1943,12 @@ class TestTheSmokeManifestAndTheTagGuard(unittest.TestCase):
         self.assertIn(".registered | length", text)
         self.assertIn("bot không đăng ký gì mới", text)
 
-    def test_a_verify_tag_selects_the_verify_manifest_and_runs_case_4(self) -> None:
+    def test_a_verify_tag_selects_the_verify_manifest_and_runs_case_5(self) -> None:
         text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()
         self.assertIn("kaggle-verify.yml", text)
         self.assertIn("verify*)", text)
         verify = TestTheKaggleCiManifest._scalars(REPO_ROOT / "kaggle-verify.yml")
-        self.assertIn("scripts/ci_smoke.sh 4", verify["run"])
+        self.assertIn("scripts/ci_smoke.sh 5", verify["run"])
 
     def test_a_smoke_tag_selects_the_smoke_manifest(self) -> None:
         text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()

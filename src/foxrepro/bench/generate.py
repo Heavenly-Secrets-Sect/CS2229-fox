@@ -477,6 +477,7 @@ _GPU_METHODS = frozenset({
     "sampling", "fox", "vcd", "icd", "sid", "causalmm", "opera",
     "vcd_fox_fusion", "sampling_instructblip", "fox_instructblip",
     "sampling_qwen3vl", "fox_qwen3vl", "sampling_internvl3", "fox_internvl3",
+    "sampling_shikra", "fox_shikra",
 })
 
 

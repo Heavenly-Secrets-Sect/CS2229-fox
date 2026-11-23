@@ -222,12 +222,21 @@ INSTRUCTBLIP_MODEL_ID = "Salesforce/instructblip-vicuna-7b"
 QWEN3VL_MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
 INTERNVL3_MODEL_ID = "OpenGVLab/InternVL3-8B-hf"
 
+#: Shikra-7B is not a checkpoint anyone can load: the Hub holds a DELTA that
+#: must be added to ``huggyllama/llama-7b``. A session does that merge itself,
+#: in RAM, from these two public repos (``fox/shikra.py``; docs/DEVIATIONS.md
+#: 3.20), so the id a run records is the delta's and the base is recorded in
+#: the run's provenance. Nothing is hosted, which keeps the licensing question
+#: of 3.10 closed.
+SHIKRA_MODEL_ID = "shikras/shikra-7b-delta-v1-0708"
+
 #: Short tag put into ``job_id`` for a non-default backbone, so two backbones
 #: never share an id and the ids of every existing job stay as they were.
 BACKBONE_TAGS: Dict[str, str] = {
     INSTRUCTBLIP_MODEL_ID: "ib",
     QWEN3VL_MODEL_ID: "q3vl",
     INTERNVL3_MODEL_ID: "ivl3",
+    SHIKRA_MODEL_ID: "sk",
 }
 
 #: Methods that are the InstructBLIP ports (``bench/methods.py``). They are
@@ -235,13 +244,30 @@ BACKBONE_TAGS: Dict[str, str] = {
 #: groups by method can pool InstructBLIP's H_vis-only Fox with LLaVA's.
 INSTRUCTBLIP_METHODS = frozenset({"sampling_instructblip", "fox_instructblip"})
 
+#: Methods that are the Shikra ports (``bench/methods.py``); own names for the
+#: same reason as the InstructBLIP pair: ``fox_shikra`` runs layers 3-10,
+#: k=0.4, tau_js=0.2 where ``fox`` runs 2-15, 0.35, 0.15.
+SHIKRA_METHODS = frozenset({"sampling_shikra", "fox_shikra"})
+
+#: ESTIMATES, NOT MEASUREMENTS, replaced by ``--calibrate`` once a Shikra run
+#: exists (``measured_cost`` buckets it apart). Arithmetic on token counts, as
+#: for InstructBLIP: the prompt is ~33 + 258 + ~15 = ~306 tokens against
+#: LLaVA's ~620, and CLIP ViT-L/14 at 224 px reads 257 tokens against 577 at
+#: 336 px, so POPE (prefill-bound) is taken at 0.6, with the fixed costs
+#: (cross-GPU hops, sampling) keeping it well above the 0.5 token ratio.
+#: CHAIR is decode-bound and a decode step reads the same 7B decoder: 0.95.
+#: NOT included: the once-per-session cost of fetching ~26.7 GiB and merging
+#: the delta, which is paid by whichever session loads Shikra first and is
+#: not per-sample at all.
+SHIKRA_COST_FACTOR: Dict[str, float] = {"pope": 0.6, "chair": 0.95}
+
 #: Methods that take ``--mode`` / ``--logit-dtype``.
 #: Table 10 ports: separate NAMES for the same reason as InstructBLIP's.
 RECENT_BACKBONE_METHODS = frozenset({
     "sampling_qwen3vl", "fox_qwen3vl", "sampling_internvl3", "fox_internvl3"})
 
 FOX_METHODS = frozenset({"fox", "fox_instructblip", "fox_qwen3vl",
-                         "fox_internvl3"})
+                         "fox_internvl3", "fox_shikra"})
 
 #: ESTIMATE, A GUESS. Both are ~8B decoders (Qwen3-VL-8B: 36 layers; InternVL3-
 #: 8B: a Qwen2.5-7B decoder), so the T4x2 footprint is taken to be LLaVA's and
@@ -272,7 +298,8 @@ INSTRUCTBLIP_COST_FACTOR: Dict[str, float] = {"pope": 0.5, "chair": 0.9}
 #: ``mode="off"`` does NOT take a method out of this set: it disables the head
 #: edit and keeps the second branch, which is the point of that control.
 DUAL_BRANCH = frozenset({"fox", "vcd", "sid", "causalmm", "vcd_fox_fusion",
-                         "fox_instructblip", "fox_qwen3vl", "fox_internvl3"})
+                         "fox_instructblip", "fox_qwen3vl", "fox_internvl3",
+                         "fox_shikra"})
 
 #: Methods whose two branches cannot be batched, so the weights are read twice
 #: per token. ICD disturbs the instruction, so the sequences differ in length.
@@ -448,6 +475,8 @@ class Job:
             base *= INSTRUCTBLIP_COST_FACTOR.get(self.benchmark, 1.0)
         if self.method in RECENT_BACKBONE_METHODS:
             base *= RECENT_BACKBONE_COST_FACTOR.get(self.benchmark, 1.0)
+        elif self.method in SHIKRA_METHODS:
+            base *= SHIKRA_COST_FACTOR.get(self.benchmark, 1.0)
         return self.n_samples * base
 
     def n_new_tokens(self) -> int:
@@ -1641,6 +1670,28 @@ def _build_plan() -> List[Job]:
             seed=seed, mode="off",
             note="MathVista MC500: fusion only, no intervention"))
 
+    # ---- Shikra-7B: the paper's Shikra columns (Tables 1, 2, 8) ---------- #
+    # Not frozen into any round; DEVIATIONS 3.20. Three seeds, a breadth tier,
+    # last in plan order so no existing round's `plan plan` changes. Costs are
+    # ESTIMATES (SHIKRA_COST_FACTOR) and exclude the per-session ~26.7 GiB
+    # fetch and merge.
+    #
+    # k, tau_js and the window are None ON PURPOSE, as for InstructBLIP:
+    # pair_key includes k and tau_js, so setting them on the fox arm alone
+    # would split it from its own baseline. The method resolves the paper's
+    # values (3-10, k=0.4, tau_js=0.2) and records them in every record.
+    # system_prompt_id stays llava_v1: Shikra's system message is that string.
+    for seed in SEEDS_BREADTH:
+        for method in ("sampling_shikra", "fox_shikra"):
+            for split in _pope_splits():
+                jobs.append(Job(
+                    "table1_shikra", method, "pope", split, seed=seed,
+                    model_id=SHIKRA_MODEL_ID,
+                    note="Shikra POPE accuracy (T1) and F1 (T8)"))
+            jobs.append(Job(
+                "table2_shikra", method, "chair", "val2014_500", seed=seed,
+                model_id=SHIKRA_MODEL_ID, note="Shikra CHAIR (T2)"))
+
     return jobs
 
 
@@ -2230,6 +2281,8 @@ def measured_cost(runs_root: Optional[Path] = None) -> Dict[str, float]:
                     branches += "-instructblip"
                 elif m in RECENT_BACKBONE_METHODS:
                     branches += "-recent"
+                elif m in SHIKRA_METHODS:
+                    branches += "-shikra"
                 a = agg.setdefault(f"{bench}/{branches}", [0.0, 0])
                 a[0] += lat / 1000.0
                 a[1] += 1

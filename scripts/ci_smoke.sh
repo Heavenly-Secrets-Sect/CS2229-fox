@@ -23,7 +23,8 @@ case "$N" in
   1) ARGS=(--model-id Qwen/Qwen3-VL-8B-Instruct) ;;
   2) ARGS=(--model-id OpenGVLab/InternVL3-8B-hf) ;;
   3) ARGS=(--instructblip) ;;
-  4) ARGS=(verify) ;;   # not a backbone smoke: scripts/verify_bitwise.py
+  4) ARGS=(--shikra) ;;     # delta + llama-7b merged in RAM: DEVIATIONS 3.20
+  5) ARGS=(verify) ;;   # not a backbone smoke: scripts/verify_bitwise.py
   *) echo "[smoke] no case $N"; exit 2 ;;
 esac
 
@@ -37,7 +38,7 @@ WORK="/kaggle/temp/smoke"; [ -d /kaggle/temp ] || WORK="${TMPDIR:-/tmp}/fox_smok
 OUTDIR="/kaggle/working"; [ -d "$OUTDIR" ] || OUTDIR="."
 mkdir -p "$WORK"
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo nosha)"
-if [ "$N" = "4" ]; then
+if [ "$N" = "5" ]; then
   # Bit-for-bit check of greedy reruns against the archive (see the script).
   python3 -m foxrepro.data.fetch_images --what pope --workers 8 --progress-every 100 \
       > "$WORK/smoke_s${N}.log" 2>&1 || { echo "image fetch failed"; tail -n 20 "$WORK/smoke_s${N}.log"; exit 1; }

@@ -399,6 +399,14 @@ def _download_gib(model_id: str):
     import urllib.error
     import urllib.request
 
+    if model_id == "shikras/shikra-7b-delta-v1-0708":
+        # A delta: the session also fetches huggyllama/llama-7b to merge it
+        # onto, and openai/clip-vit-large-patch14 (docs/DEVIATIONS.md 3.20),
+        # so the .bin listing alone would undercount by half.
+        # 13,485,396,661 + 13,476,876,661 + 1,710,540,580 bytes.
+        return 26.7, ("recorded: delta .bin shards + llama-7b safetensors + "
+                      "CLIP model.safetensors, file listings of 2026-11-24")
+
     try:
         url = f"https://huggingface.co/api/models/{model_id}?blobs=true"
         with urllib.request.urlopen(url, timeout=30) as fh:

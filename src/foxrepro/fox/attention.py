@@ -915,6 +915,15 @@ def load_backbone(
     _refuse_cpu_only_host(dtype, allow_cpu=allow_cpu)
     _refuse_unconverted_checkpoint(model_id)
 
+    from foxrepro.fox import shikra as _shikra
+
+    if _shikra.is_shikra_id(model_id):
+        # BEFORE AutoConfig: the delta's config.json says model_type "shikra",
+        # which transformers has never heard of. See fox/shikra.py.
+        return _shikra.load_shikra(
+            model_id, dtype=dtype, device_map=device_map,
+            eager_layers=eager_layers, allow_cpu=allow_cpu)
+
     cfg = AutoConfig.from_pretrained(model_id)
     mt = getattr(cfg, "model_type", "")
     if mt not in _DECODER_SUBCONFIG:
@@ -1115,7 +1124,13 @@ def _assert_fully_loaded(model_id: str, info: Dict[str, Any]) -> None:
 #: PREPENDED before BOS (the release does the same: ``torch.cat([inputs_llm,
 #: inputs_embeds])``). So the span is ``[0, 31]`` and there are no system
 #: keys before it.
-FIXED_SPAN_WIDTH: Dict[str, int] = {"llava": 576, "instructblip": 32}
+#:
+#: Shikra: 256 ``<im_patch>`` ids, the CLIP ViT-L/14 patch grid at 224 px
+#: (16 x 16) with the CLS token dropped. The ``<im_start>`` / ``<im_end>``
+#: markers around them are NOT in the span (fox/shikra.py explains why that is
+#: also what the release's ``[img_s + 1, img_e)`` selects).
+FIXED_SPAN_WIDTH: Dict[str, int] = {"llava": 576, "instructblip": 32,
+                                    "shikra": 256}
 
 
 def expected_span_width(model: Any) -> Optional[int]:

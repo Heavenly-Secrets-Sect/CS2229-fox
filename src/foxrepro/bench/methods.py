@@ -218,6 +218,32 @@ INSTRUCTBLIP_FOX_DEFAULTS: Dict[str, Any] = {
 #: (``qformer_text_input``), which is what HF's processor does with ``text``.
 INSTRUCTBLIP_WRAPPER = "USER:  {instruction} ASSISTANT:"
 
+#: Shikra-7B (docs/DEVIATIONS.md 3.20). Hyperparameters are the PAPER's
+#: (Table 15: manual layers 3-10; Appendix: k=0.4, tau_JS=0.2, alpha=2,
+#: beta=0.1), which the task fixed. They are NOT what the released code runs
+#: on Shikra: its only Fox attention is the shared LLaVA one in
+#: ``transformers/models/llama/modeling_llama.py`` (hard-coded layers 2-15
+#: and ``SELECT_RATIO = 0.35``, with a comment "llava2-15/shikra 3-10" beside
+#: it; tau_js as for LLaVA, FOX_DEFAULTS). Both readings exist; this is the
+#: paper's.
+#: gamma is never stated anywhere and is the code's 1e4. m_sys stays on:
+#: Shikra's image sits after a system message, so Eq. 4 is defined (and the
+#: release uses the same ``m_sys * H_vis`` score for it as for LLaVA).
+SHIKRA_FOX_DEFAULTS: Dict[str, Any] = {
+    "gamma": 10000.0,
+    "ratio": 0.4,
+    "tau_js": 0.2,
+    "alpha": 2.0,
+    "beta": 0.1,
+    "layers": (3, 10),
+}
+
+#: ``INSTRUCTION_TEMPLATE["shikra"]`` of ``pope_eval.py:63`` and
+#: ``char_eval.py:35`` (read from the release 2026-11-24, not assumed), with
+#: ``<question>`` as ``{instruction}``. ``fox/shikra.py`` turns the
+#: ``<im_start><ImageHere><im_end>`` part into 256 patch ids.
+SHIKRA_WRAPPER = "USER: <im_start><ImageHere><im_end> {instruction} ASSISTANT:"
+
 #: VCD's published noise schedule (Leng et al., CVPR 2024).
 VCD_NOISE_STEP_DEFAULT = 500
 
@@ -829,6 +855,106 @@ class InternVL3FoxMethod(_InternVL3Mixin, FoxMethod):
         "Table 15's manual window 3-11; gamma=1e4 from the release"
     )
     LAYER_DEFAULT = "{}-{}".format(*INTERNVL3_FOX_DEFAULTS["layers"])
+
+
+# --------------------------------------------------------------------------- #
+# Shikra-7B
+# --------------------------------------------------------------------------- #
+class _ShikraMixin:
+    """What differs for Shikra: the checkpoint, the prompt and the hyperparameters.
+
+    Loading dispatches inside ``attn.load_backbone`` (the delta repo id is not
+    a transformers model type), and the dual-branch loop is ``fox_generate``'s
+    unchanged: the wrapper in ``fox/shikra.py`` answers the same call
+    signature as every other backbone. So this is the prompt and a name.
+
+    The system message is Shikra's own, which happens to be the same string as
+    ``llava_v1``; ``system_prompt_id`` therefore stays ``llava_v1`` and the
+    run file says so truthfully. Any other id, and ``--wrapper newline``, are
+    refused: the wrapper is a LLaVA concept and the release has exactly one.
+    """
+
+    def __init__(self, cfg: GenConfig) -> None:
+        if cfg.system_prompt_id != "llava_v1" or cfg.wrapper_id != "released":
+            raise ValueError(
+                f"{type(self).name} has one prompt, the release's "
+                f"INSTRUCTION_TEMPLATE['shikra'] behind Shikra's system "
+                f"message (the llava_v1 string); got system_prompt_id="
+                f"{cfg.system_prompt_id!r}, wrapper_id={cfg.wrapper_id!r}")
+        super().__init__(cfg)  # type: ignore[misc]
+
+    def load(self) -> None:
+        super().load()  # type: ignore[misc]
+        mt = getattr(self.model.config, "model_type", None)  # type: ignore[attr-defined]
+        if mt != "shikra":
+            raise ValueError(
+                f"{type(self).name} needs the Shikra checkpoint "
+                f"(shikras/shikra-7b-delta-v1-0708 or a merged copy of it), "
+                f"but {self.cfg.model_id!r} loaded as model_type {mt!r}"  # type: ignore[attr-defined]
+            )
+
+    def _prepare(self, sample: Sample, prompt: str) -> Dict[str, Any]:
+        return self._encode(  # type: ignore[attr-defined]
+            sample, _LLAVA_V1_SYSTEM + SHIKRA_WRAPPER.format(instruction=prompt))
+
+    def describe(self) -> Dict[str, Any]:
+        info = dict(super().describe())  # type: ignore[misc]
+        info.update({
+            "backbone": "shikra",
+            "wrapper": SHIKRA_WRAPPER,
+            "system_prompt": _LLAVA_V1_SYSTEM,
+            "shikra": {
+                "projector": "linear 1024 -> 4096 (model.mm_projector)",
+                "vision_tower": "openai/clip-vit-large-patch14, fp16, sdpa",
+                "select_layer": -2, "drop_cls": True, "n_patches": 256,
+                "markers": {"<im_patch>": 32000, "<im_start>": 32001,
+                            "<im_end>": 32002},
+                "template": SHIKRA_WRAPPER,
+                "template_source": "INSTRUCTION_TEMPLATE['shikra'], "
+                                   "pope_eval.py:63 / char_eval.py:35",
+                "tokenization": "release-style: whitespace stripped around "
+                                "the markers, BOS prepended",
+                "span": "the 256 <im_patch> positions (release: "
+                        "[img_s+1, img_e)); <im_start> is in m_sys",
+                "merge": "apply_delta.py semantics, fp16, session-time",
+                "eos_token_id": 2,
+                **(getattr(self.model, "provenance", None) or {}),
+            },
+        })
+        return info
+
+
+@register_method
+class ShikraSamplingMethod(_ShikraMixin, SamplingMethod):
+    """Plain nucleus sampling on Shikra-7B."""
+
+    name = "sampling_shikra"
+
+
+@register_method
+class ShikraFoxMethod(_ShikraMixin, FoxMethod):
+    """Fox on Shikra-7B, with the paper's hyperparameters (3-10, k=0.4, 0.2).
+
+    ``m_sys * H_vis`` scoring as for LLaVA (Eq. 4), but its own method NAME:
+    window, k and tau_js differ from ``fox``'s, and nothing that groups by
+    method may pool the two.
+    """
+
+    name = "fox_shikra"
+    HPARAM_DEFAULTS = SHIKRA_FOX_DEFAULTS
+    HPARAM_SOURCE = (
+        "the paper (Table 15 manual layers 3-10, k=0.4, tau_js=0.2, alpha=2, "
+        "beta=0.1; gamma=1e4 is the code's, never stated). The release's own "
+        "Shikra path is the shared LLaVA attention (layers 2-15, k=0.35) -- "
+        "docs/DEVIATIONS.md 3.20"
+    )
+    LAYER_DEFAULT = "{}-{}".format(*SHIKRA_FOX_DEFAULTS["layers"])
+
+    def describe(self) -> Dict[str, Any]:
+        info = dict(super().describe())
+        info["use_m_sys"] = True
+        info["default_layer_window"] = self.LAYER_DEFAULT
+        return info
 
 
 @register_method

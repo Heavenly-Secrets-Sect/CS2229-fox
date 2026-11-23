@@ -6,7 +6,7 @@
 # Cheap by design: each session downloads one checkpoint and runs five samples.
 # `sessions` must equal the number of cases in scripts/ci_smoke.sh.
 notebook: ml-fox-ci
-sessions: 3
+sessions: 4
 accelerator: gpu
 internet: true
 budget_hours: 2
