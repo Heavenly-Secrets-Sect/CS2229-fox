@@ -165,7 +165,7 @@ class TestTheCandidateIdsAreTheVerifiedOnes(unittest.TestCase):
 
     def test_instructblip_is_opt_in_and_is_the_private_fp16_copy(self) -> None:
         self.assertEqual(SMOKE.INSTRUCTBLIP_CANDIDATE,
-                         "kietnt0603/instructblip-vicuna-7b-fp16")
+                         "Salesforce/instructblip-vicuna-7b")
         self.assertNotIn(SMOKE.INSTRUCTBLIP_CANDIDATE, SMOKE.CANDIDATES)
 
 

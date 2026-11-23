@@ -1784,11 +1784,11 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
     def test_a_non_default_backbone_is_tagged_and_in_the_run_key(self) -> None:
         a = Job("t", "sampling", "pope", "random")
         b = Job("t", "sampling", "pope", "random",
-                model_id="kietnt0603/instructblip-vicuna-7b-fp16")
-        self.assertEqual(b.job_id(), "t:sampling:pope:random:ib16")
+                model_id="Salesforce/instructblip-vicuna-7b")
+        self.assertEqual(b.job_id(), "t:sampling:pope:random:ib")
         self.assertNotEqual(a.job_id(), b.job_id())
         self.assertNotEqual(a.run_key().filename(), b.run_key().filename())
-        self.assertIn("--model-id kietnt0603/instructblip-vicuna-7b-fp16",
+        self.assertIn("--model-id Salesforce/instructblip-vicuna-7b",
                       b.command())
 
     def test_every_existing_job_id_is_untouched(self) -> None:
@@ -1857,7 +1857,7 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
     def test_fox_instructblip_is_dual_branch_and_costed_as_an_estimate(self) -> None:
         self.assertIn("fox_instructblip", DUAL_BRANCH)
         ib = Job("t", "fox_instructblip", "pope", "random",
-                 model_id="kietnt0603/instructblip-vicuna-7b-fp16")
+                 model_id="Salesforce/instructblip-vicuna-7b")
         ll = Job("t", "fox", "pope", "random")
         self.assertEqual(ib.branches, "dual")
         self.assertLess(ib.est_seconds(), ll.est_seconds())
@@ -1871,7 +1871,7 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
 
     def test_calibration_buckets_keep_instructblip_apart(self) -> None:
         j = Job("t", "fox_instructblip", "pope", "random", limit=2,
-                model_id="kietnt0603/instructblip-vicuna-7b-fp16",
+                model_id="Salesforce/instructblip-vicuna-7b",
                 system_prompt_id="none")
         with tempfile.TemporaryDirectory() as td:
             runs = Path(td) / "runs"
@@ -1909,7 +1909,8 @@ class TestTheSmokeManifestAndTheTagGuard(unittest.TestCase):
 
     def test_smoke_output_cannot_overwrite_a_rounds_zip(self) -> None:
         script = (REPO_ROOT / "scripts" / "ci_smoke.sh").read_text()
-        self.assertIn("fox_smoke_s", script)
+        self.assertIn("fox_smoke_${SHA}_s", script)
+        self.assertIn("git rev-parse --short HEAD", script)
         # The comment may name the pattern; no command may write it.
         self.assertNotIn("$OUTDIR/fox_runs", script)
 

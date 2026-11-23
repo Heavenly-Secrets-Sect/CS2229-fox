@@ -264,17 +264,19 @@ would alter the thing being measured; `Yhyu13/instructblip-vicuna-7b-gptq-4bit`
 and `Mediocreatmybest/instructblip-vicuna-7b_8bit` exist and must not be used
 here. fp16 is the dtype the runs already execute in.
 
-**Licensing.** The copy was **private** until 2026-11-23, on purpose.
-`Salesforce/instructblip-vicuna-7b` is marked `license: other` and uses
-Vicuna-7b as its language model, which derives from LLaMA-1 -- research-only,
-with redistribution of derived weights restricted. A private repository is a
-copy for its owner rather than a public redistribution.
-
-On 2026-11-23 the owner set it **public**, because a Kaggle session has no
-`HF_TOKEN` and smoke-r25 session 3 died with a 401 on the private repo. That
-is the owner's decision and this note records it, not endorses it: the
-restriction above applies to the public copy. Reversing it means giving the
-CI notebook a read-only HF token instead (the bot's notebook, not this repo).
+**Update, 2026-11-23: the fp16 copy was never uploaded, so runs use the
+original.** `kietnt0603/instructblip-vicuna-7b-fp16` was created on
+2026-10-26 and has held only `.gitattributes` since; smoke-r26 and smoke-r27
+found it empty (first a 401 while it was private, then "no `model_type` in
+config.json" once it was public). The plan and the smoke script now point at
+the public `Salesforce/instructblip-vicuna-7b`, which `from_pretrained(
+dtype=fp16)` casts at load -- the same operation, so the numbers are unchanged
+and only the per-session download grows (29.5 GiB instead of ~14.7 GiB).
+That also removes the licensing question the private copy existed to avoid
+(the language model derives from LLaMA-1, research-only, redistribution of
+derived weights restricted): nothing is hosted. The empty repository can be
+deleted or made private again; `scripts/cast_checkpoint_fp16.py` still exists
+if the download time ever matters.
 
 ### 3.11 How the release runs three backbones with one patch
 
@@ -1039,7 +1041,7 @@ SentencePiece-LLaMA, but no real tokenizer was run.
   unpatched model and report a plausible number. The Q-Former is pinned to
   `eager` and never to `fox`; the ViT stays on `sdpa`.
 - *Checkpoint.* The plan uses the pre-cast fp16 copy (§3.10),
-  `kietnt0603/instructblip-vicuna-7b-fp16` (private until 2026-11-23, now public; see 3.10). No
+  `Salesforce/instructblip-vicuna-7b` (the fp16 copy was never uploaded; see 3.10). No
   quantized checkpoint is acceptable.
 - *Scope.* Only plain sampling and Fox are ported. VCD, ICD, SID, CausalMM and
   OPERA on InstructBLIP are refused by `fox_generate` rather than silently

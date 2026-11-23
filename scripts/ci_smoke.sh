@@ -8,8 +8,11 @@
 # data and runs no plan jobs.
 #
 # Output is exactly ONE zip in /kaggle/working (what the bot's download button
-# points at): the JSON report and the log. It is named fox_smoke_s<N>.zip so it
-# can never overwrite a round's fox_runs_*.zip. The exit code is the smoke
+# points at): the JSON report and the log. It is named fox_smoke_<sha>_s<N>.zip: the
+# prefix keeps it from overwriting a round's fox_runs_*.zip, and the commit sha
+# keeps one smoke release from overwriting the last (smoke-r25 and smoke-r27
+# both wrote fox_smoke_s1.zip, and a download skipped the new one as "already
+# there"). The exit code is the smoke
 # result, so a failed assertion shows as a failed session, and the zip is
 # written either way because the log is what explains the failure.
 set -uo pipefail
@@ -32,14 +35,15 @@ fi
 WORK="/kaggle/temp/smoke"; [ -d /kaggle/temp ] || WORK="${TMPDIR:-/tmp}/fox_smoke"
 OUTDIR="/kaggle/working"; [ -d "$OUTDIR" ] || OUTDIR="."
 mkdir -p "$WORK"
+SHA="$(git rev-parse --short HEAD 2>/dev/null || echo nosha)"
 python3 scripts/smoke_backbone.py "${ARGS[@]}" --json \
     > "$WORK/smoke_s${N}.json" 2> "$WORK/smoke_s${N}.log"
 rc=$?
 echo "[smoke] case $N (${ARGS[*]}) exit $rc"
 tail -n 40 "$WORK/smoke_s${N}.log"
 
-rm -f "$OUTDIR/fox_smoke_s${N}.zip"
+rm -f "$OUTDIR/fox_smoke_${SHA}_s${N}.zip"
 command -v zip >/dev/null 2>&1 || { echo "[smoke] zip not installed"; exit 1; }
-zip -q -j "$OUTDIR/fox_smoke_s${N}.zip" "$WORK/smoke_s${N}.json" "$WORK/smoke_s${N}.log"
-ls -lh "$OUTDIR/fox_smoke_s${N}.zip"
+zip -q -j "$OUTDIR/fox_smoke_${SHA}_s${N}.zip" "$WORK/smoke_s${N}.json" "$WORK/smoke_s${N}.log"
+ls -lh "$OUTDIR/fox_smoke_${SHA}_s${N}.zip"
 exit $rc

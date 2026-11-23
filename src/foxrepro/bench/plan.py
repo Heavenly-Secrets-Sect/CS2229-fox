@@ -207,19 +207,19 @@ N_SAMPLES: Dict[Tuple[str, str], int] = {
 #: ``run_key`` and ``command`` until a second backbone existed.
 LLAVA_MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 
-#: InstructBLIP-vicuna-7b, as the pre-cast fp16 copy (docs/DEVIATIONS.md 3.10).
-#: The original ``Salesforce/instructblip-vicuna-7b`` is 29.5 GiB of fp32 that
-#: every Kaggle session would download again; the copy is the same weights
-#: after the cast ``from_pretrained`` performs anyway. It is PRIVATE and must
-#: stay so (licence: LLaMA-1 derivative). The two ids give different run
-#: files, so changing this constant starts a fresh set of runs, by design.
-INSTRUCTBLIP_MODEL_ID = "kietnt0603/instructblip-vicuna-7b-fp16"
+#: InstructBLIP-vicuna-7b, the public original. A pre-cast fp16 copy
+#: (docs/DEVIATIONS.md 3.10) would save each session a 29.5 GiB download, but
+#: ``kietnt0603/instructblip-vicuna-7b-fp16`` was created and never populated
+#: (smoke-r27 found it empty), so runs load the original, and
+#: ``from_pretrained(dtype=fp16)`` performs the same cast at load. The two ids
+#: give different run files, so changing this constant starts a fresh set of
+#: runs, by design.
+INSTRUCTBLIP_MODEL_ID = "Salesforce/instructblip-vicuna-7b"
 
 #: Short tag put into ``job_id`` for a non-default backbone, so two backbones
 #: never share an id and the ids of every existing job stay as they were.
 BACKBONE_TAGS: Dict[str, str] = {
-    "Salesforce/instructblip-vicuna-7b": "ib",
-    INSTRUCTBLIP_MODEL_ID: "ib16",
+    INSTRUCTBLIP_MODEL_ID: "ib",
 }
 
 #: Methods that are the InstructBLIP ports (``bench/methods.py``). They are

@@ -59,7 +59,7 @@ CANDIDATES = [
 #: PRIVATE: it needs an HF token with read access, and must stay private --
 #: docs/DEVIATIONS.md 3.10). Not in CANDIDATES, so `--all` never touches it;
 #: ask for it with `--instructblip`.
-INSTRUCTBLIP_CANDIDATE = "kietnt0603/instructblip-vicuna-7b-fp16"
+INSTRUCTBLIP_CANDIDATE = "Salesforce/instructblip-vicuna-7b"
 
 #: Floor on the attention mass the image span must carry at every layer.
 #: Not a tolerance -- a correct span on a working backbone carries orders
@@ -474,8 +474,8 @@ def main(argv=None) -> int:
     ap.add_argument("--all", action="store_true",
                     help=f"every candidate: {', '.join(CANDIDATES)}")
     ap.add_argument("--instructblip", action="store_true",
-                    help=f"also check {INSTRUCTBLIP_CANDIDATE} (private; "
-                         f"needs an HF token)")
+                    help=f"also check {INSTRUCTBLIP_CANDIDATE} (public, fp32 on "
+                         f"the Hub: a ~29.5 GiB download)")
     ap.add_argument("--n-samples", type=int, default=5)
     ap.add_argument("--dtype", default="fp16", choices=["fp16", "bf16", "fp32"])
     ap.add_argument("--json", action="store_true")
