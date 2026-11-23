@@ -47,7 +47,8 @@ def cfg_from_command(cmd: str) -> GenConfig:
         else:
             i += 1
     bench = args["benchmark"]
-    is_fox = str(args["method"]) in ("fox", "fox_instructblip")
+    is_fox = str(args["method"]) in ("fox", "fox_instructblip", "fox_qwen3vl",
+                                     "fox_internvl3")
     return GenConfig(
         method=str(args["method"]), benchmark=str(bench), split=str(args["split"]),
         seed=int(str(args["seed"])), dtype=str(args["dtype"]),
@@ -100,7 +101,10 @@ class TestPlanMatchesTheCli(unittest.TestCase):
     def test_commands_always_name_the_converted_checkpoint(self) -> None:
         """A plan that emits the original LLaVA repo would load random weights."""
         for job in PLAN:
-            if job.method.endswith("_instructblip"):
+            if job.method.endswith(("_qwen3vl", "_internvl3")):
+                self.assertIn(job.model_id, job.command())
+                self.assertNotIn("llava-hf", job.command())
+            elif job.method.endswith("_instructblip"):
                 # The pre-cast fp16 copy (DEVIATIONS 3.10), never a quantized
                 # one, and never the LLaVA repo.
                 self.assertIn("instructblip-vicuna-7b", job.command())
@@ -1798,7 +1802,8 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
                 self.assertNotIn(":ib", j.job_id())
 
     def _ib(self):
-        return [j for j in PLAN if j.model_id != "llava-hf/llava-1.5-7b-hf"]
+        return [j for j in PLAN
+                if j.model_id == "Salesforce/instructblip-vicuna-7b"]
 
     def test_the_instructblip_jobs_are_exactly_tables_1_and_2(self) -> None:
         jobs = self._ib()

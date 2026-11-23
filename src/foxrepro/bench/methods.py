@@ -675,6 +675,162 @@ class InstructBlipFoxMethod(_InstructBlipMixin, FoxMethod):
         return info
 
 
+# --------------------------------------------------------------------------- #
+# Qwen3-VL-8B-Instruct and InternVL3-8B-hf (paper Table 10 / Table 3)
+# --------------------------------------------------------------------------- #
+#: Appendix D.1: "the same default hyperparameters, k = 0.4, tau_JS = 0.2,
+#: alpha = 2 and beta = 0.1, without model-specific tuning". gamma is never
+#: stated and stays at the release's 1e4. The WINDOW is not in D.1; Table 15's
+#: manual windows are used (Qwen3-VL 3-10, InternVL3 3-11). Whether those are
+#: 0- or 1-indexed, and inclusive, is not stated: the same convention as the
+#: LLaVA window (``parse_layer_window``, 0-based inclusive) is applied, and
+#: docs/DEVIATIONS.md records it as an assumption.
+QWEN3VL_FOX_DEFAULTS: Dict[str, Any] = {
+    "gamma": 10000.0, "ratio": 0.4, "tau_js": 0.2, "alpha": 2.0, "beta": 0.1,
+    "layers": (3, 10),
+}
+INTERNVL3_FOX_DEFAULTS: Dict[str, Any] = {
+    "gamma": 10000.0, "ratio": 0.4, "tau_js": 0.2, "alpha": 2.0, "beta": 0.1,
+    "layers": (3, 11),
+}
+
+#: Id of the prompt arm in every run's provenance (``describe()``): the
+#: model's own chat template, applied by ``processor.apply_chat_template`` to a
+#: single user turn holding the image and then the instruction, with the
+#: generation prompt appended. The instruction itself is the benchmark's
+#: (``pope_v0_raw`` / ``chair_v1``) and rides in the record's ``prompt``.
+CHAT_TEMPLATE_ID = "hf_chat_template_image_then_text"
+
+
+class _ChatTemplateBackbone:
+    """Qwen3-VL / InternVL3: the LLaVA loop, a different prompt, nothing else.
+
+    Loading (``attn.load_backbone`` dispatches on ``model_type``), the decode
+    loop, the dual-branch fusion and the span derivation are the shared ones.
+    The image span comes from ``locate_image_span`` on each sample's real
+    ``input_ids`` (``expected_span_width`` is None for these, because the
+    token count follows the image resolution / tile count), so it can differ
+    between samples and is recorded per sample as ``image_span``.
+
+    ``system_prompt_id`` / ``wrapper_id`` are LLaVA concepts and must be the
+    neutral values, so a run file never claims ``llava_v1`` for a prompt that
+    does not contain it.
+    """
+
+    #: ``config.model_type`` this method accepts; subclasses set it.
+    MODEL_TYPE: ClassVar[str] = ""
+    BACKBONE: ClassVar[str] = ""
+
+    def __init__(self, cfg: GenConfig) -> None:
+        if cfg.system_prompt_id != "none" or cfg.wrapper_id != "released":
+            raise ValueError(
+                f"{type(self).name} uses the model's own chat template; pass "
+                f"--system-prompt none --wrapper released (got "
+                f"{cfg.system_prompt_id!r}, {cfg.wrapper_id!r})"
+            )
+        super().__init__(cfg)  # type: ignore[misc]
+        self._last_chat_text: str = ""
+
+    def load(self) -> None:
+        super().load()  # type: ignore[misc]
+        mt = getattr(self.model.config, "model_type", None)  # type: ignore[attr-defined]
+        if mt != self.MODEL_TYPE:
+            raise ValueError(
+                f"{type(self).name} needs a {self.MODEL_TYPE!r} checkpoint, "
+                f"but {self.cfg.model_id!r} loaded as model_type {mt!r}"  # type: ignore[attr-defined]
+            )
+
+    def _chat_text(self, instruction: str) -> str:
+        messages = [{"role": "user", "content": [
+            {"type": "image"}, {"type": "text", "text": instruction}]}]
+        return self.processor.apply_chat_template(  # type: ignore[attr-defined]
+            messages, tokenize=False, add_generation_prompt=True)
+
+    def _prepare(self, sample: Sample, prompt: str) -> Dict[str, Any]:
+        text = self._chat_text(prompt)
+        self._last_chat_text = text
+        return self._encode(sample, text)  # type: ignore[attr-defined]
+
+    def generate(self, sample: Sample, prompt: str) -> MethodOutput:
+        out = super().generate(sample, prompt)  # type: ignore[misc]
+        # The exact string the processor saw, per record: the template is
+        # part of the method and a later reader should not have to re-render.
+        extra = dict(out.extra or {})
+        extra["chat_prompt"] = self._last_chat_text
+        return out._replace(extra=extra)
+
+    def describe(self) -> Dict[str, Any]:
+        import hashlib
+
+        info = dict(super().describe())  # type: ignore[misc]
+        tmpl = getattr(self.processor, "chat_template", None)
+        example = None
+        if self.processor is not None:
+            example = self._chat_text("<instruction>")
+        info.update({
+            "backbone": self.BACKBONE,
+            "chat_template_id": CHAT_TEMPLATE_ID,
+            "chat_template_sha256": (
+                hashlib.sha256(tmpl.encode()).hexdigest()
+                if isinstance(tmpl, str) else None),
+            "chat_template_rendered_example": example,
+            "wrapper": CHAT_TEMPLATE_ID,
+            "system_prompt": "(whatever the chat template inserts)",
+            "image_span": "derived per sample by locate_image_span",
+        })
+        return info
+
+
+class _Qwen3VLMixin(_ChatTemplateBackbone):
+    MODEL_TYPE = "qwen3_vl"
+    BACKBONE = "qwen3_vl"
+
+
+class _InternVL3Mixin(_ChatTemplateBackbone):
+    MODEL_TYPE = "internvl"
+    BACKBONE = "internvl3"
+
+
+@register_method
+class Qwen3VLSamplingMethod(_Qwen3VLMixin, SamplingMethod):
+    """Plain nucleus sampling on Qwen3-VL-8B-Instruct."""
+
+    name = "sampling_qwen3vl"
+
+
+@register_method
+class Qwen3VLFoxMethod(_Qwen3VLMixin, FoxMethod):
+    """Fox on Qwen3-VL-8B-Instruct: the paper's D.1 values, Eq. 4 scoring."""
+
+    name = "fox_qwen3vl"
+    HPARAM_DEFAULTS = QWEN3VL_FOX_DEFAULTS
+    HPARAM_SOURCE = (
+        "paper appendix D.1 (k=0.4, tau_js=0.2, alpha=2, beta=0.1) and "
+        "Table 15's manual window 3-10; gamma=1e4 from the release"
+    )
+    LAYER_DEFAULT = "{}-{}".format(*QWEN3VL_FOX_DEFAULTS["layers"])
+
+
+@register_method
+class InternVL3SamplingMethod(_InternVL3Mixin, SamplingMethod):
+    """Plain nucleus sampling on InternVL3-8B-hf."""
+
+    name = "sampling_internvl3"
+
+
+@register_method
+class InternVL3FoxMethod(_InternVL3Mixin, FoxMethod):
+    """Fox on InternVL3-8B-hf: the paper's D.1 values, Eq. 4 scoring."""
+
+    name = "fox_internvl3"
+    HPARAM_DEFAULTS = INTERNVL3_FOX_DEFAULTS
+    HPARAM_SOURCE = (
+        "paper appendix D.1 (k=0.4, tau_js=0.2, alpha=2, beta=0.1) and "
+        "Table 15's manual window 3-11; gamma=1e4 from the release"
+    )
+    LAYER_DEFAULT = "{}-{}".format(*INTERNVL3_FOX_DEFAULTS["layers"])
+
+
 @register_method
 class VcdFoxFusionMethod(_LlavaMethod):
     """**Not VCD.** VCD's noised image inside Fox's ADDITIVE fusion.

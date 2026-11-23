@@ -1352,6 +1352,32 @@ def _instructblip_step(model: Any, step: int, ids: torch.Tensor,
     return out, out.past_key_values
 
 
+#: Input keys ``fox_generate`` handles itself. Every other tensor the processor
+#: returns is a visual side-input (Qwen3-VL's ``image_grid_thw``, a newer
+#: processor's ``mm_token_type_ids``) and is forwarded on the prefill step.
+_HANDLED_INPUT_KEYS = frozenset({
+    "input_ids", "attention_mask", "pixel_values",
+    "qformer_input_ids", "qformer_attention_mask",
+})
+
+
+def _eos_ids(model: Any) -> frozenset:
+    """Every id that ends generation: the decoder config's, plus the model's
+    generation config's. Qwen-family checkpoints list ``<|im_end|>`` in one and
+    sometimes only there, and a loop that watches the wrong one never stops
+    before ``max_new_tokens`` -- a plausible, slow, wrong CHAIR caption."""
+    ids = set()
+    sources = (getattr(getattr(model, "config", None), "text_config", None),
+               getattr(model, "generation_config", None))
+    for src in sources:
+        got = getattr(src, "eos_token_id", None)
+        if got is None:
+            continue
+        for g in (got if isinstance(got, (list, tuple)) else [got]):
+            ids.add(int(g))
+    return frozenset(ids)
+
+
 # Directly above fox_generate, and nothing may be inserted between this line and
 # the def. The InstructBLIP port once added two helpers between a decorator and
 # its function: the decorator moved onto the first helper, fox_generate ran with
@@ -1515,6 +1541,10 @@ def fox_generate(
     input_ids = inputs["input_ids"].to(device)
     attn_mask = inputs["attention_mask"].to(device)
     pixel_values = inputs["pixel_values"].to(device)
+    side_inputs = {k: v.to(device) for k, v in inputs.items()
+                   if k not in _HANDLED_INPUT_KEYS
+                   and isinstance(v, torch.Tensor)}
+    eos_ids = _eos_ids(model)
 
     img_start, img_end = locate_image_span(
         input_ids, image_token_id, expected_span_width(model))
@@ -1565,6 +1595,12 @@ def fox_generate(
         px2 = torch.cat([pixel_values, pixel_values_do.to(device)], dim=0)
     else:
         px2 = pixel_values.repeat(2, *([1] * (pixel_values.dim() - 1)))
+
+    # One copy per batch row, in the order pixel_values was repeated, so row r
+    # reads image r. For Qwen3-VL pixel_values is [n_patches, D] and
+    # image_grid_thw is [n_images, 3]; both are image-major, hence dim 0.
+    side2 = {k: v.repeat(n_rows, *([1] * (v.dim() - 1)))
+             for k, v in side_inputs.items()}
 
     qf_ids2 = qf_mask2 = None
     if qformer_ids is not None:
@@ -1632,13 +1668,22 @@ def fox_generate(
             elif step == 0:
                 out = model(
                     input_ids=ids2, attention_mask=mask2, pixel_values=px2,
-                    use_cache=True,
+                    use_cache=True, **side2,
                 )
                 cache = out.past_key_values
             else:
+                # cache_position is passed explicitly, as generate() does. It
+                # is what Qwen3-VL's multimodal RoPE reads to apply the
+                # per-sample rope_deltas; without it the model silently falls
+                # back to delta 0 and every token after the first sees the
+                # wrong position (the first still agrees, which hides it).
+                # For LLaVA it equals what the model would derive from the
+                # cache length, so nothing changes there.
                 out = model(
                     input_ids=ids2[:, -1:], attention_mask=mask2,
                     past_key_values=cache, use_cache=True,
+                    cache_position=torch.tensor(
+                        [ids2.shape[1] - 1], device=device),
                 )
                 cache = out.past_key_values
             if sid:
@@ -1716,7 +1761,7 @@ def fox_generate(
                     "lambda_t": float(lam[0].item()),
                     "diverged": bool(int(fused[0].argmax()) != int(z_obs[0].argmax())),
                 })
-            if tok == model.config.text_config.eos_token_id:
+            if tok in eos_ids:
                 break
 
             nxt2 = nxt.view(1, 1).repeat(n_rows, 1).to(device)

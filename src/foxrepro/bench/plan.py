@@ -216,10 +216,18 @@ LLAVA_MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 #: runs, by design.
 INSTRUCTBLIP_MODEL_ID = "Salesforce/instructblip-vicuna-7b"
 
+#: The two recent backbones of paper Table 10 / Table 3 (appendix D.1). Both
+#: passed the real-GPU smoke (smoke-r29): load, patch reaches the decoder,
+#: contiguous image span (196 / 256 tokens at the smoke image; dynamic).
+QWEN3VL_MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
+INTERNVL3_MODEL_ID = "OpenGVLab/InternVL3-8B-hf"
+
 #: Short tag put into ``job_id`` for a non-default backbone, so two backbones
 #: never share an id and the ids of every existing job stay as they were.
 BACKBONE_TAGS: Dict[str, str] = {
     INSTRUCTBLIP_MODEL_ID: "ib",
+    QWEN3VL_MODEL_ID: "q3vl",
+    INTERNVL3_MODEL_ID: "ivl3",
 }
 
 #: Methods that are the InstructBLIP ports (``bench/methods.py``). They are
@@ -228,7 +236,22 @@ BACKBONE_TAGS: Dict[str, str] = {
 INSTRUCTBLIP_METHODS = frozenset({"sampling_instructblip", "fox_instructblip"})
 
 #: Methods that take ``--mode`` / ``--logit-dtype``.
-FOX_METHODS = frozenset({"fox", "fox_instructblip"})
+#: Table 10 ports: separate NAMES for the same reason as InstructBLIP's.
+RECENT_BACKBONE_METHODS = frozenset({
+    "sampling_qwen3vl", "fox_qwen3vl", "sampling_internvl3", "fox_internvl3"})
+
+FOX_METHODS = frozenset({"fox", "fox_instructblip", "fox_qwen3vl",
+                         "fox_internvl3"})
+
+#: ESTIMATE, A GUESS. Both are ~8B decoders (Qwen3-VL-8B: 36 layers; InternVL3-
+#: 8B: a Qwen2.5-7B decoder), so the T4x2 footprint is taken to be LLaVA's and
+#: the per-sample costs are LLaVA's unchanged (factor 1.0). The unknowns point
+#: both ways: more image tokens per sample (InternVL3 tiles, 256 per tile;
+#: Qwen3-VL scales with resolution) make prefill dearer than LLaVA's fixed
+#: 576, while a smaller decoder KV (GQA) makes decode a bit cheaper. Replace
+#: with ``--calibrate`` after one measured job; ``measured_cost`` buckets these
+#: apart from LLaVA.
+RECENT_BACKBONE_COST_FACTOR: Dict[str, float] = {"pope": 1.0, "chair": 1.0}
 
 #: ESTIMATES, NOT MEASUREMENTS. Multipliers on LLaVA's per-sample cost for the
 #: same (benchmark, branches), to be replaced by ``--calibrate`` once an
@@ -249,7 +272,7 @@ INSTRUCTBLIP_COST_FACTOR: Dict[str, float] = {"pope": 0.5, "chair": 0.9}
 #: ``mode="off"`` does NOT take a method out of this set: it disables the head
 #: edit and keeps the second branch, which is the point of that control.
 DUAL_BRANCH = frozenset({"fox", "vcd", "sid", "causalmm", "vcd_fox_fusion",
-                         "fox_instructblip"})
+                         "fox_instructblip", "fox_qwen3vl", "fox_internvl3"})
 
 #: Methods whose two branches cannot be batched, so the weights are read twice
 #: per token. ICD disturbs the instruction, so the sequences differ in length.
@@ -423,6 +446,8 @@ class Job:
         )
         if self.method in INSTRUCTBLIP_METHODS:
             base *= INSTRUCTBLIP_COST_FACTOR.get(self.benchmark, 1.0)
+        if self.method in RECENT_BACKBONE_METHODS:
+            base *= RECENT_BACKBONE_COST_FACTOR.get(self.benchmark, 1.0)
         return self.n_samples * base
 
     def n_new_tokens(self) -> int:
@@ -1539,6 +1564,33 @@ def _build_plan() -> List[Job]:
             model_id=INSTRUCTBLIP_MODEL_ID, system_prompt_id="none",
             note="InstructBLIP CHAIR at the paper's stated tau_JS=0.2"))
 
+    # ---- Table 10 / Table 3: Qwen3-VL-8B and InternVL3-8B ----------------
+    # Sampling and Fox, POPE-Adversarial (3000 q) and CHAIR val2014_500, seeds
+    # 42-44. VCD and SID rows are NOT planned: their negative branches are
+    # LLaVA-specific here (VCD's noised pixel_values, SID's CT2S read) and the
+    # Table 10 claim is Fox against sampling. Priority is last so no existing
+    # round's `plan plan` changes. Costs are a GUESS
+    # (RECENT_BACKBONE_COST_FACTOR).
+    #
+    # k, tau_js and the window are left None ON PURPOSE, as for InstructBLIP:
+    # pair_key includes k and tau_js, so setting them on the fox arm alone would
+    # split it from its own baseline. The method resolves D.1's values (k=0.4,
+    # tau_js=0.2, alpha=2, beta=0.1) and Table 15's window and records them in
+    # every run's provenance.
+    for target, model_id, tag in (
+            ("table10_qwen3vl", QWEN3VL_MODEL_ID, "qwen3vl"),
+            ("table10_internvl3", INTERNVL3_MODEL_ID, "internvl3")):
+        for seed in SEEDS_BREADTH:
+            for method in (f"sampling_{tag}", f"fox_{tag}"):
+                jobs.append(Job(
+                    target, method, "pope", "adversarial", seed=seed,
+                    model_id=model_id, system_prompt_id="none",
+                    note=f"Table 10 {tag} POPE-Adversarial"))
+                jobs.append(Job(
+                    target, method, "chair", "val2014_500", seed=seed,
+                    model_id=model_id, system_prompt_id="none",
+                    note=f"Table 10 {tag} CHAIR"))
+
     # ---- Table 11: MMBench and MathVista-MC (V20) ----------------------
     # Not frozen into any round yet. LLaVA-1.5, sampling, three seeds. The
     # paper's rows are Sampling, VCD and Fox on MMBench and Sampling and Fox
@@ -2146,6 +2198,8 @@ def measured_cost(runs_root: Optional[Path] = None) -> Dict[str, float]:
                     # Its own bucket: pooling it with LLaVA's would corrupt
                     # the calibration of both.
                     branches += "-instructblip"
+                elif m in RECENT_BACKBONE_METHODS:
+                    branches += "-recent"
                 a = agg.setdefault(f"{bench}/{branches}", [0.0, 0])
                 a[0] += lat / 1000.0
                 a[1] += 1

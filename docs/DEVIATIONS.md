@@ -1147,6 +1147,39 @@ reading is the one to quote, and it shows no detectable difference. Different
 instrument from GPT-4V: the numbers are not comparable to Figure 6, only the
 direction and the bias are informative.
 
+### 3.19 Table 10 / Table 3: Qwen3-VL-8B and InternVL3-8B
+
+Sampling and Fox are ported (`sampling_qwen3vl`, `fox_qwen3vl`,
+`sampling_internvl3`, `fox_internvl3`), as their own method names so no
+aggregation pools them with LLaVA's `fox`. Written against tiny real
+`Qwen3VL` / `InternVL` models only (`tests/test_recent_backbones.py`); the
+real checkpoints have not run the benchmark loop.
+
+| Item | Paper / release | Here | Why it can move a number |
+|---|---|---|---|
+| prompt | not stated for these backbones | the model's own `processor.apply_chat_template`, one user turn, image then the instruction (`pope_v0_raw` / `chair_v1`), generation prompt appended; id `hf_chat_template_image_then_text`; each record's `method_extra.chat_prompt` holds the exact string and `describe()` the template's sha256 | the paper may have used a hand-built prompt or another system message |
+| hyperparameters | appendix D.1: k=0.4, tau_JS=0.2, alpha=2, beta=0.1, "no model-specific tuning" | exactly those; gamma=1e4 (never stated) | none known |
+| layer window | Table 15 manual windows: Qwen3-VL 3-10, InternVL3 3-11 | the same, read as 0-based and inclusive like LLaVA's `2-15`; the paper does not say | an off-by-one moves the window by one layer |
+| head score | Eq. 4 | Eq. 4 with `m_sys` (the image is never at key 0 in these templates, so `m_sys` is defined) | none |
+| image span | n/a | `locate_image_span` on each sample's real `input_ids`, `expected_width=None`; varies per sample and is recorded as `image_span` | none, but token counts (hence cost and memory) vary |
+| VCD, SID rows | in Table 10 | **not ported** | Table 10 can only be read as Sampling vs Fox |
+| eos | n/a | `fox_generate` now stops on the union of the text config's and generation config's eos ids | Qwen-family ids differ between the two; for LLaVA the set is `{2}` as before |
+
+Two changes to the shared decode loop (`fox/attention.py`), both neutral for
+LLaVA: (1) processor tensors other than `input_ids`, `attention_mask`,
+`pixel_values` (Qwen3-VL's `image_grid_thw`) are forwarded on the prefill step,
+repeated per batch row like `pixel_values`; (2) decode steps pass
+`cache_position`. Without (2), Qwen3-VL's multimodal RoPE applies a delta of 0
+to every token after the first: measured on a tiny Qwen3-VL, the first token
+matched `generate()` and the next ones did not. With it the loop equals
+`generate()` token for token (and equals it for InternVL and, as before, for
+LLaVA).
+
+Plan: 24 jobs, priority last, `Job.model_id` set, `k`/`tau_js`/window left
+`None` so the Fox arm shares its `pair_key` with its baseline (the method
+resolves and records them). Cost = LLaVA's per-sample cost times 1.0, **a
+guess**.
+
 ## 4. In the release, absent here
 
 | | Why |
