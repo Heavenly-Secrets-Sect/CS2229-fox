@@ -1920,6 +1920,14 @@ class TestTheSmokeManifestAndTheTagGuard(unittest.TestCase):
         self.assertIn("RELEASE_TAG: ${{ github.event.release.tag_name }}",
                       text[head:run])
 
+    def test_a_release_that_registers_nothing_fails_the_workflow(self) -> None:
+        """smoke-r26 was published at r25's commit: the bot returned `already`,
+        registered nothing, and the workflow stayed green."""
+        text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()
+        self.assertIn(".already | length", text)
+        self.assertIn(".registered | length", text)
+        self.assertIn("bot không đăng ký gì mới", text)
+
     def test_a_smoke_tag_selects_the_smoke_manifest(self) -> None:
         text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()
         self.assertIn("kaggle-smoke.yml", text)

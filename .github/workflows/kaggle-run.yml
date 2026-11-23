@@ -88,3 +88,17 @@ jobs:
           curl -sS --fail-with-body -X POST "$BOT_URL/ci/kaggle-run" -H "content-type: application/json" \
             -H "x-ci-timestamp: $ts" -H "x-ci-signature: sha256=$sig" --data-binary "$body" | tee response.json | jq .
           jq -e '.ok == true' response.json > /dev/null
+
+          # Bot định danh một round bằng repo@sha:notebook. Hai release trên
+          # CÙNG một commit là cùng một round: bot trả "already" với các
+          # session của round cũ, đăng ký không gì, và workflow vẫn xanh. Đó là
+          # cách smoke-r26 (tạo ngay sau r25, cùng commit) không chạy gì mà
+          # vẫn báo thành công.
+          if [ "$dry" = "false" ]; then
+            fresh=$(jq '(.registered | length) + (.launched | length) + (.queued | length)' response.json)
+            old=$(jq '.already | length' response.json)
+            if [ "$fresh" = "0" ] && [ "$old" != "0" ]; then
+              echo "::error::bot không đăng ký gì mới: commit $GITHUB_SHA đã có một round (xem 'already'). Một release phải nằm ở commit mà chưa release nào dùng; đẩy một commit mới rồi tạo lại release."
+              exit 1
+            fi
+          fi
