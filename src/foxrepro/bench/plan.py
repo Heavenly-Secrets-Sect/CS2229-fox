@@ -1448,6 +1448,18 @@ def _build_plan() -> List[Job]:
             "causalmm_oom_probe", "causalmm", "pope", "adversarial", seed=45,
             limit=20, note=f"OOM probe, 20 samples: {label}", **kw))
 
+    # r25 showed the control above OOMs too, on both GPUs, so suffix and top_p
+    # are not the cause. Two more probes, run with the per-GPU memory log that
+    # generate.py now prints: the single-pass baseline as a control for what a
+    # healthy load looks like, and Fox on MMBench, the arm that died on a long
+    # prompt after minutes of working.
+    jobs.append(Job(
+        "causalmm_oom_probe", "sampling", "pope", "adversarial", seed=99,
+        limit=20, note="OOM probe: the single-pass baseline, for the memory log"))
+    jobs.append(Job(
+        "causalmm_oom_probe", "fox", "mmbench", "dev", seed=45, limit=40,
+        note="OOM probe: Fox on MMBench, long prompts, for the memory log"))
+
     # V19: SID at cd_alpha=1.0. pope_eval.py parses --cd-alpha 1 but never
     # passes it on, so the released run used 0.5; whether the paper's row
     # came from a checkout that honoured the flag is not recoverable. The

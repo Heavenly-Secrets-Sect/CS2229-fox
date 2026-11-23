@@ -1119,3 +1119,21 @@ class TestEveryVariantFieldReachesTheArmIdentity(unittest.TestCase):
                     f"a run differing only in {field!r} gets the same arm "
                     f"identity as the plain one, so the two would collide"
                 )
+
+
+class TestCudaMemoryLine(unittest.TestCase):
+    """The memory diagnostic must exist and must never break a run."""
+
+    def test_returns_a_string_and_never_raises_without_a_gpu(self) -> None:
+        from foxrepro.bench.generate import cuda_memory_line
+        out = cuda_memory_line("t")
+        self.assertIsInstance(out, str)
+        if out:
+            self.assertTrue(out.startswith("[mem] t:"))
+
+    def test_a_broken_torch_cannot_kill_the_run(self) -> None:
+        import sys
+        from unittest import mock
+        from foxrepro.bench.generate import cuda_memory_line
+        with mock.patch.dict(sys.modules, {"torch": None}):
+            self.assertEqual(cuda_memory_line("t"), "")

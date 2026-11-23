@@ -828,6 +828,31 @@ def _maybe_test_crash(n_written: int) -> None:
     os._exit(99)
 
 
+def cuda_memory_line(tag: str) -> str:
+    """One log line of per-GPU memory, or "" when there is nothing to report.
+
+    r24 and r25 died of CUDA OOM on jobs that had run before, on both GPUs
+    ("14.5 GiB in use" on each, for a 13 GiB model split in two), and the logs
+    could not say where the memory had gone. This prints what PyTorch holds
+    after the load and after the first few samples, so the next OOM arrives
+    with a number. It never raises: a diagnostic must not kill a run.
+    """
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return ""
+        parts = []
+        for d in range(torch.cuda.device_count()):
+            parts.append(
+                f"cuda:{d} alloc={torch.cuda.memory_allocated(d) / 2**30:.2f}"
+                f" peak={torch.cuda.max_memory_allocated(d) / 2**30:.2f}"
+                f"/{torch.cuda.get_device_properties(d).total_memory / 2**30:.2f} GiB")
+        return f"[mem] {tag}: " + "; ".join(parts)
+    except Exception:  # noqa: BLE001 -- see docstring
+        return ""
+
+
 def run(
     cfg: GenConfig,
     samples: Sequence[Sample],
@@ -893,6 +918,9 @@ def run(
 
     try:
         method.load()
+        line = cuda_memory_line("after load")
+        if line:
+            print(line, flush=True)
         summary["method_describe"] = method.describe()
         # The CONFIGURED hyperparameters are None whenever the released
         # defaults were used, and None is what lands in the provenance and in
@@ -908,6 +936,10 @@ def run(
             t0 = time.perf_counter()
             out = method.generate(sample, prompt)
             latency_ms = (time.perf_counter() - t0) * 1000.0
+            if i <= 5 or i % 500 == 0:
+                line = cuda_memory_line(f"sample {i}, {out.n_prompt_tokens} prompt tokens")
+                if line:
+                    print(line, flush=True)
 
             record = dict(base)
             record.update({
