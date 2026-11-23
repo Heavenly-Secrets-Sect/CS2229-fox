@@ -1432,6 +1432,22 @@ def _build_plan() -> List[Job]:
                 note="V18: CausalMM with its own suffix and top_p=1",
             ))
 
+    # r24's six V18 jobs all died with CUDA OOM on the fourth sample, in under
+    # two minutes, while the same method at the shared protocol ran 3000. The
+    # failing allocation was 28.0 MiB with 26.8 MiB free, which is one MLP
+    # tensor of a 2 x 633-token prefill. The two changes in that arm are the
+    # prompt suffix (+8 tokens) and top_p=1; this pulls them apart, on 20
+    # samples each. If the OLD config also dies, the code regressed or the
+    # headroom was always this thin; if only the suffix dies, it is the margin.
+    for label, kw in (
+        ("shared protocol, seed 45 (control)", {}),
+        ("suffix only", {"prompt_template_id": "pope_causalmm"}),
+        ("top_p=1 only", {"top_p": 1.0}),
+    ):
+        jobs.append(Job(
+            "causalmm_oom_probe", "causalmm", "pope", "adversarial", seed=45,
+            limit=20, note=f"OOM probe, 20 samples: {label}", **kw))
+
     # V19: SID at cd_alpha=1.0. pope_eval.py parses --cd-alpha 1 but never
     # passes it on, so the released run used 0.5; whether the paper's row
     # came from a checkout that honoured the flag is not recoverable. The

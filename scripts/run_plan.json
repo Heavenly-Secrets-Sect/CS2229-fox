@@ -1,10 +1,47 @@
 {
-  "round": "r24",
+  "round": "r25",
   "order": "priority",
   "n_sessions": 3,
   "budget_hours": 10.0,
   "n_calibrated": 0,
-  "in_flight_excluded": [],
+  "in_flight_excluded": [
+    "table1_instructblip:fox_instructblip:pope:adversarial:ib16:spnone",
+    "table1_instructblip:fox_instructblip:pope:adversarial:ib16:spnone:s43",
+    "table1_instructblip:fox_instructblip:pope:adversarial:ib16:spnone:s44",
+    "table1_instructblip:fox_instructblip:pope:adversarial:ib16:spnone:t0.2",
+    "table1_instructblip:fox_instructblip:pope:adversarial:ib16:spnone:t0.2:s43",
+    "table1_instructblip:fox_instructblip:pope:adversarial:ib16:spnone:t0.2:s44",
+    "table1_instructblip:fox_instructblip:pope:popular:ib16:spnone",
+    "table1_instructblip:fox_instructblip:pope:popular:ib16:spnone:s43",
+    "table1_instructblip:fox_instructblip:pope:popular:ib16:spnone:s44",
+    "table1_instructblip:fox_instructblip:pope:popular:ib16:spnone:t0.2",
+    "table1_instructblip:fox_instructblip:pope:popular:ib16:spnone:t0.2:s43",
+    "table1_instructblip:fox_instructblip:pope:popular:ib16:spnone:t0.2:s44",
+    "table1_instructblip:fox_instructblip:pope:random:ib16:spnone",
+    "table1_instructblip:fox_instructblip:pope:random:ib16:spnone:s43",
+    "table1_instructblip:fox_instructblip:pope:random:ib16:spnone:s44",
+    "table1_instructblip:fox_instructblip:pope:random:ib16:spnone:t0.2",
+    "table1_instructblip:fox_instructblip:pope:random:ib16:spnone:t0.2:s43",
+    "table1_instructblip:fox_instructblip:pope:random:ib16:spnone:t0.2:s44",
+    "table1_instructblip:sampling_instructblip:pope:adversarial:ib16:spnone",
+    "table1_instructblip:sampling_instructblip:pope:adversarial:ib16:spnone:s43",
+    "table1_instructblip:sampling_instructblip:pope:adversarial:ib16:spnone:s44",
+    "table1_instructblip:sampling_instructblip:pope:popular:ib16:spnone",
+    "table1_instructblip:sampling_instructblip:pope:popular:ib16:spnone:s43",
+    "table1_instructblip:sampling_instructblip:pope:popular:ib16:spnone:s44",
+    "table1_instructblip:sampling_instructblip:pope:random:ib16:spnone",
+    "table1_instructblip:sampling_instructblip:pope:random:ib16:spnone:s43",
+    "table1_instructblip:sampling_instructblip:pope:random:ib16:spnone:s44",
+    "table2_instructblip:fox_instructblip:chair:val2014_500:ib16:spnone",
+    "table2_instructblip:fox_instructblip:chair:val2014_500:ib16:spnone:s43",
+    "table2_instructblip:fox_instructblip:chair:val2014_500:ib16:spnone:s44",
+    "table2_instructblip:fox_instructblip:chair:val2014_500:ib16:spnone:t0.2",
+    "table2_instructblip:fox_instructblip:chair:val2014_500:ib16:spnone:t0.2:s43",
+    "table2_instructblip:fox_instructblip:chair:val2014_500:ib16:spnone:t0.2:s44",
+    "table2_instructblip:sampling_instructblip:chair:val2014_500:ib16:spnone",
+    "table2_instructblip:sampling_instructblip:chair:val2014_500:ib16:spnone:s43",
+    "table2_instructblip:sampling_instructblip:chair:val2014_500:ib16:spnone:s44"
+  ],
   "jobs": {
     "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1": {
       "id": "causalmm_protocol:causalmm:pope:adversarial:pope_causalmm:tp1",
@@ -66,74 +103,84 @@
       "n_samples": 3000,
       "measured": false
     },
-    "sid_alpha:sid:pope:adversarial:a1": {
-      "id": "sid_alpha:sid:pope:adversarial:a1",
-      "target": "sid_alpha",
-      "note": "V19: SID with cd_alpha=1.0 instead of the released 0.5",
-      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --alpha 1",
-      "est_s": 3300.0,
-      "run_file": "m-sid__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-a166486d.jsonl",
-      "n_samples": 3000,
+    "causalmm_oom_probe:causalmm:pope:adversarial:s45:n20": {
+      "id": "causalmm_oom_probe:causalmm:pope:adversarial:s45:n20",
+      "target": "causalmm_oom_probe",
+      "note": "OOM probe, 20 samples: shared protocol, seed 45 (control)",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --limit 20",
+      "est_s": 22.0,
+      "run_file": "m-causalmm__b-pope__s-adversarial__seed-45__dt-fp16__v-sampling-2d07edcb.jsonl",
+      "n_samples": 20,
       "measured": false
     },
-    "sid_alpha:sid:pope:adversarial:a1:s43": {
-      "id": "sid_alpha:sid:pope:adversarial:a1:s43",
-      "target": "sid_alpha",
-      "note": "V19: SID with cd_alpha=1.0 instead of the released 0.5",
-      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --alpha 1",
-      "est_s": 3300.0,
-      "run_file": "m-sid__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-a166486d.jsonl",
-      "n_samples": 3000,
+    "causalmm_oom_probe:causalmm:pope:adversarial:tp1:s45:n20": {
+      "id": "causalmm_oom_probe:causalmm:pope:adversarial:tp1:s45:n20",
+      "target": "causalmm_oom_probe",
+      "note": "OOM probe, 20 samples: top_p=1 only",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --top-p 1 --limit 20",
+      "est_s": 22.0,
+      "run_file": "m-causalmm__b-pope__s-adversarial__seed-45__dt-fp16__v-sampling-5d9a74c1.jsonl",
+      "n_samples": 20,
       "measured": false
     },
-    "sid_alpha:sid:pope:adversarial:a1:s44": {
-      "id": "sid_alpha:sid:pope:adversarial:a1:s44",
-      "target": "sid_alpha",
-      "note": "V19: SID with cd_alpha=1.0 instead of the released 0.5",
-      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --alpha 1",
-      "est_s": 3300.0,
-      "run_file": "m-sid__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-a166486d.jsonl",
-      "n_samples": 3000,
+    "causalmm_oom_probe:causalmm:pope:adversarial:pope_causalmm:s45:n20": {
+      "id": "causalmm_oom_probe:causalmm:pope:adversarial:pope_causalmm:s45:n20",
+      "target": "causalmm_oom_probe",
+      "note": "OOM probe, 20 samples: suffix only",
+      "command": "python -m foxrepro.bench.generate --method causalmm --benchmark pope --split adversarial --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_causalmm --limit 20",
+      "est_s": 22.0,
+      "run_file": "m-causalmm__b-pope__s-adversarial__seed-45__dt-fp16__v-sampling-11937e9f.jsonl",
+      "n_samples": 20,
       "measured": false
     },
-    "table9_methods:vcd:pope:random:greedy": {
-      "id": "table9_methods:vcd:pope:random:greedy",
-      "target": "table9_methods",
-      "note": "released --sample-greedy default, remaining splits",
-      "command": "python -m foxrepro.bench.generate --method vcd --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
-      "est_s": 3300.0,
-      "run_file": "m-vcd__b-pope__s-random__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
-      "n_samples": 3000,
+    "table11_mmbench:sampling:mmbench:dev": {
+      "id": "table11_mmbench:sampling:mmbench:dev",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, sampling",
+      "command": "python -m foxrepro.bench.generate --method sampling --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter",
+      "est_s": 2976.4,
+      "run_file": "m-sampling__b-mmbench__s-dev__seed-42__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
       "measured": false
     },
-    "table9_methods:sid:pope:random:greedy": {
-      "id": "table9_methods:sid:pope:random:greedy",
-      "target": "table9_methods",
-      "note": "released --sample-greedy default, remaining splits",
-      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split random --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
-      "est_s": 3300.0,
-      "run_file": "m-sid__b-pope__s-random__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
-      "n_samples": 3000,
+    "table11_mmbench:vcd:mmbench:dev": {
+      "id": "table11_mmbench:vcd:mmbench:dev",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, vcd",
+      "command": "python -m foxrepro.bench.generate --method vcd --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter",
+      "est_s": 5471.2,
+      "run_file": "m-vcd__b-mmbench__s-dev__seed-42__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
       "measured": false
     },
-    "table9_methods:vcd:pope:popular:greedy": {
-      "id": "table9_methods:vcd:pope:popular:greedy",
-      "target": "table9_methods",
-      "note": "released --sample-greedy default, remaining splits",
-      "command": "python -m foxrepro.bench.generate --method vcd --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
-      "est_s": 3300.0,
-      "run_file": "m-vcd__b-pope__s-popular__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
-      "n_samples": 3000,
+    "table11_mmbench:fox:mmbench:dev": {
+      "id": "table11_mmbench:fox:mmbench:dev",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, fox",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter --mode as_implemented --logit-dtype native",
+      "est_s": 5471.2,
+      "run_file": "m-fox__b-mmbench__s-dev__seed-42__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
       "measured": false
     },
-    "table9_methods:sid:pope:popular:greedy": {
-      "id": "table9_methods:sid:pope:popular:greedy",
-      "target": "table9_methods",
-      "note": "released --sample-greedy default, remaining splits",
-      "command": "python -m foxrepro.bench.generate --method sid --benchmark pope --split popular --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw",
-      "est_s": 3300.0,
-      "run_file": "m-sid__b-pope__s-popular__seed-42__dt-fp16__v-greedy-17d4eb8d.jsonl",
-      "n_samples": 3000,
+    "table11_mathvista:sampling:mathvista:testmini_mc500": {
+      "id": "table11_mathvista:sampling:mathvista:testmini_mc500",
+      "target": "table11_mathvista",
+      "note": "V20: MathVista MC500, sampling",
+      "command": "python -m foxrepro.bench.generate --method sampling --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query",
+      "est_s": 600.0,
+      "run_file": "m-sampling__b-mathvista__s-testmini_mc500__seed-42__dt-fp16__v-sampling-c18a15f5.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table11_mathvista:fox:mathvista:testmini_mc500": {
+      "id": "table11_mathvista:fox:mathvista:testmini_mc500",
+      "target": "table11_mathvista",
+      "note": "V20: MathVista MC500, fox",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode as_implemented --logit-dtype native",
+      "est_s": 1000.0,
+      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-42__dt-fp16__v-sampling-c18a15f5.jsonl",
+      "n_samples": 500,
       "measured": false
     },
     "opera_protocol:opera:pope:random:greedy": {
@@ -146,6 +193,76 @@
       "n_samples": 3000,
       "measured": false
     },
+    "table11_mmbench:sampling:mmbench:dev:s43": {
+      "id": "table11_mmbench:sampling:mmbench:dev:s43",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, sampling",
+      "command": "python -m foxrepro.bench.generate --method sampling --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter",
+      "est_s": 2976.4,
+      "run_file": "m-sampling__b-mmbench__s-dev__seed-43__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
+      "measured": false
+    },
+    "table11_mmbench:vcd:mmbench:dev:s43": {
+      "id": "table11_mmbench:vcd:mmbench:dev:s43",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, vcd",
+      "command": "python -m foxrepro.bench.generate --method vcd --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter",
+      "est_s": 5471.2,
+      "run_file": "m-vcd__b-mmbench__s-dev__seed-43__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
+      "measured": false
+    },
+    "table11_mmbench:fox:mmbench:dev:s43": {
+      "id": "table11_mmbench:fox:mmbench:dev:s43",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, fox",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter --mode as_implemented --logit-dtype native",
+      "est_s": 5471.2,
+      "run_file": "m-fox__b-mmbench__s-dev__seed-43__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
+      "measured": false
+    },
+    "table11_mathvista:sampling:mathvista:testmini_mc500:s43": {
+      "id": "table11_mathvista:sampling:mathvista:testmini_mc500:s43",
+      "target": "table11_mathvista",
+      "note": "V20: MathVista MC500, sampling",
+      "command": "python -m foxrepro.bench.generate --method sampling --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query",
+      "est_s": 600.0,
+      "run_file": "m-sampling__b-mathvista__s-testmini_mc500__seed-43__dt-fp16__v-sampling-c18a15f5.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table11_mathvista:fox:mathvista:testmini_mc500:s43": {
+      "id": "table11_mathvista:fox:mathvista:testmini_mc500:s43",
+      "target": "table11_mathvista",
+      "note": "V20: MathVista MC500, fox",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode as_implemented --logit-dtype native",
+      "est_s": 1000.0,
+      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-43__dt-fp16__v-sampling-c18a15f5.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table11_mathvista:sampling:mathvista:testmini_mc500:s44": {
+      "id": "table11_mathvista:sampling:mathvista:testmini_mc500:s44",
+      "target": "table11_mathvista",
+      "note": "V20: MathVista MC500, sampling",
+      "command": "python -m foxrepro.bench.generate --method sampling --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query",
+      "est_s": 600.0,
+      "run_file": "m-sampling__b-mathvista__s-testmini_mc500__seed-44__dt-fp16__v-sampling-c18a15f5.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
+    "table11_mathvista:fox:mathvista:testmini_mc500:s44": {
+      "id": "table11_mathvista:fox:mathvista:testmini_mc500:s44",
+      "target": "table11_mathvista",
+      "note": "V20: MathVista MC500, fox",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode as_implemented --logit-dtype native",
+      "est_s": 1000.0,
+      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-44__dt-fp16__v-sampling-c18a15f5.jsonl",
+      "n_samples": 500,
+      "measured": false
+    },
     "opera_protocol:opera:pope:popular:greedy": {
       "id": "opera_protocol:opera:pope:popular:greedy",
       "target": "opera_protocol",
@@ -154,6 +271,36 @@
       "est_s": 18705.6,
       "run_file": "m-opera__b-pope__s-popular__seed-42__dt-fp16__v-greedy-5e8ffbea.jsonl",
       "n_samples": 3000,
+      "measured": false
+    },
+    "table11_mmbench:sampling:mmbench:dev:s44": {
+      "id": "table11_mmbench:sampling:mmbench:dev:s44",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, sampling",
+      "command": "python -m foxrepro.bench.generate --method sampling --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter",
+      "est_s": 2976.4,
+      "run_file": "m-sampling__b-mmbench__s-dev__seed-44__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
+      "measured": false
+    },
+    "table11_mmbench:vcd:mmbench:dev:s44": {
+      "id": "table11_mmbench:vcd:mmbench:dev:s44",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, vcd",
+      "command": "python -m foxrepro.bench.generate --method vcd --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter",
+      "est_s": 5471.2,
+      "run_file": "m-vcd__b-mmbench__s-dev__seed-44__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
+      "measured": false
+    },
+    "table11_mmbench:fox:mmbench:dev:s44": {
+      "id": "table11_mmbench:fox:mmbench:dev:s44",
+      "target": "table11_mmbench",
+      "note": "V20: MMBench dev, fox",
+      "command": "python -m foxrepro.bench.generate --method fox --benchmark mmbench --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_v0_letter --mode as_implemented --logit-dtype native",
+      "est_s": 5471.2,
+      "run_file": "m-fox__b-mmbench__s-dev__seed-44__dt-fp16__v-sampling-3aeb017d.jsonl",
+      "n_samples": 4377,
       "measured": false
     }
   },
@@ -167,29 +314,40 @@
         "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1",
         "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s43",
         "causalmm_protocol:causalmm:pope:popular:pope_causalmm:tp1:s44",
-        "sid_alpha:sid:pope:adversarial:a1",
-        "sid_alpha:sid:pope:adversarial:a1:s43",
-        "sid_alpha:sid:pope:adversarial:a1:s44"
+        "causalmm_oom_probe:causalmm:pope:adversarial:s45:n20",
+        "causalmm_oom_probe:causalmm:pope:adversarial:tp1:s45:n20",
+        "causalmm_oom_probe:causalmm:pope:adversarial:pope_causalmm:s45:n20",
+        "table11_mmbench:sampling:mmbench:dev",
+        "table11_mmbench:vcd:mmbench:dev",
+        "table11_mmbench:fox:mmbench:dev",
+        "table11_mathvista:sampling:mathvista:testmini_mc500",
+        "table11_mathvista:fox:mathvista:testmini_mc500"
       ],
-      "est_hours": 8.25
+      "est_hours": 9.83
     },
     {
       "session": 2,
       "jobs": [
-        "table9_methods:vcd:pope:random:greedy",
-        "table9_methods:sid:pope:random:greedy",
-        "table9_methods:vcd:pope:popular:greedy",
-        "table9_methods:sid:pope:popular:greedy",
-        "opera_protocol:opera:pope:random:greedy"
+        "opera_protocol:opera:pope:random:greedy",
+        "table11_mmbench:sampling:mmbench:dev:s43",
+        "table11_mmbench:vcd:mmbench:dev:s43",
+        "table11_mmbench:fox:mmbench:dev:s43",
+        "table11_mathvista:sampling:mathvista:testmini_mc500:s43",
+        "table11_mathvista:fox:mathvista:testmini_mc500:s43",
+        "table11_mathvista:sampling:mathvista:testmini_mc500:s44",
+        "table11_mathvista:fox:mathvista:testmini_mc500:s44"
       ],
-      "est_hours": 8.86
+      "est_hours": 9.95
     },
     {
       "session": 3,
       "jobs": [
-        "opera_protocol:opera:pope:popular:greedy"
+        "opera_protocol:opera:pope:popular:greedy",
+        "table11_mmbench:sampling:mmbench:dev:s44",
+        "table11_mmbench:vcd:mmbench:dev:s44",
+        "table11_mmbench:fox:mmbench:dev:s44"
       ],
-      "est_hours": 5.2
+      "est_hours": 9.06
     }
   ]
 }

@@ -531,12 +531,22 @@ class TestPlanJobs(unittest.TestCase):
         self.assertIn("--prompt-template-id mmbench_v0_letter", cmd)
         self.assertEqual(j.run_key().variant_fields["max_new_tokens"], 8)
 
-    def test_not_frozen_into_any_round(self) -> None:
-        """This change adds jobs; it does not freeze a round."""
+    def test_a_frozen_round_may_carry_them_but_only_as_these_benchmarks(self) -> None:
+        """Once a round freezes them (r25 does), they must be exactly the
+        table11 jobs, so a session's data fetch (which reads the command)
+        sees them."""
+        import json
         plan = (Path(__file__).resolve().parent.parent / "scripts"
                 / "run_plan.json")
-        if plan.is_file():
-            self.assertNotIn("table11", plan.read_text())
+        if not plan.is_file():
+            self.skipTest("no frozen plan in this checkout")
+        doc = json.loads(plan.read_text())
+        for job in doc["jobs"].values():
+            if job["id"].startswith(("table11_mmbench", "table11_mathvista")):
+                self.assertTrue(
+                    "--benchmark mmbench " in job["command"]
+                    or "--benchmark mathvista " in job["command"],
+                    job["id"])
 
 
 class TestSessionsFetchNoCoco(unittest.TestCase):

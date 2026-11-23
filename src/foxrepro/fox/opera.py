@@ -272,6 +272,21 @@ class BeamScorer:
         return best
 
 
+def crop_cache_to(cache: Any, length: int) -> None:
+    """Drop everything past ``length`` tokens from a KV cache, on any version.
+
+    ``Cache.crop(n)`` with a POSITIVE n means "keep n tokens" on transformers
+    4.x and is refused outright on 5.x ("use a negative integer to remove that
+    number of tokens"); both accept a negative n as "remove |n| tokens". r24's
+    two OPERA 10-token jobs died on that, in 0.3 and 1.9 minutes, on a host
+    image that had moved to 5.x since the adversarial run was made. The
+    negative form is the one spelling both accept.
+    """
+    have = int(cache.get_seq_length())
+    if have > length:
+        cache.crop(-(have - length))
+
+
 def _resolve_eos(model: Any) -> List[int]:
     cfg = getattr(model.config, "text_config", model.config)
     eos = getattr(cfg, "eos_token_id", None)
@@ -464,7 +479,7 @@ def opera_generate(
                 # the release could simply discard it; DynamicCache.update
                 # mutates in place, so without this crop the five candidate
                 # passes would corrupt the search's own cache.
-                cache.crop(cache_len)
+                crop_cache_to(cache, cache_len)
                 # Back to the logits' device before anything combines them.
                 # Under device_map="auto" the capture happens inside the LAST
                 # decoder layer, which is on the last shard (cuda:1), while

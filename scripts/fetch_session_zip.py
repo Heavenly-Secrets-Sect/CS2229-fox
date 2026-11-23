@@ -51,6 +51,10 @@ KAGGLE_MCP = "https://www.kaggle.com/mcp"
 UA = "fox-repro-fetch/1.0"
 
 
+#: States after which a session will not change again.
+TERMINAL_STATES = ("done", "failed", "cancelled")
+
+
 def load_env(path: Path = ENV_PATH) -> Dict[str, str]:
     """Parse KEY=VALUE lines. Values are used, never printed."""
     if not path.is_file():
@@ -186,7 +190,11 @@ def main(argv=None) -> int:
             print(f"  session {s['session']}: {s.get('state'):<9} "
                   f"{str(s.get('accountName') or s.get('account') or '?'):<9} "
                   f"v{s.get('version')}  owner={s.get('owner')}")
-            if not args.download or s.get("state") != "done":
+            # A failed or cancelled session is the one most likely to need its
+            # zip: the launcher packs after EVERY finished job, so the jobs that
+            # did finish are in it. Skipping everything but "done" is how r24's
+            # three failed sessions looked like three sessions with no output.
+            if not args.download or s.get("state") not in TERMINAL_STATES:
                 continue
             if args.session is not None and s["session"] != args.session:
                 continue

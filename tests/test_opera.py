@@ -498,3 +498,46 @@ class TestAttentionCaptureIsMaxNotMean(_ModelBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCropCacheTo(unittest.TestCase):
+    """The speculative OPERA step must be undone on every transformers major.
+
+    r24's 10-token OPERA jobs died with "Calling `crop` with a positive value
+    is not supported" because the call site passed the target length."""
+
+    def _cache(self, n: int):
+        from transformers import DynamicCache
+        c = DynamicCache()
+        k = torch.zeros(1, 2, n, 4)
+        c.update(k, k.clone(), 0)
+        return c
+
+    def test_crops_down_to_the_requested_length(self) -> None:
+        from foxrepro.fox.opera import crop_cache_to
+        c = self._cache(10)
+        crop_cache_to(c, 7)
+        self.assertEqual(c.get_seq_length(), 7)
+
+    def test_is_a_no_op_when_already_short_enough(self) -> None:
+        from foxrepro.fox.opera import crop_cache_to
+        c = self._cache(5)
+        crop_cache_to(c, 5)
+        crop_cache_to(c, 9)
+        self.assertEqual(c.get_seq_length(), 5)
+
+    def test_never_passes_a_positive_length_to_crop(self) -> None:
+        """The spelling 5.x refuses; a recording stub proves it is not used."""
+        from foxrepro.fox.opera import crop_cache_to
+
+        class Rec:
+            def __init__(self):
+                self.calls = []
+            def get_seq_length(self):
+                return 12
+            def crop(self, n):
+                self.calls.append(n)
+
+        r = Rec()
+        crop_cache_to(r, 7)
+        self.assertEqual(r.calls, [-5])

@@ -2275,3 +2275,50 @@ this reproduces the paper's 81.13 exactly. *Prediction: random and popular land
 within 0.5 of the paper's 89.27 and 86.80.* If either misses by more, the
 "Fox copied OPERA's own numbers" reading is wrong for that split and the
 adversarial match was one coincidence.
+
+### Results, r24 (partial) — V19 and the Table 9 cells
+
+r24's session wall and two bugs left half the round unrun (see the next
+section); what did run:
+
+**V19 — SID at `cd_alpha = 1.0`, POPE-adversarial, 3 seeds (42–44).** No
+directional prediction was made, and none is claimed.
+
+| | seed 42 | seed 43 | seed 44 | mean |
+|---|---|---|---|---|
+| SID, `cd_alpha = 0.5` (released) | 79.63 | 79.90 | 79.47 | 79.67 |
+| SID, `cd_alpha = 1.0` | 80.23 | 81.17 | 80.43 | **80.61** |
+| difference | +0.60 | +1.27 | +0.97 | **+0.94** |
+
+The sign agrees on all three seeds. The paper's SID adversarial row is 81.10,
+so the gap goes from −1.43 to **−0.49**, inside the 0.5 band the pre-registration
+named. Stated as the pre-registration said it must be: **consistent with** the
+paper having used `cd_alpha = 1.0`, not explained by it. The value is a guess
+the released code makes unrecoverable, and 0.5 is what the release actually ran.
+
+**Table 9, VCD and SID greedy on the two remaining splits** (one deterministic
+run each, seed 42):
+
+| | random | popular | adversarial |
+|---|---|---|---|
+| VCD, ours (paper) | 86.90 (87.97) | 83.23 (85.33) | 76.93 (78.43) |
+| SID, ours (paper) | 89.57 (89.33) | 85.93 (86.47) | 80.23 (81.77) |
+
+SID is within 0.54 on random and popular and 1.54 low on adversarial; VCD is
+low everywhere (−1.07, −2.10, −1.50), consistently, which is the sign a
+protocol difference leaves rather than noise.
+
+### Results, r24 — what did not run, and why
+
+**V18 (CausalMM protocol), six jobs: all died with CUDA out of memory on the
+fourth sample.** The failing allocation was 28.00 MiB with 26.81 MiB free, which
+is exactly one MLP tensor of a 2 × 633-token prefill (2·633·11008·2 bytes).
+The shared-protocol arm ran 3000 samples on the same code, so the margin on GPU
+0 is thin or the code regressed; three 20-sample probe jobs in r25 separate the
+suffix, `top_p = 1` and the control. V18's prediction stays open.
+
+**OPERA 10-token on random and popular, two jobs: died on `cache.crop(625)`.**
+transformers 5.x refuses a positive length ("use a negative integer to remove
+that number of tokens"); 4.x reads it as "keep n tokens". Fixed with
+`opera.crop_cache_to`, which uses the negative spelling both accept. The
+prediction (within 0.5 of the paper's 89.27 and 86.80) stays open.

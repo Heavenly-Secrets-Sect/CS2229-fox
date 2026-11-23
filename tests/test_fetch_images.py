@@ -257,16 +257,17 @@ class TestSessionAwareFetch(unittest.TestCase):
             n = int(sess["session"])
             benches = {doc["jobs"][j]["id"].split(":")[2] for j in sess["jobs"]}
             what, splits = _session_needs(n, plan)
+            # MME, MMBench and MathVista extract their own images from parquet,
+            # so only POPE and CHAIR decide what COCO a session downloads.
+            coco = benches & {"pope", "chair"}
             with self.subTest(session=n):
-                if benches == {"pope"}:
+                if coco == {"pope"}:
                     self.assertEqual(what, "pope")
                     self.assertEqual(splits, [])
-                elif benches == {"chair"}:
+                elif coco == {"chair"}:
                     self.assertEqual(what, "chair")
                     self.assertTrue(splits)
-                elif benches == {"mme"}:
-                    # MME extracts its own images from parquet, so this
-                    # session must not download any COCO at all.
+                elif not coco:
                     self.assertEqual(what, "none")
                 else:
                     self.assertEqual(what, "union")
