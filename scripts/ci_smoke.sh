@@ -23,6 +23,7 @@ case "$N" in
   1) ARGS=(--model-id Qwen/Qwen3-VL-8B-Instruct) ;;
   2) ARGS=(--model-id OpenGVLab/InternVL3-8B-hf) ;;
   3) ARGS=(--instructblip) ;;
+  4) ARGS=(--shikra) ;;     # delta + llama-7b merged in RAM: DEVIATIONS 3.20
   *) echo "[smoke] no case $N"; exit 2 ;;
 esac
 
