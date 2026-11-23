@@ -945,7 +945,21 @@ def load_backbone(
     _ensure_decoder_is_patched(
         model, {text_key: ATTN_NAME, vision_key: "sdpa",
                 **_EXTRA_ATTN_PINS.get(mt, {})}, text_key)
-    processor = AutoProcessor.from_pretrained(model_id)
+    if mt == "instructblip":
+        # NOT AutoProcessor. Salesforce/instructblip-vicuna-7b's
+        # processor_config.json names "processor_class":
+        # "InstructBlipVideoProcessor", so AutoProcessor builds the video
+        # path, which needs torchvision and inserts no image tokens: smoke-r28
+        # died on "no image token (id=32001) in input_ids". The explicit class
+        # reads num_query_tokens=32 from the same file and prepends exactly 32.
+        from transformers import InstructBlipProcessor
+
+        processor = InstructBlipProcessor.from_pretrained(model_id)
+        nq = getattr(processor, "num_query_tokens", None)
+        if nq is None:
+            processor.num_query_tokens = int(model.config.num_query_tokens)
+    else:
+        processor = AutoProcessor.from_pretrained(model_id)
     return model, processor
 
 
@@ -1302,7 +1316,6 @@ def fox_diagnose(
     }
 
 
-@torch.inference_mode()
 def _is_instructblip(model: Any) -> bool:
     return getattr(getattr(model, "config", None), "model_type", "") \
         == "instructblip"
@@ -1339,6 +1352,13 @@ def _instructblip_step(model: Any, step: int, ids: torch.Tensor,
     return out, out.past_key_values
 
 
+# Directly above fox_generate, and nothing may be inserted between this line and
+# the def. The InstructBLIP port once added two helpers between a decorator and
+# its function: the decorator moved onto the first helper, fox_generate ran with
+# autograd ON, every forward kept its graph, and GPU memory grew ~1.26 GiB per
+# CausalMM sample until it OOMed (r24, r25, r26). Values were unaffected, which
+# is why nothing but memory showed it.
+@torch.inference_mode()
 def fox_generate(
     model: Any,
     inputs: Dict[str, torch.Tensor],

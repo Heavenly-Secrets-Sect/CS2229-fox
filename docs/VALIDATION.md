@@ -2322,3 +2322,52 @@ transformers 5.x refuses a positive length ("use a negative integer to remove
 that number of tokens"); 4.x reads it as "keep n tokens". Fixed with
 `opera.crop_cache_to`, which uses the negative spelling both accept. The
 prediction (within 0.5 of the paper's 89.27 and 86.80) stays open.
+
+### Results, r25 and r26 — OPERA's protocol, MMBench baseline, and a regression I merged
+
+**OPERA at its own 10-token protocol: the pre-registered prediction held, to
+the digit.** Predicted within 0.5 of the paper on random and popular.
+
+| split | ours | paper's OPERA row |
+|---|---|---|
+| random | **89.27** | 89.27 |
+| popular | **86.80** | 86.80 |
+| adversarial | **81.13** | 81.13 |
+
+All three cells match. Fox's Table 1 OPERA row is OPERA run at OPERA's own
+10-token harness, not Fox's 1-token one (79.10 / 85.93 / 89.37 on adversarial
+/ popular / random), which is why the paper's OPERA looks so much stronger than
+OPERA does in the harness the paper says it used. This is the strongest
+single-line result about Table 1's compared rows.
+
+**MMBench baseline (sampling), LLaVA-1.5, dev, 3 seeds.** Overall 71.96
+(72.29 / 71.99 / 71.60), perception 76.2, reasoning 64.4; every answer parsed
+by rule (4377 / 4377 exact on two seeds, one `lead`). The paper's Sampling row
+is 63.1 / 63.8 / 62.4. The 9-point gap is probably the protocol: MMBench's
+official score is CircularEval (a question counts only if all option rotations
+are right), which is stricter than the single pass measured here, and LLaVA-1.5-7B's
+published MMBench-dev is in the 60s under it. Only Fox minus baseline is
+comparable to Table 11. The Fox and VCD arms did not run (below).
+
+**The OOM in V18, the probes, VCD and Fox on MMBench, and MathVista had one
+cause, and it was mine.** The per-GPU log added after r25 showed it: the model
+loads balanced (6.50 / 6.65 GiB), the single-pass baseline holds 6.51 GiB after
+every sample, and CausalMM's GPU 0 grows **+1.26 GiB per sample** (7.78, 9.04,
+10.30, then out of memory on the fourth). Cause: the InstructBLIP port inserted
+two helper functions between `@torch.inference_mode()` and `def fox_generate`,
+so the decorator moved onto the first helper and `fox_generate` ran with
+autograd ON; every forward kept its graph. It shipped in `b233d74`, was merged
+into r24, and affected every job that goes through `fox_generate` from then on.
+Fixed, with a structural and a behavioural test that fail on the old code.
+
+*Caveat on r24's completed results (V19, Table 9 VCD/SID greedy, SID α=1.0):*
+autograd changes memory, not values, and the Fox attention path is custom, so
+no numeric change is expected; but this was not verified bit for bit, and the
+project's subject is fp16 rounding. Those r24 numbers should be read as
+provisional until the same jobs are rerun under the fix.
+
+*InstructBLIP smoke:* the original checkpoint now loads (so a 29.5 GiB download
+fits the disk), then died on "no image token" because the repo's
+`processor_config.json` names `InstructBlipVideoProcessor` and `AutoProcessor`
+followed it. `load_backbone` now uses `InstructBlipProcessor` explicitly,
+checked offline to yield 32 image tokens.

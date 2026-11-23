@@ -159,3 +159,50 @@ class TestAnUnknownBackboneIsRefused(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TestDecodeEntryPointsRunWithoutAutograd(unittest.TestCase):
+    """fox_generate and fox_diagnose must be wrapped by torch.inference_mode.
+
+    A refactor once moved the decorator onto a helper defined between it and
+    the function, so fox_generate ran with autograd enabled. Outputs were
+    identical; memory grew ~1.26 GiB per CausalMM sample until the GPU
+    filled, and every dual-pass job from r24 on died of it."""
+
+    def test_the_entry_points_are_wrapped(self) -> None:
+        from foxrepro.fox import attention as attn
+        for name in ("fox_generate", "fox_diagnose"):
+            with self.subTest(fn=name):
+                self.assertTrue(
+                    hasattr(getattr(attn, name), "__wrapped__"),
+                    f"{name} is not under torch.inference_mode")
+
+    def test_helpers_between_are_not_wrapped(self) -> None:
+        from foxrepro.fox import attention as attn
+        for name in ("_is_instructblip", "_instructblip_step"):
+            with self.subTest(fn=name):
+                self.assertFalse(hasattr(getattr(attn, name), "__wrapped__"))
+
+    def test_generate_runs_in_inference_mode(self) -> None:
+        """Behavioural: inside the wrapped function inference mode is on."""
+        import torch
+        from foxrepro.fox import attention as attn
+        seen = []
+
+        def probe(*a, **k):
+            seen.append(torch.is_inference_mode_enabled())
+            raise RuntimeError("stop")
+
+        # Reach into the wrapper: call the decorated function with a model
+        # whose first use records the mode, then aborts.
+        class M:
+            config = type("C", (), {"model_type": "llava"})()
+            def __getattr__(self, n):
+                seen.append(torch.is_inference_mode_enabled())
+                raise RuntimeError("stop")
+
+        try:
+            attn.fox_generate(M(), {"input_ids": torch.zeros(1, 4, dtype=torch.long)})
+        except Exception:
+            pass
+        self.assertTrue(seen and all(seen), seen)

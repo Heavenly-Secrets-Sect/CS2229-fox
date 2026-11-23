@@ -139,8 +139,8 @@ class TestLoader(unittest.TestCase):
                         return_value=cfg), \
                 mock.patch("transformers.AutoModelForImageTextToText"
                            ".from_pretrained", side_effect=fake_from_pretrained), \
-                mock.patch("transformers.AutoProcessor.from_pretrained",
-                           return_value=object()):
+                mock.patch("transformers.InstructBlipProcessor.from_pretrained",
+                           return_value=mock.Mock(num_query_tokens=32)):
             A.load_backbone("someone/instructblip", dtype="fp32",
                             allow_cpu=True)
         self.assertEqual(seen["attn_implementation"], {
@@ -169,8 +169,8 @@ class TestLoader(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             tiny_instructblip().save_pretrained(td)
-            with mock.patch("transformers.AutoProcessor.from_pretrained",
-                            return_value=object()), \
+            with mock.patch("transformers.InstructBlipProcessor.from_pretrained",
+                            return_value=mock.Mock(num_query_tokens=32)), \
                     mock.patch("transformers.AutoModelForImageTextToText"
                                ".from_pretrained", side_effect=no_device_map):
                 model, _ = A.load_backbone(td, dtype="fp32", allow_cpu=True)
@@ -401,3 +401,16 @@ class TestMethods(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TestTheProcessorIsTheImageOne(unittest.TestCase):
+    """load_backbone must not use AutoProcessor for InstructBLIP: the original
+    checkpoint's processor_config.json names the VIDEO processor, which
+    inserts no image tokens (smoke-r28)."""
+
+    def test_load_backbone_names_the_explicit_class(self) -> None:
+        import inspect
+        from foxrepro.fox import attention as attn
+        src = inspect.getsource(attn.load_backbone)
+        self.assertIn("InstructBlipProcessor.from_pretrained", src)
+        self.assertIn('mt == "instructblip"', src)
