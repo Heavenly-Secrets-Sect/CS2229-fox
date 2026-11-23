@@ -264,11 +264,17 @@ would alter the thing being measured; `Yhyu13/instructblip-vicuna-7b-gptq-4bit`
 and `Mediocreatmybest/instructblip-vicuna-7b_8bit` exist and must not be used
 here. fp16 is the dtype the runs already execute in.
 
-**Licensing.** The copy is **private**. `Salesforce/instructblip-vicuna-7b` is
-marked `license: other` and uses Vicuna-7b as its language model, which
-derives from LLaMA-1 -- research-only, with redistribution of derived weights
-restricted. A private repository is a copy for its owner rather than a public
-redistribution. Do not make it public.
+**Licensing.** The copy was **private** until 2026-11-23, on purpose.
+`Salesforce/instructblip-vicuna-7b` is marked `license: other` and uses
+Vicuna-7b as its language model, which derives from LLaMA-1 -- research-only,
+with redistribution of derived weights restricted. A private repository is a
+copy for its owner rather than a public redistribution.
+
+On 2026-11-23 the owner set it **public**, because a Kaggle session has no
+`HF_TOKEN` and smoke-r25 session 3 died with a 401 on the private repo. That
+is the owner's decision and this note records it, not endorses it: the
+restriction above applies to the public copy. Reversing it means giving the
+CI notebook a read-only HF token instead (the bot's notebook, not this repo).
 
 ### 3.11 How the release runs three backbones with one patch
 
@@ -1033,7 +1039,7 @@ SentencePiece-LLaMA, but no real tokenizer was run.
   unpatched model and report a plausible number. The Q-Former is pinned to
   `eager` and never to `fox`; the ViT stays on `sdpa`.
 - *Checkpoint.* The plan uses the pre-cast fp16 copy (§3.10),
-  `kietnt0603/instructblip-vicuna-7b-fp16`, which must stay private. No
+  `kietnt0603/instructblip-vicuna-7b-fp16` (private until 2026-11-23, now public; see 3.10). No
   quantized checkpoint is acceptable.
 - *Scope.* Only plain sampling and Fox are ported. VCD, ICD, SID, CausalMM and
   OPERA on InstructBLIP are refused by `fox_generate` rather than silently
