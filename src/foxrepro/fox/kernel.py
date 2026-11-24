@@ -428,6 +428,13 @@ def select_heads(
 # --------------------------------------------------------------------------- #
 # the intervention
 # --------------------------------------------------------------------------- #
+#: ``intervene`` builds its metric copy for the last query row only when the
+#: logit tensor has more elements than this (2**26 = 64M, 256 MiB in fp32).
+#: LLaVA's largest layer tensor is about 31M, so it never takes that path.
+#: Tests set it to 0 to compare both paths.
+LAST_ROW_ONLY_ELEMS = 1 << 26
+
+
 def intervene(
     attn_logits: torch.Tensor,
     img_start: int,
@@ -484,15 +491,39 @@ def intervene(
 
     # Metrics come from a separate fp32, mask-applied, softmaxed copy -- never
     # from the tensor being mutated. The released code does the same.
-    base = attn_logits.to(torch.float32)
-    if attention_mask is not None:
-        base = base + attention_mask.to(torch.float32)
-        base = torch.max(
-            base,
-            torch.tensor(torch.finfo(torch.float32).min, device=base.device),
-        )
+    #
+    # The default anchor reads ONLY the last query row of the probabilities
+    # (`head_scores`). Softmax is row-independent, so for a large [B,H,Q,K]
+    # logit tensor the fp32 copy and its softmax are built for that one row
+    # instead of all Q: the same numbers (tests/test_kernel_equivalence.py
+    # proves it bit for bit with the threshold forced to 0), at 1/Q of the
+    # memory. r29 InternVL3 prompts are ~1.8k-3.3k tokens (dynamic tiling) and
+    # the full copy was a 2.34 GiB allocation per layer, per copy.
+    # Below the threshold -- every LLaVA run -- the original full-tensor code
+    # runs untouched, so no existing number can move.
+    last_only = (
+        (anchor == "y_prev" or anchor_state is None)
+        and attn_logits.numel() > LAST_ROW_ONLY_ELEMS
+    )
+    if last_only:
+        base = attn_logits[:, :, -1:, :].to(torch.float32)
+        if attention_mask is not None:
+            base = base + attention_mask[..., -1:, :].to(torch.float32)
+            base = torch.max(
+                base,
+                torch.tensor(torch.finfo(torch.float32).min, device=base.device),
+            )
+    else:
+        base = attn_logits.to(torch.float32)
+        if attention_mask is not None:
+            base = base + attention_mask.to(torch.float32)
+            base = torch.max(
+                base,
+                torch.tensor(torch.finfo(torch.float32).min, device=base.device),
+            )
     with torch.no_grad():
         probs = torch.softmax(base, dim=-1)
+        del base
         if anchor == "y_prev" or anchor_state is None:
             # The released path, untouched. Kept as its own branch so the
             # default arm runs exactly the code it ran before anchors

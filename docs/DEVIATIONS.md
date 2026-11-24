@@ -1352,6 +1352,112 @@ text-only and from another image, all weights present (key set, marker rows,
 projector nonzero), `mode=off` bit-identical to the baseline forward, `gamma=0`
 keeps the argmax, and generation returns the same span.
 
+### 3.21 r29 first contact with the real checkpoints: two failures in the Table 10 jobs
+
+Real T4 x 2 logs of r29 (sessions 2 and 3) showed two failures that the tiny
+stand-ins of 3.19 could not. Neither changes a recorded number: the jobs
+produced no record (InternVL3 Fox: every POPE and CHAIR job, 0 or 1 samples;
+Qwen3-VL seed 44: 0 records), and the fixes below were chosen so that no
+number the code already produced can move.
+
+**(1) InternVL3 Fox: CUDA OOM in `intervene`.** The processor tiles each COCO
+image dynamically and a prompt is 1811-1812 tokens for the common 7-tile
+samples (256 tokens per tile) and up to about 3300 for 13 tiles. `intervene`
+built an fp32 copy of the whole `[2, 28, Q, K]` logits, added the mask, and
+softmaxed it, then the layer did mask + clamp + fp32 softmax + cast on the
+same tensor again. At Q = K = 3312 each fp32 copy is 2.34 GiB, on a GPU that
+already holds 8.7 GiB of weights. Sampling has no intervention and goes
+through SDPA, so it never built those copies.
+
+*Decision: option (b), bound the memory, change no value; do not cap the
+tiling.* Capping the tiles (option (a)) would change the model's input for
+both arms, force re-running the InternVL3 Sampling jobs that already ran
+(the job-times table lists about 140 for each) to keep the arms paired, and move the experiment away
+from the checkpoint's own default for a reason that is only about memory. The
+paper says nothing about tiling (its text mentions no tile count, resolution
+or crop setting for InternVL3-8B), so there is no stated value to match; the
+default of the checkpoint is the neutral reading. For the record, the Hub's
+`OpenGVLab/InternVL3-8B-hf` `preprocessor_config.json` lists `max_patches: 12`,
+`min_patches: 1`, `size 448x448` and `crop_to_patches: false`, yet the
+processor that produced the logs tiled (prompts of 1811 tokens), so what the
+installed processor does when `crop_to_patches` is false is not what the file
+suggests; the token count in each record's `n_prompt_tokens` is the fact to
+read. Not investigated further. If a later run must cap the tiles, it needs a
+new run-key field so the old names keep meaning "default tiling".
+
+What changed, both gated so that LLaVA-sized tensors take the old code
+verbatim:
+
+- `fox/kernel.py::intervene`. The default anchor reads only the last query
+  row of the probabilities (`head_scores`), and softmax is row-independent, so
+  above `LAST_ROW_ONLY_ELEMS` (2^26 elements) the fp32 copy, the mask add, the
+  clamp and the softmax are built for the last row only. Proved bit-identical
+  to the full path on random tensors in `tests/test_kernel_equivalence.py`
+  (`TestLastRowOnlyMetricCopy`: fp16/fp32/bf16, five modes, with and without
+  a mask, decode shape, threshold forced to 0), and the existing proof that
+  `intervene` equals `reference_intervene` is repeated on the last-row path.
+  The non-default anchors need every row and keep the full path.
+- `fox/attention.py::fox_attention_forward`. After the intervention the mask
+  add, clamp, softmax and cast run in head chunks (`_masked_softmax_in_head_chunks`,
+  about 128 MiB of fp32 per chunk) above `LARGE_TAIL_ELEMS` (2^26) and write
+  into a preallocated half-precision `probs`. Every op is elementwise or a
+  reduction along the key axis, so slicing heads moves no value; tested equal
+  for three dtypes, with and without a mask, over several chunk sizes. The
+  `matmul(probs, V)` is untouched.
+
+A rerun of the old commit and this one on a tiny real LLaVA (greedy and sampled, seeds 1-2, Fox on layers 1-2, 6 tokens) gave byte-identical token ids and per-token `d_t`/`lambda_t` traces.
+LLaVA's largest layer tensor is about 31M elements (2 x 32 x 700 x 700), under
+both thresholds, so LLaVA, Shikra, InstructBLIP and Qwen3-VL (prompt about
+210) never enter the new code. `TestMemoryBoundedPathsChangeNothing` also runs
+the tiny Qwen3-VL and InternVL3 with both thresholds forced to 0 and requires
+the same tokens and the same per-token trace as with them off.
+
+Estimated peak for the 13-tile sample after the change: weights 8.7 GiB +
+logits 1.2 GiB + preallocated probs 1.2 GiB + chunk and KV cache under 1 GiB,
+about 11.5 GiB of 14.56. **Not measured on a GPU.** If a longer prompt still
+overflows, the next step is the same chunking around the `QK^T` matmul.
+
+**(2) Qwen3-VL: `The expanded size of the tensor (419) must match the existing
+size (210)` on the first decode step.** Root cause, reproduced on a tiny
+Qwen3-VL under transformers 5.16.1, 5.20.2 and 5.24.1 (the versions in the r29
+records are 5.16.1 and 5.20.2): the decode step passed the full-length
+`attention_mask` (P + 1 columns) together with one new token. In 5.x
+`compute_3d_position_ids` derives the positions of a cached step as
+`attention_mask.cumsum(-1) - 1` -- a tensor as long as the whole sequence --
+and `position_ids + rope_deltas` is then P + 1 rows long, so the rotary
+embedding broadcasts the single query to P + 1 queries; the layer's keys are
+P (cache) + P + 1 (new). With P = 209 that is 419 keys against a 210-column
+mask, the log line. `generate()` never reaches that branch because it passes
+`position_ids`. Under transformers 4.57.1 the mask is ignored on that path,
+which is why the local suite never saw it. The tiny repro fails on every seed
+tried, so the failure is not seed-dependent: the report that seeds
+42 and 43 ran is not explained by anything found here (their records are not
+in the two zips read, and a different host version cannot explain it, since
+both 5.16.1 and 5.20.2 fail the same way). The cause is the decode call, not
+the sampled token, and not any state carried between samples or the cache
+(the stale-cache reading of 419 = 210 + 209 is the same arithmetic seen from
+the other side; nothing is stale).
+
+Fix: for models whose inner model keeps `rope_deltas` (Qwen2/3-VL; LLaVA,
+InternVL3, Shikra and InstructBLIP do not), the decode step does not pass
+`attention_mask`. Every row is unpadded (all ones), so no information is lost:
+the positions then come from `arange(cache_length, ...) + rope_deltas` and the
+causal mask from `cache_position`. Verified on the tiny model under 4.57.1,
+5.16.1, 5.20.2 and 5.24.1: single-branch greedy `fox_generate` equals
+`model.generate` token for token (so the positions are right, not merely
+shaped right), and Fox decoding runs. Regression tests
+(`TestDecodeStepMaskForMRopeModels`) pin the cause (no full-length mask next
+to one new token) so they fail on the old code under any installed version,
+and the old code reproduces the real error under 5.x. LLaVA, InternVL3 and
+the rest are bit-for-bit as before: the branch is gated on
+`hasattr(model.model, "rope_deltas")`.
+
+**Not verified.** Neither fix has run on the real checkpoints or a GPU. A
+Qwen3-VL result under 4.57 vs 5.x with the mask omitted is checked only
+against `generate()` on a tiny model. The Qwen3-VL jobs and the InternVL3 Fox
+jobs of r29 need re-running; the InternVL3 Sampling jobs that completed need
+not be (their inputs and code path are unchanged).
+
 ## 4. In the release, absent here
 
 | | Why |
