@@ -134,12 +134,16 @@ def _worktree(ref: str, where: Path) -> Path:
     have = subprocess.run(["git", "cat-file", "-e", f"{ref}^{{commit}}"],
                           cwd=str(REPO), capture_output=True).returncode == 0
     if not have:
-        subprocess.run(["git", "fetch", "-q", "origin", ref], cwd=str(REPO),
-                       check=False)
-        subprocess.run(["git", "fetch", "-q", "--unshallow", "origin"],
-                       cwd=str(REPO), check=False)
+        print(f"[verify] {ref} is not in this clone; fetching it", flush=True)
+        for cmd in (["git", "fetch", "-q", "origin", ref],
+                    ["git", "fetch", "-q", "--unshallow", "origin"]):
+            try:
+                subprocess.run(cmd, cwd=str(REPO), check=False, timeout=600)
+            except subprocess.TimeoutExpired:
+                print(f"[verify] {' '.join(cmd)} timed out after 600 s", flush=True)
+    print(f"[verify] checking out {ref} into {where}", flush=True)
     subprocess.run(["git", "worktree", "add", "--detach", str(where), ref],
-                   cwd=str(REPO), check=True)
+                   cwd=str(REPO), check=True, timeout=600)
     return where
 
 
@@ -147,7 +151,13 @@ def run_job(cmd: List[str], cwd: Path, src: Optional[Path]) -> int:
     env = dict(os.environ)
     if src is not None:
         env["PYTHONPATH"] = str(src) + os.pathsep + env.get("PYTHONPATH", "")
-    return subprocess.run(cmd, cwd=str(cwd), env=env).returncode
+    # A hung job must fail the check, not hold a Kaggle session for twelve
+    # hours (verify-r30 did): 300 greedy samples take about 5 minutes.
+    try:
+        return subprocess.run(cmd, cwd=str(cwd), env=env, timeout=2400).returncode
+    except subprocess.TimeoutExpired:
+        print("[verify] job timed out after 2400 s", flush=True)
+        return 124
 
 
 def _line(label: str, res: Dict[str, Any], n: int) -> str:

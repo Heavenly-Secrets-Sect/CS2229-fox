@@ -45,7 +45,7 @@ if [ "$N" = "5" ]; then
   # Same session, three code versions: HEAD, r17's last commit, and the commit
   # just before the InstructBLIP port. HEAD vs a ref is the effect of the code
   # alone; either vs the archive also contains the host drift since it was made.
-  python3 scripts/verify_bitwise.py --n 200 --scratch "$WORK/verify" \
+  timeout 7200 python3 scripts/verify_bitwise.py --n 200 --scratch "$WORK/verify" \
       --ref 1e9901e --ref a8ac2e5 \
       > "$WORK/smoke_s${N}.json" 2>> "$WORK/smoke_s${N}.log"
   rc=$?
