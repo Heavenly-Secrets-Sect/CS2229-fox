@@ -1817,13 +1817,16 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
         self.assertEqual({j.target for j in jobs},
                          {"table1_instructblip", "table2_instructblip"})
         self.assertEqual({j.method for j in jobs},
-                         {"sampling_instructblip", "fox_instructblip"})
+                         {"sampling_instructblip", "fox_instructblip",
+                          "vcd_instructblip", "icd_instructblip"})
         pope = [j for j in jobs if j.benchmark == "pope"]
         chair = [j for j in jobs if j.benchmark == "chair"]
         # 3 splits x 2 methods x 3 seeds, plus the tau_JS=0.2 Fox arm
         # (3 splits x 3 seeds); CHAIR likewise 6, plus 3.
-        self.assertEqual(len(pope), 27)
-        self.assertEqual(len(chair), 9)
+        # plus VCD and ICD (DEVIATIONS 3.22): 3 splits x 2 methods x 3 seeds
+        # = 18 POPE jobs and 6 CHAIR jobs.
+        self.assertEqual(len(pope), 27 + 18)
+        self.assertEqual(len(chair), 9 + 6)
         self.assertEqual({j.seed for j in jobs}, {42, 43, 44})
         self.assertEqual({j.split for j in chair}, {"val2014_500"})
         self.assertEqual({j.split for j in pope},
@@ -1856,7 +1859,36 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
             by_key.setdefault(pair_key(j), set()).add(j.method)
         for methods in by_key.values():
             self.assertEqual(methods, {"sampling_instructblip",
-                                       "fox_instructblip"})
+                                       "fox_instructblip",
+                                       "vcd_instructblip",
+                                       "icd_instructblip"})
+
+    def test_vcd_and_icd_instructblip_jobs_and_costs(self) -> None:
+        ib = self._ib()
+        for name in ("vcd_instructblip", "icd_instructblip"):
+            mine = [j for j in ib if j.method == name]
+            self.assertEqual(len(mine), 12, name)  # 4 benchmarks-splits x 3
+            self.assertEqual({j.seed for j in mine}, {42, 43, 44})
+            for j in mine:
+                self.assertEqual(cfg_from_command(j.command()).method, name)
+                self.assertIn("--system-prompt none", j.command())
+                self.assertNotIn("--mode ", j.command())  # not a Fox method
+        self.assertIn("vcd_instructblip", DUAL_BRANCH)
+        self.assertNotIn("icd_instructblip", DUAL_BRANCH)
+        v = Job("t", "vcd_instructblip", "pope", "random",
+                model_id="Salesforce/instructblip-vicuna-7b")
+        i = Job("t", "icd_instructblip", "pope", "random",
+                model_id="Salesforce/instructblip-vicuna-7b")
+        self.assertEqual((v.branches, i.branches), ("dual", "split"))
+        # Estimates, scaled below the LLaVA cost of the same shape.
+        self.assertLess(v.est_seconds(),
+                        Job("t", "vcd", "pope", "random").est_seconds())
+        self.assertLess(i.est_seconds(),
+                        Job("t", "icd", "pope", "random").est_seconds())
+        # SID and CausalMM are infeasible there and must stay unplanned.
+        names = {j.method for j in PLAN}
+        self.assertNotIn("sid_instructblip", names)
+        self.assertNotIn("causalmm_instructblip", names)
 
     def test_the_tau_arm_has_a_default_sibling_to_be_compared_with(self) -> None:
         ib = self._ib()

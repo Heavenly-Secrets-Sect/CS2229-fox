@@ -255,7 +255,10 @@ BACKBONE_TAGS: Dict[str, str] = {
 #: Methods that are the InstructBLIP ports (``bench/methods.py``). They are
 #: separate NAMES, not ``fox`` on another ``model_id``, so no aggregation that
 #: groups by method can pool InstructBLIP's H_vis-only Fox with LLaVA's.
-INSTRUCTBLIP_METHODS = frozenset({"sampling_instructblip", "fox_instructblip"})
+INSTRUCTBLIP_METHODS = frozenset({
+    "sampling_instructblip", "fox_instructblip",
+    # DEVIATIONS 3.23: the compared baselines that are well-defined there.
+    "vcd_instructblip", "icd_instructblip"})
 
 #: Methods that are the Shikra ports (``bench/methods.py``); own names for the
 #: same reason as the InstructBLIP pair: ``fox_shikra`` runs layers 3-10,
@@ -312,11 +315,11 @@ INSTRUCTBLIP_COST_FACTOR: Dict[str, float] = {"pope": 0.5, "chair": 0.9}
 #: edit and keeps the second branch, which is the point of that control.
 DUAL_BRANCH = frozenset({"fox", "vcd", "sid", "causalmm", "vcd_fox_fusion",
                          "fox_instructblip", "fox_qwen3vl", "fox_internvl3",
-                         "fox_shikra"})
+                         "fox_shikra", "vcd_instructblip"})
 
 #: Methods whose two branches cannot be batched, so the weights are read twice
 #: per token. ICD disturbs the instruction, so the sequences differ in length.
-SPLIT_BRANCH = frozenset({"icd"})
+SPLIT_BRANCH = frozenset({"icd", "icd_instructblip"})
 
 #: Methods that run a beam search: ``num_beams`` rows plus
 #: ``num_attn_candidates`` speculative forwards per step. A different cost
@@ -1606,6 +1609,24 @@ def _build_plan() -> List[Job]:
             "val2014_500", seed=seed, tau_js=0.2,
             model_id=INSTRUCTBLIP_MODEL_ID, system_prompt_id="none",
             note="InstructBLIP CHAIR at the paper's stated tau_JS=0.2"))
+
+    # VCD and ICD on InstructBLIP (docs/DEVIATIONS.md 3.23), the two compared
+    # baselines of Tables 1/2/8's InstructBLIP column that are well-defined
+    # there. SID and CausalMM are NOT planned: see 3.23 for why they cannot be
+    # run as specified. Same three seeds and splits as the pair above, same
+    # sampling_instructblip baseline; costs are ESTIMATES (the InstructBLIP
+    # factor applied to the LLaVA dual / split-branch cost).
+    for seed in SEEDS_BREADTH:
+        for method in ("vcd_instructblip", "icd_instructblip"):
+            for split in _pope_splits():
+                jobs.append(Job(
+                    "table1_instructblip", method, "pope", split, seed=seed,
+                    model_id=INSTRUCTBLIP_MODEL_ID, system_prompt_id="none",
+                    note="InstructBLIP POPE accuracy (T1) and F1 (T8)"))
+            jobs.append(Job(
+                "table2_instructblip", method, "chair", "val2014_500",
+                seed=seed, model_id=INSTRUCTBLIP_MODEL_ID,
+                system_prompt_id="none", note="InstructBLIP CHAIR (T2)"))
 
     # ---- Table 10 / Table 3: Qwen3-VL-8B and InternVL3-8B ----------------
     # Sampling and Fox, POPE-Adversarial (3000 q) and CHAIR val2014_500, seeds

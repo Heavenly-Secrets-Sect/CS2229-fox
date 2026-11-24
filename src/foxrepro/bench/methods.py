@@ -1129,6 +1129,11 @@ class _ContrastiveMethod(_LlavaMethod):
             mask = neg.pop("attn_mask_do", None)
             if mask is not None:
                 inputs["attention_mask"] = mask
+            # InstructBLIP's ICD: the negative prompt also feeds the Q-Former.
+            if "qformer_input_ids_do" in neg:
+                inputs["qformer_input_ids"] = neg.pop("qformer_input_ids_do")
+                inputs["qformer_attention_mask"] = neg.pop(
+                    "qformer_attn_mask_do")
         return inputs, neg
 
     def generate(self, sample: Sample, prompt: str) -> MethodOutput:
@@ -1509,6 +1514,74 @@ class CausalMMMethod(_ContrastiveMethod):
         # this arm's clean branch is not bit-identical to the other arms'.
         info["clean_branch_bit_identical_to_other_arms"] = False
         info["vision_tower_attn"] = "eager (forced by output_attentions)"
+        return info
+
+
+# --------------------------------------------------------------------------- #
+# VCD and ICD on InstructBLIP-vicuna-7b (docs/DEVIATIONS.md 3.23)
+# --------------------------------------------------------------------------- #
+@register_method
+class InstructBlipVCDMethod(_InstructBlipMixin, VCDMethod):
+    """VCD on InstructBLIP: the noised image goes ViT -> Q-Former -> LLM.
+
+    The release's ``generate`` encodes ``images_cd`` with the same ViT and
+    the same Q-Former text as the clean image (``blip2_vicuna_instruct.py``
+    ``query_output_cd``), then feeds the 32 resulting tokens in front of the
+    same prompt. Here that is ``pixel_values_do`` with the Q-Former ids
+    repeated per row. Everything else is LLaVA's VCD: ``alpha=1``,
+    ``beta=0.1``, noise step 500, the sigmoid schedule. The paper states no
+    InstructBLIP-specific VCD value, so none is invented.
+
+    Own name, so no aggregation can pool it with LLaVA's ``vcd``.
+    """
+
+    name = "vcd_instructblip"
+
+
+@register_method
+class InstructBlipICDMethod(_InstructBlipMixin, ICDMethod):
+    """ICD on InstructBLIP, with the negative prompt the release builds.
+
+    The release builds ``prompt_cd`` from the template
+    ``"USER: <ImageHere> <question> ASSISTANT:"`` as
+    ``head + "<ImageHere>" + " " + text_cd + tail`` and then
+    ``blip2_vicuna_instruct.generate`` keeps ONLY what follows the marker
+    (``prompt_cd.split("<ImageHere>")[-1]``), so the negative prompt is
+    ``" You are a confused object detector. <question> ASSISTANT:"`` -- the
+    ``"USER:"`` of the positive prompt is gone. That is reproduced as
+    released and recorded in the run's provenance; it is a second difference
+    between the branches, besides the role sentence. The same string feeds
+    the Q-Former and the LLM, on the clean image.
+    """
+
+    name = "icd_instructblip"
+
+    #: The template the release formats the question into.
+    RELEASE_TEMPLATE: ClassVar[str] = "USER: <ImageHere> <question> ASSISTANT:"
+
+    def disturbed_prompt(self, prompt: str) -> str:
+        marker = "<ImageHere>"
+        qu = self.RELEASE_TEMPLATE.replace("<question>", prompt)
+        head, tail = qu.split(marker)[0], qu.split(marker)[-1]
+        prompt_cd = head + marker + " " + self.negative_instruction + tail
+        # What generate() does next, and then what it tokenises.
+        return prompt_cd.split(marker)[-1]
+
+    def _negative(self, inputs, sample, prompt, generator):
+        enc = self._encode(sample, self.disturbed_prompt(prompt))
+        dev = inputs["input_ids"].device
+        return {
+            "input_ids_do": enc["input_ids"].to(dev),
+            "attn_mask_do": enc["attention_mask"].to(dev),
+            "qformer_input_ids_do": enc["qformer_input_ids"].to(dev),
+            "qformer_attn_mask_do": enc["qformer_attention_mask"].to(dev),
+        }
+
+    def describe(self) -> Dict[str, Any]:
+        info = dict(super().describe())
+        info["negative_prompt_form"] = (
+            "release: text after <ImageHere> only (no 'USER:'), "
+            "same string to Q-Former and LLM")
         return info
 
 

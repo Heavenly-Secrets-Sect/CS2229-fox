@@ -1046,8 +1046,9 @@ SentencePiece-LLaMA, but no real tokenizer was run.
 - *Checkpoint.* The plan uses the pre-cast fp16 copy (§3.10),
   `Salesforce/instructblip-vicuna-7b` (the fp16 copy was never uploaded; see 3.10). No
   quantized checkpoint is acceptable.
-- *Scope.* Only plain sampling and Fox are ported. VCD, ICD, SID, CausalMM and
-  OPERA on InstructBLIP are refused by `fox_generate` rather than silently
+- *Scope.* Plain sampling and Fox are ported here; VCD and ICD are ported in
+  §3.23, which also records why SID and CausalMM are not. OPERA on InstructBLIP
+  and the unported ones are refused by `fox_generate` rather than silently
   running the LLaVA plumbing. Shikra is not ported.
 - *Plan.* `table1_instructblip` and `table2_instructblip`: POPE
   random/popular/adversarial and CHAIR `val2014_500`, sampling and Fox, seeds
@@ -1486,6 +1487,113 @@ the tests use fixtures shaped like the split. In particular the real row count
 of the expansion, the real 2/3/4-option mix, and whether the `lmms-lab` dev
 rows are exactly the official 4377 questions in the order the official TSV
 rotates them are not checked.
+
+### 3.23 The compared baselines on InstructBLIP: VCD and ICD ported, SID and CausalMM not well-defined
+
+Tables 1, 2 and 8 give InstructBLIP a column for seven methods. Sampling and
+Fox are §3.16. This section decides the four compared baselines one at a time
+(OPERA is a separate task). Evidence: the Fox release (`github.com/Cc2021start/Fox`,
+cloned read-only), SID's `pope_eval.py` and CausalMM's repository (read on the
+web, 2026-11-25). Nothing here has run on the real 7B checkpoint or any GPU.
+
+| Method | Verdict | Method names |
+|---|---|---|
+| VCD | **implemented** | `vcd_instructblip` |
+| ICD | **implemented** | `icd_instructblip` |
+| SID | **not well-defined as specified; not implemented** | none |
+| CausalMM | **not well-defined; not implemented** | none |
+
+`fox_generate` still raises on `sid=True` / `cf_vision=True` for InstructBLIP,
+so neither can run by accident.
+
+**VCD.** The release's `blip2_vicuna_instruct.generate` pushes `images_cd`
+through the same ViT and the same Q-Former text as the clean image
+(`query_output_cd`) and prepends the resulting 32 tokens to the same prompt.
+Ours: the noised `pixel_values` are row 1 of one batch, the Q-Former ids are
+repeated per row, the rule is the shared `(1+a) z_obs - a z_neg` with the
+`beta` cutoff. Values are LLaVA's VCD (`alpha=1`, `beta=0.1`, noise step 500,
+the sigmoid schedule); the paper states no InstructBLIP-specific VCD value and
+none is invented. The noise is applied to the processor's normalised tensor, as
+in the release (`add_diffusion_noise(image, ...)` after the transform). The
+noise comes from a per-sample generator rather than global RNG, as for LLaVA's
+`vcd`.
+
+**ICD.** The negative branch is the clean image with a different prompt that
+goes to BOTH the Q-Former and the LLM (the release passes `prompt_cd` to both).
+The release builds `prompt_cd` from `"USER: <ImageHere> <question> ASSISTANT:"`
+as `head + "<ImageHere>" + " " + "You are a confused object detector." + tail`,
+and `generate` then keeps only `prompt_cd.split("<ImageHere>")[-1]`. The
+negative prompt the model sees is therefore
+`" You are a confused object detector. <question> ASSISTANT:"`: **the `USER:`
+of the positive prompt (`"USER:  <question> ASSISTANT:"`) is dropped**, so the
+branches differ in the role sentence and in `USER:`. That is the release's
+behaviour and is reproduced as released rather than "fixed"; it is recorded in
+`describe()` as `negative_prompt_form`. A variant that keeps `USER:` would be a
+different method and is not run. Two branches cannot be batched (different
+lengths), so ICD runs two passes with two caches, as LLaVA's `icd` does;
+`fox_generate` gained `qformer_input_ids_do` / `qformer_attn_mask_do` for this
+and refuses an InstructBLIP ICD without them (a negative that reached only the
+LLM would be half-disturbed).
+
+*Not verified, risks:* (a) the Hub tokenizer on the leading-space string
+`" You are ..."`: SentencePiece may tokenise it differently from the release's
+tokenizer; no real tokenizer was run. (b) The release's `pope_eval.py` cannot
+run InstructBLIP as published (§3.16), so which prompt the paper's ICD column
+used is not known; this is the code's. (c) The SID harness quirk that stacks
+CT2S onto VCD (`--use-vcd` leaves `fast_v_attention_rank=100`, see
+`fox_generate`) may or may not have applied to the paper's InstructBLIP VCD
+column; it is not reproduced, as for LLaVA.
+
+**SID: not well-defined.** CT2S keeps the `rank` least-attended image keys.
+The release's InstructBLIP path takes its window from
+`key_position = {"image_start": 1, "image_end": 32}`, i.e. 32 candidate keys,
+and `--fast-v-attention-rank` defaults to 100 for every model (SID's own
+`pope_eval.py` copies it to `llm_model.config` for InstructBLIP unchanged).
+`topk(100)` over 32 values raises (`RuntimeError: selected index k out of
+range`, checked), so the released InstructBLIP path cannot run at its defaults.
+Ours clamps `k = min(rank, n)` (`ct2s_keep`), which would keep all 32 keys: the
+negative branch would equal the positive one, the contrast would be exactly
+`z_obs`, and the row would be sampling under a SID label. A rank that fits has
+to be chosen (about 18 % of 32 is 6, if one scales 100 of 576; 16, if one
+halves) and the paper and the release state none. Any such value is a guess
+that decides the whole result, so none is implemented. Further, `agg_layer=2`
+was tuned for LLaVA's 32-layer, 576-token layout; the release's window is also
+off by one (keys 1..32 rather than 0..31, as in §3.16). **What would change
+this:** the paper's or the authors' InstructBLIP SID rank and layer.
+
+**CausalMM: not well-defined.** The method edits the vision tower's attention:
+LLaVA-1.5's CLIP layer -2 attention is shuffled, resized to the 24x24 grid and
+multiplied into the pre-projector features (§3.13). CausalMM's repository ships
+LLaVA-1.5 only (plus a Qwen2-VL language-model snippet); it has no InstructBLIP
+or MiniGPT-4 code, and the Fox release has no CausalMM code at all. BLIP-2's
+EVA-ViT-g (257 tokens, 16x16 grid) feeds a Q-Former cross-attention, not a
+linear projector, so there are at least three places an "attention counterfactual" could go
+(ViT self-attention before `ln_vision`, the grid that is weighted, or the
+Q-Former cross-attention), each giving a different method. Choosing among them
+is inventing a method; the paper's InstructBLIP CausalMM column has no
+reproducible definition. The hyperparameters (`gamma=1`, `epsilon=0.6`) are
+LLaVA's and nothing shows they transfer.
+
+**Plan.** `table1_instructblip` / `table2_instructblip` gain VCD and ICD:
+POPE random/popular/adversarial and CHAIR `val2014_500`, seeds 42-44, system
+prompt `none` (24 jobs, appended last so no existing round's `plan plan`
+changes; no round is frozen). Baseline is `sampling_instructblip` on the same
+splits and seeds, and `pair_key` puts all four InstructBLIP methods of one
+(split, seed) in one session group. **Cost, ESTIMATES not timings** (the
+InstructBLIP factors 0.5 POPE / 0.9 CHAIR on LLaVA's dual- and split-branch
+cost): VCD 4.13 h POPE + 4.09 h CHAIR, ICD 4.13 h POPE + 6.15 h CHAIR, about
+18.5 GPU-hours for the 24 jobs. ICD CHAIR is the expensive one (two decoder
+passes over up to 512 tokens). `measured_cost` buckets them with the
+InstructBLIP methods so a calibration does not mix them with LLaVA's.
+
+**Tests.** Real tiny `InstructBlipForConditionalGeneration`
+(`tests/test_instructblip.py`): the noised image reaches row 1 through the ViT
+and Q-Former and nothing else differs between rows; with an identical negative
+(image or prompt) the contrast is the identity and greedy equals the
+single-branch run; the ICD negative prompt reaches the Q-Former and the
+decoder, runs one row per pass, and the `negative_only` control swaps the
+Q-Former text too; SID and CausalMM are refused. What a stub cannot show: the
+real tokenizer's ids, the real ViT's sensitivity to the noise, any number.
 
 ## 4. In the release, absent here
 
