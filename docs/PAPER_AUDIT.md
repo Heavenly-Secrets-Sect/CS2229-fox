@@ -531,3 +531,5 @@ Reachable and not yet run, in descending value:
 | ~~Figure 9, β axis~~ | **done** — β is *identical* at 0.05 and 0.2, and r15/V9 says why τ_JS is flat too: its gate almost never fires on POPE | spent |
 | Layer cliff: where the live region ends, and whether layer identity matters | not a paper artefact — a question r15 and r16 opened and nobody has answered | in r17 |
 | ~~Table 13, Figure 3, Figure 7~~ | **done, r13** — 0.71 s/sample, 35 min for 3000 | ~~~1 h~~ |
+
+**Smoke gates passed on real checkpoints (smoke-r29, r30; 2026-11-24):** Qwen3-VL-8B, InternVL3-8B, InstructBLIP (original fp32 repo, nine checks) and Shikra (delta merged onto llama-7b in the session: markers at 33 and 290, all weights present, splice depends on the image, `off` bit-identical to baseline). No benchmark number from these backbones exists yet.
