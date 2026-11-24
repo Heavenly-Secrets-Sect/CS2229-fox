@@ -40,6 +40,7 @@ try:
 except ImportError:  # pragma: no cover
     raise unittest.SkipTest("transformers lacks Qwen3-VL / InternVL") from None
 
+import transformers  # noqa: E402
 import foxrepro.fox.attention as A  # noqa: E402
 from foxrepro.bench.generate import GenConfig, get_method  # noqa: E402
 from foxrepro.data.loaders import Sample  # noqa: E402
@@ -80,12 +81,17 @@ def qwen_inputs(h: int = 4, w: int = 4) -> Dict[str, torch.Tensor]:
     n_tok = h * w // 4
     ids = [1, 5, 6, 252] + [IMG] * n_tok + [253, 7, 8, 9]
     torch.manual_seed(3)
-    return {
+    out = {
         "input_ids": torch.tensor([ids]),
         "attention_mask": torch.ones(1, len(ids), dtype=torch.long),
         "pixel_values": torch.randn(h * w, 1536),
         "image_grid_thw": torch.tensor([[1, h, w]]),
     }
+    if int(transformers.__version__.split(".")[0]) >= 5:
+        # transformers 5 refuses image_grid_thw without it; the real
+        # processor returns it (1 on image tokens).
+        out["mm_token_type_ids"] = (out["input_ids"] == IMG).long()
+    return out
 
 
 def tiny_internvl3(seed: int = 0):
@@ -192,6 +198,101 @@ class TestDecodeAgreesWithHF(unittest.TestCase):
         A.fox_generate(m, internvl_inputs(), max_new_tokens=2, seed=1,
                        eager_layers=frozenset({1}))
         self.assertTrue(seen and all(seen))
+
+
+class TestDecodeStepMaskForMRopeModels(unittest.TestCase):
+    """r29: every Qwen3-VL CHAIR job died on its first sample with
+    ``keys 419 vs mask 210`` (419 = 209 + 210). transformers 5.16-5.24 derive
+    the 3D positions of a decode step from ``attention_mask.cumsum(-1) - 1``,
+    which is as long as the whole sequence, so a single new token is expanded
+    to P+1 queries. The installed transformers here may be older and not
+    break, so this pins the cause rather than the symptom: a decode step must
+    not hand the full-length mask to a multimodal-RoPE model."""
+
+    @staticmethod
+    def _decode_calls(model, inputs) -> List[Dict[str, Any]]:
+        calls: List[Dict[str, Any]] = []
+        orig = model.model.forward
+
+        def spy(*a: Any, **kw: Any):
+            # 5.x renames past_key_values to cache; a decode step is the
+            # call that carries one new token.
+            if kw.get("input_ids") is not None and kw["input_ids"].shape[1] == 1:
+                m = kw.get("attention_mask")
+                calls.append({
+                    "q": int(kw["input_ids"].shape[1]),
+                    "mask": None if m is None else int(m.shape[1]),
+                })
+            return orig(*a, **kw)
+        model.model.forward = spy  # type: ignore[method-assign]
+        A.fox_generate(model, inputs, max_new_tokens=4, seed=1,
+                       eager_layers=frozenset({1, 2}))
+        return calls
+
+    def test_qwen3vl_decode_gets_no_full_length_mask(self) -> None:
+        m = tiny_qwen3vl()
+        self.assertTrue(A._uses_mrope(m))
+        calls = self._decode_calls(m, qwen_inputs())
+        self.assertTrue(calls)
+        for c in calls:
+            self.assertEqual(c["q"], 1)
+            self.assertIsNone(c["mask"], "a P+1 mask next to one query token "
+                              "is what transformers 5.x turns into P+1 queries")
+
+    def test_models_without_mrope_still_get_their_mask(self) -> None:
+        m = tiny_internvl3()
+        self.assertFalse(A._uses_mrope(m))
+        calls = self._decode_calls(m, internvl_inputs())
+        self.assertTrue(calls)
+        self.assertTrue(all(c["mask"] is not None for c in calls))
+
+    def test_llava_is_not_an_mrope_model(self) -> None:
+        try:
+            from tests.test_tiny_llava import tiny_llava
+        except Exception:  # pragma: no cover - llava stack missing
+            self.skipTest("tiny llava unavailable")
+        self.assertFalse(A._uses_mrope(tiny_llava()))
+
+    def test_qwen3vl_sampling_survives_many_seeds(self) -> None:
+        """The r29 failure was reported per seed, but it lives in the decode
+        step, which every seed reaches; a spread of seeds must all complete."""
+        m = tiny_qwen3vl()
+        for s in range(8):
+            r = A.fox_generate(m, qwen_inputs(), max_new_tokens=5, seed=s,
+                               eager_layers=frozenset({1, 2}))
+            self.assertGreaterEqual(len(r["token_ids"]), 1)
+
+
+class TestMemoryBoundedPathsChangeNothing(unittest.TestCase):
+    """r29 InternVL3 Fox OOM: ``intervene`` and the mask/softmax after it held
+    several copies of a [2,H,Q,Q] tensor for 1.8k-3.3k-token prompts. Both now
+    work on slices above a size threshold. Forcing the thresholds to 0 must
+    leave every generated token and every trace value unchanged."""
+
+    def _gen(self, model, inputs, seed):
+        return A.fox_generate(model, dict(inputs), max_new_tokens=6, seed=seed,
+                              eager_layers=frozenset({1, 2}),
+                              collect_trace=True)
+
+    def test_forced_small_thresholds_give_identical_generations(self) -> None:
+        import foxrepro.fox.kernel as K
+        saved = (K.LAST_ROW_ONLY_ELEMS, A.LARGE_TAIL_ELEMS, A._TAIL_CHUNK_ELEMS)
+        for name, mk, inp in (("qwen3vl", tiny_qwen3vl, qwen_inputs),
+                              ("internvl3", tiny_internvl3, internvl_inputs)):
+            model = mk()
+            for seed in (1, 2, 3):
+                K.LAST_ROW_ONLY_ELEMS, A.LARGE_TAIL_ELEMS = 1 << 60, 1 << 60
+                want = self._gen(model, inp(), seed)
+                try:
+                    K.LAST_ROW_ONLY_ELEMS, A.LARGE_TAIL_ELEMS = 0, 0
+                    A._TAIL_CHUNK_ELEMS = 1       # one head per chunk
+                    got = self._gen(model, inp(), seed)
+                finally:
+                    (K.LAST_ROW_ONLY_ELEMS, A.LARGE_TAIL_ELEMS,
+                     A._TAIL_CHUNK_ELEMS) = saved
+                with self.subTest(model=name, seed=seed):
+                    self.assertEqual(want["token_ids"], got["token_ids"])
+                    self.assertEqual(want["trace"], got["trace"])
 
 
 class TestSpan(unittest.TestCase):

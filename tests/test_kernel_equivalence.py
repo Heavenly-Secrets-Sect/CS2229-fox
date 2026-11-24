@@ -950,3 +950,97 @@ class TestRandomHeadSelection(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             select_heads(torch.rand(1, 8), 0.35, select="best")
+
+
+class TestLastRowOnlyMetricCopy(unittest.TestCase):
+    """r29: InternVL3 prompts are 1.8k-3.3k tokens, and ``intervene`` built an
+    fp32 copy plus an fp32 softmax of the whole [B,H,Q,K] tensor although the
+    default anchor reads only the last row. Above ``LAST_ROW_ONLY_ELEMS`` it
+    now builds them for that row alone. Same numbers, proved here with the
+    threshold forced to 0 against the unchanged full-tensor path."""
+
+    def setUp(self) -> None:
+        import foxrepro.fox.kernel as K
+        self.K = K
+        self.saved = K.LAST_ROW_ONLY_ELEMS
+
+    def tearDown(self) -> None:
+        self.K.LAST_ROW_ONLY_ELEMS = self.saved
+
+    def _run(self, threshold, src, mask, **kw):
+        self.K.LAST_ROW_ONLY_ELEMS = threshold
+        torch.manual_seed(0)       # random_heads draws from the global RNG
+        return intervene(src.clone(), IMG_START, IMG_END, attention_mask=mask,
+                         gamma=RELEASED_PENALTY_VALUE,
+                         ratio=RELEASED_SELECT_RATIO, **kw)
+
+    def test_identical_to_the_full_path_in_every_mode_and_dtype(self) -> None:
+        for dtype in (torch.float16, torch.float32, torch.bfloat16):
+            for mode in ("as_implemented", "as_described", "random_heads",
+                         "boost_visual", "ulp_control"):
+                for b, mask in ((2, causal_mask(SEQ, SEQ)), (2, None)):
+                    src = make_logits(b=b, dtype=dtype, seed=11)
+                    full, d_full = self._run(1 << 60, src, mask, mode=mode)
+                    last, d_last = self._run(0, src, mask, mode=mode)
+                    with self.subTest(dtype=dtype, mode=mode,
+                                      mask=mask is not None):
+                        self.assertTrue(torch.equal(full, last))
+                        for k in d_full:
+                            self.assertTrue(torch.equal(d_full[k], d_last[k]), k)
+
+    def test_last_row_path_still_equals_the_reference(self) -> None:
+        kp = {"image_start": IMG_START, "image_end": IMG_END}
+        mask = causal_mask(SEQ, SEQ)
+        src = make_logits(b=2, dtype=torch.float16, seed=4)
+        ref = reference_intervene(
+            src.clone(), kp, layer_idx=8, attention_mask=mask,
+            select_ratio=RELEASED_SELECT_RATIO,
+            penalty_value=RELEASED_PENALTY_VALUE)
+        got, _ = self._run(0, src, mask, mode="as_implemented")
+        self.assertTrue(torch.equal(ref, got))
+
+    def test_decode_shape_and_mask_with_a_single_query_row(self) -> None:
+        src = make_logits(b=2, q=1, k=SEQ + 7, seed=3)
+        m = causal_mask(1, SEQ + 7)
+        full, _ = self._run(1 << 60, src, m, mode="as_implemented")
+        last, _ = self._run(0, src, m, mode="as_implemented")
+        self.assertTrue(torch.equal(full, last))
+
+    def test_default_threshold_leaves_llava_geometry_on_the_old_path(self) -> None:
+        # The biggest LLaVA layer tensor: 2 rows x 32 heads x 700 x 700.
+        self.assertLess(2 * 32 * 700 * 700, self.saved)
+        # And an InternVL3 sample with 13 tiles is far above it.
+        self.assertGreater(2 * 28 * 3312 * 3312, self.saved)
+
+
+class TestChunkedTail(unittest.TestCase):
+    """The post-intervention mask + softmax, in head chunks, equals the
+    one-shot expression bit for bit."""
+
+    def test_equal_to_one_shot(self) -> None:
+        import torch.nn.functional as F
+        import foxrepro.fox.attention as A
+        saved = A._TAIL_CHUNK_ELEMS
+        try:
+            for dtype in (torch.float16, torch.float32, torch.bfloat16):
+                for acc in (torch.float32, None):
+                    for with_mask in (True, False):
+                        lg = make_logits(b=2, h=6, q=40, k=40, dtype=dtype,
+                                         seed=2)
+                        mask = causal_mask(40, 40, dtype) if with_mask else None
+                        a = acc or dtype
+                        x = lg
+                        if mask is not None:
+                            x = x + mask[..., :40].to(dtype)
+                            x = torch.max(x, torch.tensor(
+                                torch.finfo(dtype).min, dtype=dtype))
+                        want = F.softmax(x, dim=-1, dtype=a).to(dtype)
+                        for elems in (1, 2 * 40 * 40, 3 * 2 * 40 * 40, 1 << 30):
+                            A._TAIL_CHUNK_ELEMS = elems
+                            got = A._masked_softmax_in_head_chunks(
+                                lg.clone(), mask, 40, a, dtype)
+                            with self.subTest(dtype=dtype, acc=a,
+                                              mask=with_mask, chunk=elems):
+                                self.assertTrue(torch.equal(want, got))
+        finally:
+            A._TAIL_CHUNK_ELEMS = saved

@@ -762,19 +762,64 @@ def fox_attention_forward(
             k: v.detach() for k, v in diag.items()
         }
 
-    if attention_mask is not None:
-        logits = logits + attention_mask[..., : k_states.shape[-2]].to(logits.dtype)
-        logits = torch.max(
-            logits,
-            torch.tensor(torch.finfo(logits.dtype).min, device=logits.device,
-                         dtype=logits.dtype),
-        )
-
     acc = torch.float32 if FOX.softmax_dtype == "fp32" else logits.dtype
-    probs = F.softmax(logits, dim=-1, dtype=acc).to(query.dtype)
+    if logits.numel() > LARGE_TAIL_ELEMS:
+        # Same arithmetic, element for element, in head chunks: the mask add,
+        # the clamp and the softmax over the key axis are all independent per
+        # (batch, head, query) row, so slicing heads changes no value. What it
+        # avoids is holding the biased copy, the clamped copy and an fp32
+        # softmax of the whole [B,H,Q,K] tensor at once (3.5x its size for fp16).
+        # InternVL3 prompts reach 3.3k tokens; LLaVA never gets here.
+        probs = _masked_softmax_in_head_chunks(
+            logits, attention_mask, k_states.shape[-2], acc, query.dtype)
+    else:
+        if attention_mask is not None:
+            logits = logits + attention_mask[..., : k_states.shape[-2]].to(logits.dtype)
+            logits = torch.max(
+                logits,
+                torch.tensor(torch.finfo(logits.dtype).min, device=logits.device,
+                             dtype=logits.dtype),
+            )
+        probs = F.softmax(logits, dim=-1, dtype=acc).to(query.dtype)
 
     out = torch.matmul(probs, v_states).transpose(1, 2).contiguous()
     return out, None
+
+
+#: Above this many elements the post-intervention mask/softmax runs in head
+#: chunks (2**26 = 64M; LLaVA's largest layer tensor is about 31M).
+LARGE_TAIL_ELEMS = 1 << 26
+#: fp32 elements one chunk may hold (32M = 128 MiB).
+_TAIL_CHUNK_ELEMS = 1 << 25
+
+
+def _masked_softmax_in_head_chunks(
+    logits: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    n_keys: int,
+    acc: torch.dtype,
+    out_dtype: torch.dtype,
+) -> torch.Tensor:
+    """``softmax(max(logits + mask, finfo.min))`` over head slices.
+
+    Bit-identical to the unchunked expression: every op is elementwise or a
+    reduction along the key axis, which no head slice crosses.
+    """
+    B, H, Q, K = logits.shape
+    probs = torch.empty((B, H, Q, K), dtype=out_dtype, device=logits.device)
+    step = max(1, _TAIL_CHUNK_ELEMS // max(1, B * Q * K))
+    floor = torch.tensor(torch.finfo(logits.dtype).min, device=logits.device,
+                         dtype=logits.dtype)
+    for h0 in range(0, H, step):
+        part = logits[:, h0:h0 + step]
+        if attention_mask is not None:
+            m = attention_mask[..., :n_keys]
+            if m.shape[1] == H and H > 1:      # a per-head mask, not [B,1,Q,K]
+                m = m[:, h0:h0 + step]
+            part = part + m.to(logits.dtype)
+            part = torch.max(part, floor)
+        probs[:, h0:h0 + step] = F.softmax(part, dim=-1, dtype=acc).to(out_dtype)
+    return probs
 
 
 # --------------------------------------------------------------------------- #
@@ -1376,6 +1421,12 @@ _HANDLED_INPUT_KEYS = frozenset({
 })
 
 
+def _uses_mrope(model: Any) -> bool:
+    """True for models whose inner model keeps ``rope_deltas`` (Qwen2/3-VL),
+    i.e. whose positions are 3D and derived inside the forward pass."""
+    return hasattr(getattr(model, "model", None), "rope_deltas")
+
+
 def _eos_ids(model: Any) -> frozenset:
     """Every id that ends generation: the decoder config's, plus the model's
     generation config's. Qwen-family checkpoints list ``<|im_end|>`` in one and
@@ -1694,11 +1745,29 @@ def fox_generate(
                 # wrong position (the first still agrees, which hides it).
                 # For LLaVA it equals what the model would derive from the
                 # cache length, so nothing changes there.
+                #
+                # attention_mask is NOT passed to a multimodal-RoPE model on
+                # a decode step. Recent transformers (5.16 - 5.24, verified)
+                # derive the 3D positions there as
+                # `attention_mask.cumsum(-1) - 1`, a tensor as long as the
+                # WHOLE sequence, not as long as the one new token; the
+                # rotary embedding then broadcasts the single query to P+1
+                # rows and the layer fails with keys = P + (P+1) against a
+                # mask of P+1 (419 = 209 + 210 in the r29 log). generate()
+                # never reaches that branch because it passes position_ids.
+                # Every row here is unpadded (all ones), so omitting the mask
+                # drops no information: the positions then come from
+                # arange(cache_length, ...) + rope_deltas and the causal mask
+                # from cache_position. docs/DEVIATIONS.md 3.21.
+                dec_kw: Dict[str, Any] = {}
+                if not _uses_mrope(model):
+                    dec_kw["attention_mask"] = mask2
                 out = model(
-                    input_ids=ids2[:, -1:], attention_mask=mask2,
+                    input_ids=ids2[:, -1:],
                     past_key_values=cache, use_cache=True,
                     cache_position=torch.tensor(
                         [ids2.shape[1] - 1], device=device),
+                    **dec_kw,
                 )
                 cache = out.past_key_values
             if sid:
