@@ -1528,14 +1528,13 @@ class OPERAMethod(_LlavaMethod):
     (its greedy one). One run per seed is therefore the whole arm, and
     ``decoding="sampling"`` is refused rather than silently accepted.
 
-    **POPE only, and that is a property of the method rather than a budget
-    decision.** OPERA's second mechanism -- retrospection-reallocation --
-    cannot fire below 16 response tokens: the rollback score is only selected
-    when more than 10 tokens have been emitted, and the trigger needs a modal
-    column repeated more than 15 times in a history with one column per step.
-    ``opera_generate`` refuses a length where rollback would become
-    reachable, so this arm cannot silently become "OPERA minus half its
-    method" on CHAIR.
+    **Rollback is on exactly where the method needs it.** OPERA's second
+    mechanism -- retrospection-reallocation -- cannot fire below 16 response
+    tokens, and from the 11th token on its candidate penalty is the rollback
+    score rather than the image attention. ``opera_generate`` therefore runs
+    the original rollback-free path byte for byte at <= 10 tokens (POPE) and
+    the full method above that (CHAIR at 512). The record says which:
+    ``resolved_hyperparameters.rollback``.
 
     Generation length is 10, not our POPE default of 1, because that is what
     ``pope_eval.py`` passes. With beam search that is not cosmetic: the
@@ -1617,6 +1616,14 @@ class OPERAMethod(_LlavaMethod):
                 t["logit_spread"] for t in trace) / len(trace)
             extra["n_steps_penalty_changed_top"] = sum(
                 1 for t in trace if t["penalty_changed_top"])
+        if result.get("rollback"):
+            # What the rollback did on this caption, so a whole run can be
+            # asked how often it fired, and whether fp16 saturation (non-
+            # finite candidate scores) ever hit.
+            extra["n_rollbacks"] = int(result["n_rollbacks"])
+            extra["rollbacks"] = list(result["rollbacks"])
+            extra["n_nonfinite_steps"] = int(result["n_nonfinite_steps"])
+            extra["score_precision"] = result["score_precision"]
         return MethodOutput(
             text=text,
             n_prompt_tokens=int(result["n_prompt_tokens"]),
@@ -1625,27 +1632,36 @@ class OPERAMethod(_LlavaMethod):
         )
 
     def _record(self) -> Dict[str, Any]:
+        from foxrepro.fox.opera import PENALTY_SWITCH_LEN
+
         d: Dict[str, Any] = {
             "num_beams": self.num_beams,
             "num_attn_candidates": self.num_attn_candidates,
             "penalty_weights": self.weight,
             "restrict_candidates": self.restrict,
-            "rollback": False,
+            # True only where the length puts the rollback in play (> 10
+            # response tokens); POPE's 1- and 10-token runs stay False and
+            # keep exactly the metadata they had.
+            "rollback": self.cfg.max_new_tokens > PENALTY_SWITCH_LEN,
         }
         if self.cfg.control is not None:
             d["control"] = self.cfg.control
         return d
 
     def describe(self) -> Dict[str, Any]:
+        from foxrepro.fox.opera import PENALTY_SWITCH_LEN
+
         info = dict(super().describe())
         info["resolved_hyperparameters"] = self._record()
         info["search"] = f"beam-{self.num_beams}"
         info["fusion"] = "none"
         info["fox_intervention"] = "off"
         info["intervention"] = "none"
-        # Not a deviation but a proved-unreachable omission; see the class
-        # docstring and docs/DEVIATIONS.md Sec 3.13.
-        info["rollback_implemented"] = False
+        # Implemented (docs/DEVIATIONS.md Sec 3.13); in play only above 10
+        # response tokens, and able to FIRE only above 15.
+        info["rollback_implemented"] = True
+        info["rollback_in_play_at_this_length"] = bool(
+            self.cfg.max_new_tokens > PENALTY_SWITCH_LEN)
         info["rollback_reachable_at_this_length"] = bool(
             self.cfg.max_new_tokens > 15)
         return info

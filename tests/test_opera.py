@@ -422,16 +422,32 @@ class TestOperaGuards(_ModelBase):
         with self.assertRaises(ValueError):
             self.run_opera(max_new_tokens=1, num_attn_candidates=0)
 
-    def test_a_length_that_would_need_rollback_is_refused(self) -> None:
-        """Running long without rollback is OPERA with half its method gone."""
-        with self.assertRaises(ValueError) as cm:
-            self.run_opera(max_new_tokens=512)
-        self.assertIn("rollback", str(cm.exception))
+    def test_a_length_that_would_need_rollback_is_refused_without_it(self) -> None:
+        """Running long with ``rollback=False`` is OPERA with half its method gone."""
+        for n in (11, 15, 16, 512):
+            with self.subTest(n=n):
+                with self.assertRaises(ValueError) as cm:
+                    self.run_opera(max_new_tokens=n, rollback=False)
+                self.assertIn("rollback", str(cm.exception))
+
+    def test_long_lengths_run_with_the_rollback_by_default(self) -> None:
+        got = self.run_opera(max_new_tokens=12)
+        self.assertTrue(got["rollback"])
+        self.assertIn("n_rollbacks", got)
+
+    def test_the_short_path_does_not_report_a_rollback(self) -> None:
+        got = self.run_opera(max_new_tokens=10)
+        self.assertNotIn("rollback", got)
 
     def test_that_refusal_can_be_overridden_explicitly(self) -> None:
-        got = self.run_opera(max_new_tokens=16,
+        got = self.run_opera(max_new_tokens=16, rollback=False,
                              allow_unreachable_rollback=True)
         self.assertGreater(got["n_gen_tokens"], 0)
+        self.assertNotIn("rollback", got)
+
+    def test_the_candidate_cap_off_is_refused_on_the_rollback_path(self) -> None:
+        with self.assertRaises(ValueError):
+            self.run_opera(max_new_tokens=12, restrict_candidates=False)
 
     def test_the_reachability_boundary(self) -> None:
         """Both gates are off at <= 15 tokens and on above it."""
@@ -498,6 +514,80 @@ class TestAttentionCaptureIsMaxNotMean(_ModelBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestShortPathIsUnchangedByTheRollbackWork(_ModelBase):
+    """At <= 10 tokens (POPE) the output must not move by a bit.
+
+    OPERA's 10-token POPE rows reproduced the paper to the digit (89.27 /
+    86.80 / 81.13), so anything that shifts them is a regression. The values
+    below were captured from ``opera_generate`` as it stood BEFORE the
+    rollback was added (commit ab8e62d), on this same stub, and the new code
+    was compared with them byte for byte at the time (the whole trace dict,
+    ``cmp`` on the JSON). The floats are asserted to 5 places here so a
+    different BLAS does not turn this into a flaky test; the token ids are
+    exact.
+    """
+
+    #: name -> (kwargs, token ids, best_beam_score per step, trace[3])
+    GOLDEN = {
+        "n1": (dict(max_new_tokens=1), [19], [-1.528588]),
+        "n3": (dict(max_new_tokens=3), [19, 29, 9],
+               [-1.528588, -3.083509, -4.6818]),
+        "n10": (dict(max_new_tokens=10),
+                [45, 60, 31, 41, 23, 31, 41, 23, 31, 41],
+                [-1.528588, -3.083509, -4.6818, -6.227958, -7.742609,
+                 -9.277858, -10.823303, -12.338737, -13.874291, -15.419427]),
+        "n10_nopen": (dict(max_new_tokens=10, penalty_weights=0.0),
+                      [45, 60, 31, 41, 23, 31, 41, 23, 31, 41],
+                      [-1.528539, -3.083485, -4.681767, -6.22785, -7.742553,
+                       -9.277765, -10.823045, -12.338539, -13.874077,
+                       -15.41904]),
+        "n10_unres": (dict(max_new_tokens=10, restrict_candidates=False),
+                      [19, 60, 31, 41, 23, 31, 41, 23, 31, 41],
+                      [-3.025288, -6.061683, -9.17128, -12.221956,
+                       -15.247446, -18.292505, -21.342003, -24.372244,
+                       -27.421524, -30.474327]),
+    }
+
+    def test_tokens_and_scores_match_the_pre_rollback_code(self) -> None:
+        for name, (kw, ids, best) in self.GOLDEN.items():
+            with self.subTest(name):
+                got = self.run_opera(collect_trace=True, **kw)
+                self.assertEqual(got["token_ids"], ids)
+                self.assertEqual(len(got["trace"]), len(best))
+                for t, want in zip(got["trace"], best):
+                    self.assertAlmostEqual(t["best_beam_score"], want, 5)
+                self.assertEqual(
+                    set(got["trace"][0]),
+                    {"step", "attn_image_mean", "penalty_spread",
+                     "logit_spread", "penalty_changed_top",
+                     "best_beam_score"},
+                    "the short path's trace schema must not grow keys")
+                self.assertNotIn("rollback", got)
+
+    def test_switching_the_rollback_on_or_off_changes_nothing_up_to_10(self) -> None:
+        for n in (1, 3, 10):
+            with self.subTest(n=n):
+                a = self.run_opera(max_new_tokens=n, collect_trace=True,
+                                   rollback=True)
+                b = self.run_opera(max_new_tokens=n, collect_trace=True,
+                                   rollback=False)
+                self.assertEqual(a, b)
+
+    def test_the_short_path_never_calls_the_rollback_machinery(self) -> None:
+        from foxrepro.fox import opera as O
+        calls = []
+        real = O.column_product_scores
+
+        def spy(*a, **k):
+            calls.append(1)
+            return real(*a, **k)
+
+        O.column_product_scores = spy
+        self.addCleanup(lambda: setattr(O, "column_product_scores", real))
+        self.run_opera(max_new_tokens=10)
+        self.assertEqual(calls, [])
 
 
 class TestCropCacheTo(unittest.TestCase):
