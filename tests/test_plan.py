@@ -1192,7 +1192,12 @@ class TestPriorityPartition(unittest.TestCase):
                 hours = sum(j.est_seconds() for j in g) / 3600
                 # A session may overshoot only by its last group, which
                 # cannot be split without splitting a comparison.
-                head = sum(j.est_seconds() for j in g[:-1]) / 3600
+                # The last GROUP, by pair_key, not the last job: a group can
+                # hold a baseline, Fox and `fox off` of one seed.
+                from foxrepro.bench.plan import pair_key
+                last = pair_key(g[-1])
+                head = sum(j.est_seconds() for j in g
+                           if pair_key(j) != last) / 3600
                 self.assertLessEqual(head, 9.0)
                 self.assertLess(hours, 12.0)
 
@@ -1808,9 +1813,15 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
             if j.model_id == "llava-hf/llava-1.5-7b-hf":
                 self.assertNotIn(":ib", j.job_id())
 
+    #: Targets that carry their own overrides on purpose: the k / tau_JS / beta
+    #: sweeps of Figure 16 and the VCD and ICD ports. They are checked by their
+    #: own tests; the tests below are about Tables 1 and 2.
+    _NOT_TABLES_1_2 = ("fig16_instructblip",)
+
     def _ib(self):
         return [j for j in PLAN
-                if j.model_id == "Salesforce/instructblip-vicuna-7b"]
+                if j.model_id == "Salesforce/instructblip-vicuna-7b"
+                and j.target not in self._NOT_TABLES_1_2]
 
     def test_the_instructblip_jobs_are_exactly_tables_1_and_2(self) -> None:
         jobs = self._ib()
@@ -1986,3 +1997,44 @@ class TestTheSmokeManifestAndTheTagGuard(unittest.TestCase):
         text = (REPO_ROOT / ".github" / "workflows" / "kaggle-run.yml").read_text()
         self.assertIn("kaggle-smoke.yml", text)
         self.assertIn("smoke*)", text)
+
+
+class TestTheSweepsAndWindows(unittest.TestCase):
+    """Figures 16 and 17 and Table 15 on the other backbones."""
+
+    def _t(self, target):
+        return [j for j in PLAN if j.target == target]
+
+    def test_each_sweep_changes_exactly_one_parameter(self) -> None:
+        for target, tau_default in (("fig16_instructblip", 0.2),
+                                    ("fig17_shikra", None)):
+            jobs = self._t(target)
+            self.assertEqual(len(jobs), 11)
+            for j in jobs:
+                with self.subTest(job=j.job_id()):
+                    self.assertEqual((j.benchmark, j.split, j.seed),
+                                     ("chair", "val2014_500", 42))
+                    changed = [n for n in ("k", "tau_js", "beta")
+                               if getattr(j, n) is not None
+                               and not (n == "tau_js" and tau_default is not None
+                                        and j.tau_js == tau_default)]
+                    self.assertEqual(len(changed), 1, changed)
+
+    def test_instructblip_sweeps_pin_the_papers_tau(self) -> None:
+        for j in self._t("fig16_instructblip"):
+            if j.tau_js is None:
+                self.fail("an InstructBLIP sweep point without tau_JS would "
+                          "use the release's 0.15, not the base it is a "
+                          "sweep around")
+
+    def test_windows_are_the_papers_second_window(self) -> None:
+        jobs = self._t("table15_other")
+        self.assertEqual({(j.method, j.intervention_layers) for j in jobs},
+                         {("fox_shikra", "3-11"), ("fox_internvl3", "3-12")})
+        self.assertEqual({j.seed for j in jobs}, {42, 43, 44})
+
+    def test_mathvista_ten_seeds_do_not_collide_with_the_three(self) -> None:
+        jobs = self._t("table11_mathvista_10seeds")
+        self.assertEqual(len(jobs), 21)
+        self.assertEqual({j.seed for j in jobs}, set(range(45, 52)))
+        self.assertEqual(len({j.run_key().filename() for j in PLAN}), len(PLAN))

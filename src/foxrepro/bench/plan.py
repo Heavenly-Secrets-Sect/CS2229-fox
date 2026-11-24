@@ -1759,6 +1759,67 @@ def _build_plan() -> List[Job]:
             seed=42,
             note=f"V20 CircularEval: MMBench dev, {method}, all rotations"))
 
+    # ---- Figures 16 and 17: k, tau_JS, beta on InstructBLIP and Shikra ----- #
+    # "Parameter sensitivity ... on captioning performance (CHAIR_S, CHAIR_I
+    # and F1), evaluated on 500 COCO samples." The paper's grids are not
+    # printed, so these are ours: four values of k and of tau_JS and three of
+    # beta around the defaults (k 0.4, tau_JS 0.2, beta 0.1). One seed, because
+    # CHAIR's variance is dominated by the 500-image draw that more seeds do not
+    # touch (DEVIATIONS 3.8), so a sweep is read as a curve, not as intervals.
+    # InstructBLIP pins tau_JS=0.2 (the paper's value; the method's own default
+    # is the release's 0.15) in the k and beta sweeps so every point shares the
+    # base that the tau_JS=0.2 arm already measured.
+    sweeps = (
+        ("k", (0.2, 0.3, 0.5, 0.6)),
+        ("tau_js", (0.1, 0.15, 0.25, 0.3)),
+        ("beta", (0.05, 0.2, 0.3)),
+    )
+    for backbone, method, model_id, extra, target in (
+        ("InstructBLIP", "fox_instructblip", INSTRUCTBLIP_MODEL_ID,
+         {"system_prompt_id": "none"}, "fig16_instructblip"),
+        ("Shikra", "fox_shikra", SHIKRA_MODEL_ID, {}, "fig17_shikra"),
+    ):
+        for name, values in sweeps:
+            for v in values:
+                kw = dict(extra)
+                if backbone == "InstructBLIP" and name != "tau_js":
+                    kw["tau_js"] = 0.2
+                kw[name] = v
+                jobs.append(Job(
+                    target, method, "chair", "val2014_500", seed=42,
+                    model_id=model_id,
+                    note=f"{backbone}: {name}={v} (Figure {16 if backbone == 'InstructBLIP' else 17})",
+                    **kw))
+
+    # ---- Table 15 on the other backbones: manual vs automatic window ------- #
+    # The paper lists a manual and an automatic layer window per backbone. They
+    # coincide for InstructBLIP (4-10 / 4-10) and Qwen3-VL (3-10 / 3-10), so only
+    # Shikra (3-10 vs 3-11) and InternVL3 (3-11 vs 3-12) have a second window to
+    # run; the first is each method's default and is already in Tables 1 and 10.
+    # POPE-adversarial, sampling, three seeds, as for LLaVA.
+    for seed in SEEDS_BREADTH:
+        jobs.append(Job(
+            "table15_other", "fox_shikra", "pope", "adversarial", seed=seed,
+            model_id=SHIKRA_MODEL_ID, intervention_layers="3-11",
+            note="Table 15: Shikra automatic window 3-11"))
+        jobs.append(Job(
+            "table15_other", "fox_internvl3", "pope", "adversarial", seed=seed,
+            model_id=INTERNVL3_MODEL_ID, intervention_layers="3-12",
+            note="Table 15: InternVL3 automatic window 3-12"))
+
+    # ---- MathVista MC500 at ten seeds -------------------------------------- #
+    # r27: Fox - Sampling was -1.33 (-1.0, -2.4, -0.6), the opposite sign to the
+    # paper's +0.63, not resolved at three seeds (90% t-interval [-2.93, +0.26]).
+    # Seven more seeds for Sampling, Fox and `fox off`, as V17 did for MME.
+    for method, mode in (("sampling", "as_implemented"),
+                         ("fox", "as_implemented"), ("fox", "off")):
+        for seed in SEEDS_FULL[3:]:
+            jobs.append(Job(
+                "table11_mathvista_10seeds", method, "mathvista",
+                "testmini_mc500", seed=seed,
+                mode=mode if method == "fox" else "as_implemented",
+                note=f"MathVista MC500 seeds 45-51: {method} {mode}"))
+
     return jobs
 
 
@@ -1931,10 +1992,16 @@ def pair_key(job: Job) -> Tuple:
     baseline would mix the generation draw into the gap, which is exactly the
     thing the seed replication exists to measure.
     """
-    return (job.target, job.benchmark, job.split, job.decoding, job.seed,
-            job.mode, job.logit_dtype, job.system_prompt_id, job.wrapper_id,
-            job.prompt_template_id, job.gamma, job.k, job.tau_js, job.alpha,
-            job.limit)
+    key = (job.target, job.benchmark, job.split, job.decoding, job.seed,
+           job.mode, job.logit_dtype, job.system_prompt_id, job.wrapper_id,
+           job.prompt_template_id, job.gamma, job.k, job.tau_js, job.alpha,
+           job.limit)
+    if job.target == "table11_mmbench_circular":
+        # Sampling, Fox and VCD at four rotations apiece total ~15 GPU-h, more
+        # than a 12-hour Kaggle session holds, and a group is placed whole. The
+        # arms are paired by seed and image anyway, so they may land apart.
+        return key + (job.method,)
+    return key
 
 
 def partition_by_priority(

@@ -873,7 +873,10 @@ class TestPlan(unittest.TestCase):
     def setUp(self) -> None:
         from foxrepro.bench import plan as P
         self.P = P
-        self.jobs = [j for j in P.PLAN if j.model_id == P.SHIKRA_MODEL_ID]
+        # The Figure 17 sweeps carry k / tau_JS / beta on purpose; the tests
+        # below are about Tables 1 and 2 and the 10-token diagnostic.
+        self.jobs = [j for j in P.PLAN if j.model_id == P.SHIKRA_MODEL_ID
+                     and j.target not in ("fig17_shikra", "table15_other")]
 
     def test_the_jobs_are_exactly_tables_1_and_2(self) -> None:
         # The 10-token POPE diagnostic is a separate target on purpose (r31's

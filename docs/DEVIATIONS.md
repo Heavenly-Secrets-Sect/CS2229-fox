@@ -1151,6 +1151,16 @@ reading is the one to quote, and it shows no detectable difference. Different
 instrument from GPT-4V: the numbers are not comparable to Figure 6, only the
 direction and the bias are informative.
 
+**Across backbones (2026-11-25, ~$0.39 each, 0 unparsed).** The same 50 images
+and both orders on InstructBLIP (Fox at the paper's tau_JS=0.2) and Shikra.
+Accuracy, order-averaged, Fox minus Sampling: LLaVA-1.5 **+0.41** [−0.10, +0.92],
+InstructBLIP **+0.55** [−0.05, +1.16], Shikra **+0.86** [+0.47, +1.25].
+Detailedness: −0.09, +0.05, +0.17, all including zero. The paper-order reading
+flips sign on all three (−0.50, −0.68, −0.20), the same first-position bias as
+above. So with position cancelled the direction is the paper's (Fox judged
+slightly more accurate) on every backbone and resolved only for Shikra, and
+there is no judged detail difference. One run per backbone, a different judge
+from GPT-4V; read the direction, not the size.
 ### 3.19 Table 10 / Table 3: Qwen3-VL-8B and InternVL3-8B
 
 Sampling and Fox are ported (`sampling_qwen3vl`, `fox_qwen3vl`,
