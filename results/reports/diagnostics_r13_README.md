@@ -23,3 +23,9 @@ and the L2–15 window the released code ships scores below the all-layer
 average on the paper's own window-selection criterion. The discriminative
 signal is real and, sign-corrected, stronger than the paper reports (0.8735
 held out against 0.8226) — but it is not the quantity the paper says it is.
+
+Figures 12 and 14 of the paper are re-measured from the same data by
+`scripts/analyse_figures_12_14.py` (`figures_12_14_r13.{json,md}`,
+`figure12_r13.png`, `figure14_r13.png`); see `docs/VALIDATION.md` section
+"Results, round 13 addendum". Figure 15 needs a paired run that does not exist
+yet.

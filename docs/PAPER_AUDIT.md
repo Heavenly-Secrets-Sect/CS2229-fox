@@ -318,6 +318,31 @@ measurements of two different layer ranges, and the paper presents them as
 one argument. r15/V10 asks whether "early" is a depth effect of the model
 rather than anything Fox selects.
 
+### Figures 12, 14 and 15 — global visual mass, Top-K probe, before/after — **12 and 14 DONE from r13 data; 15 needs a GPU run**
+
+Re-read from the r13 per-head records, no new run (`VALIDATION.md` section
+"Results, round 13 addendum"; `scripts/analyse_figures_12_14.py`). The paper's
+"1,000 faithful vs 1,000 hallucinated" cannot be formed (459 hallucinations
+exist); sample choice and matched controls are stated there and in DEVIATIONS
+3.24.
+
+- **Figure 12 reproduces as "the distributions overlap and hallucination is not
+  a reduction of visual mass"**: AUC of m_V as a hallucination detector 0.503
+  (tail 32) and 0.592 (tail 1), KS 0.05 / 0.14, overlap 0.91 / 0.84. The
+  tail-1 mean (0.1053 +- 0.0069 vs the paper's 0.1049 +- 0.0071) matches; the
+  tail-32 mean (0.226 vs 0.165) does not. "Not significant" fails at tail 1
+  (KS p = 5e-7) but the shift is small and vanishes against faithful samples
+  that also answered "yes" (AUC 0.526), i.e. it is the answer, not the error.
+- **Figure 14 reproduces**: Top-32 AUC 0.868 in-sample, 0.866 held out against
+  the paper's 0.8180; AP 0.477 against 0.153 chance; saturation by K = 4-8
+  (0.845), peak at K = 64 (0.873), all heads 0.803 (paper 0.7852). A shuffled-
+  label null puts the selection bias at about 0.58. The part that does not
+  carry over is the reading: 18 of the 32 most informative heads have
+  hallucination *lowering* S, and only 5 are in the shipped L2-15.
+- **Figure 15 cannot be reproduced from this data.** r13 has one un-intervened
+  pass and no visual maps. `fox_diagnose_paired` (implemented, tested on a tiny
+  model, **not run**) is the instrument; the run it needs is in VALIDATION.
+
 ### Figure 8 — diagnosis-driven vs random head selection — **DONE, r6 + r14**
 
 The paper's own validation that the diagnosis does something: Fox against

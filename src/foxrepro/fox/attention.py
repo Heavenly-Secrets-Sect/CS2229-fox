@@ -86,6 +86,7 @@ __all__ = [
     "locate_image_span",
     "fox_generate",
     "fox_diagnose",
+    "fox_diagnose_paired",
     "causalmm_vision",
     "ATTN_NAME",
 ]
@@ -206,8 +207,18 @@ class FoxState:
     #: 32 (smoothed) and finds the shorter window separates better.
     diagnose_tails: Tuple[int, ...] = (1, 32)
 
+    #: Figure 15 capture: layers whose POST-softmax attention is recorded for
+    #: the last query, whatever pass is running (untouched, or intervened).
+    #: Empty means off, which is the default and the only state any scored run
+    #: ever sees. ``captured[layer]`` = ``{"m_sys", "m_vis", "m_txt", "h_vis":
+    #: [H], "vis_map": [H, n_img]}`` from the probabilities that were actually
+    #: multiplied into V -- i.e. after the edit, rounding included.
+    capture_layers: frozenset = field(default_factory=frozenset)
+    captured: Dict[int, Dict[str, torch.Tensor]] = field(default_factory=dict)
+
     def reset_diagnostics(self) -> None:
         self.diagnostics.clear()
+        self.captured.clear()
 
     def sid_read_row(self) -> int:
         """Which row's layer-(agg-1) attention the ranking is read from.
@@ -586,6 +597,23 @@ def _cf_edit_other(attn: torch.Tensor, edit: str) -> torch.Tensor:
     return reference_edit_attention(attn, edit)
 
 
+def _capture_post_softmax(layer_idx: int, probs: torch.Tensor) -> None:
+    """Record last-query statistics and the visual map of ``probs`` (Fig. 15).
+
+    Read-only: ``probs`` is neither modified nor kept (everything stored is a
+    detached CPU copy), so the forward is unchanged by capturing.
+    """
+    with torch.no_grad():
+        last = probs[0:1, :, -1:, :].float()                  # [1, H, 1, K]
+        st = diagnostic_stats(last, FOX.img_start, FOX.img_end, tail=1)
+        if st is None:
+            return
+        v_s, v_e = FOX.img_start, FOX.img_end + 1
+        row = {k: v[0].detach().cpu() for k, v in st.items()}
+        row["vis_map"] = last[0, :, 0, v_s:v_e].detach().cpu()
+        FOX.captured[layer_idx] = row
+
+
 def fox_attention_forward(
     module: Any,
     query: torch.Tensor,
@@ -736,6 +764,8 @@ def fox_attention_forward(
             )
         acc = torch.float32 if FOX.softmax_dtype == "fp32" else logits.dtype
         probs = F.softmax(logits, dim=-1, dtype=acc).to(query.dtype)
+        if layer_idx in FOX.capture_layers:
+            _capture_post_softmax(layer_idx, probs)
         out = torch.matmul(probs, v_states).transpose(1, 2).contiguous()
         return out, None
 
@@ -782,6 +812,8 @@ def fox_attention_forward(
             )
         probs = F.softmax(logits, dim=-1, dtype=acc).to(query.dtype)
 
+    if layer_idx in FOX.capture_layers:
+        _capture_post_softmax(layer_idx, probs)
     out = torch.matmul(probs, v_states).transpose(1, 2).contiguous()
     return out, None
 
@@ -1376,6 +1408,94 @@ def fox_diagnose(
     }
 
 
+def fox_diagnose_paired(
+    model: Any,
+    inputs: Dict[str, torch.Tensor],
+    *,
+    capture_layers: Tuple[int, ...] = RELEASED_LAYERS,
+    mode: str = "as_implemented",
+    gamma: float = 10000.0,
+    ratio: float = 0.35,
+    logit_dtype: str = "native",
+    softmax_dtype: str = "fp32",
+    image_token_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Paper Figure 15: the same decision step, before and after the edit.
+
+    NOT RUN ANYWHERE YET (it needs a model and a GPU for real samples); the
+    tiny-model tests pin its mechanics. Two forward passes over one prompt, no
+    generation:
+
+    * pass A, untouched: nothing is edited, the post-softmax attention of the
+      last query is captured on ``capture_layers``;
+    * pass B, intervened: the same capture, with the Fox edit on
+      ``capture_layers`` (and ``collect`` on, so the head mask and the joint
+      score ``S = m_sys * H_vis`` the edit selected on are returned).
+
+    For a POPE question the model answers with ONE token and ``max_new_tokens``
+    is 1, so the decision-critical step IS the last prefill query; no KV-cache
+    decode loop is needed, and "a fixed decision-critical step" is exactly
+    reproducible. For free-form captions the step would have to be chosen (and
+    the cache replayed), which this function does not do.
+
+    The values compared are statistics of the probabilities that were actually
+    multiplied into V, so rounding in the edited logits is included -- under
+    ``mode="as_implemented"`` the edit is a softmax-shift no-op in exact
+    arithmetic, and whatever differs between A and B is that rounding.
+
+    Returns ``{"layers": {layer: {"head_mask": [H] bool, "score": [H],
+    "before": {m_sys, m_vis, m_txt, h_vis: [H], vis_map: [H][n_img]},
+    "after": {same}}}, "img_start", "img_end", "n_prompt_tokens"}``. Only the
+    heads in ``head_mask`` were edited; the rest are controls.
+    """
+    if image_token_id is None:
+        image_token_id = resolve_image_token_id(model)
+    input_ids = inputs["input_ids"]
+    img_start, img_end = locate_image_span(
+        input_ids, int(image_token_id), expected_span_width(model))
+    n_layers = int(getattr(
+        getattr(model.config, "text_config", model.config), "num_hidden_layers"))
+    layers = frozenset(int(l) for l in capture_layers)
+    common = dict(
+        diagnose=False, img_start=img_start, img_end=img_end,
+        eager_layers=layers, softmax_dtype=softmax_dtype,
+        capture_layers=layers, branch_rows=None,
+    )
+
+    def to_lists(row: Dict[str, torch.Tensor]) -> Dict[str, Any]:
+        return {k: v.tolist() for k, v in row.items()
+                if k in ("m_sys", "m_vis", "m_txt", "h_vis", "vis_map")}
+
+    with torch.inference_mode():
+        FOX.reset_diagnostics()
+        # Pass A. diagnose=True is what routes the capture layers through the
+        # eager path with nothing edited; it only has to be on for them.
+        with FOX.configured(enabled=False, mode="off", collect=False,
+                            **{**common, "diagnose": True,
+                               "diagnose_tails": (1,),
+                               "eager_layers": frozenset(range(n_layers))}):
+            model(**inputs, use_cache=False)
+            before = {l: to_lists(r) for l, r in FOX.captured.items()}
+        FOX.reset_diagnostics()
+        with FOX.configured(enabled=True, mode=mode, gamma=gamma, ratio=ratio,
+                            logit_dtype=logit_dtype, collect=True, **common):
+            model(**inputs, use_cache=False)
+            after = {l: to_lists(r) for l, r in FOX.captured.items()}
+            picked = {l: {"head_mask": d["head_mask"][0].tolist(),
+                          "score": d["score"][0].float().tolist()}
+                      for l, d in FOX.diagnostics.items() if "head_mask" in d}
+        FOX.reset_diagnostics()
+    out = {}
+    for l in sorted(layers):
+        if l in before and l in after and l in picked:
+            out[l] = {**picked[l], "before": before[l], "after": after[l]}
+    if not out:
+        raise RuntimeError("no layer was captured in both passes; check the "
+                           "visual span and attn_implementation='fox'")
+    return {"layers": out, "img_start": int(img_start), "img_end": int(img_end),
+            "n_prompt_tokens": int(input_ids.shape[-1])}
+
+
 def _is_instructblip(model: Any) -> bool:
     return getattr(getattr(model, "config", None), "model_type", "") \
         == "instructblip"
@@ -1628,7 +1748,7 @@ def fox_generate(
         if sid or cf_vision:
             raise ValueError(
                 "SID and CausalMM are not ported to InstructBLIP "
-                "(docs/DEVIATIONS.md 3.22): SID's rank=100 exceeds the 32 "
+                "(docs/DEVIATIONS.md 3.23): SID's rank=100 exceeds the 32 "
                 "Q-Former tokens and no InstructBLIP value is stated; "
                 "CausalMM has no released InstructBLIP code. Only sampling, "
                 "Fox, VCD and ICD run there"

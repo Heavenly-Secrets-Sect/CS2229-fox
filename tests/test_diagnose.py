@@ -207,6 +207,107 @@ class TestTheDiagnosticPass(unittest.TestCase):
             )
 
 
+class TestPairedCaptureForFigure15(unittest.TestCase):
+    """`fox_diagnose_paired`: before/after of one decision step (Fig. 15).
+
+    Mechanics only, on the tiny random model: there is no run of this on real
+    samples yet, so nothing here says what the intervention does to LLaVA.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.model = tiny_llava()
+        A.register()
+        cls.model.set_attn_implementation(
+            {"text_config": A.ATTN_NAME, "vision_config": "sdpa"})
+
+    def setUp(self) -> None:
+        torch.manual_seed(3)
+        ids = prompt()
+        self.inputs = {"input_ids": ids,
+                       "attention_mask": torch.ones_like(ids),
+                       "pixel_values": torch.randn(1, 3, 336, 336)}
+        self.layers = (1, 2, 3)
+
+    def paired(self, **kw):
+        return A.fox_diagnose_paired(
+            self.model, self.inputs, image_token_id=IMAGE_TOKEN_ID,
+            capture_layers=self.layers, **kw)
+
+    def test_capture_is_off_by_default(self) -> None:
+        fox_diagnose(self.model, self.inputs, image_token_id=IMAGE_TOKEN_ID)
+        self.assertEqual(A.FOX.captured, {})
+        self.assertEqual(A.FOX.capture_layers, frozenset())
+
+    def test_masses_partition_and_the_map_sums_to_m_vis(self) -> None:
+        got = self.paired(mode="as_described", gamma=3.0, ratio=0.5)
+        for l, row in got["layers"].items():
+            for side in ("before", "after"):
+                r = row[side]
+                for h in range(len(r["m_sys"])):
+                    self.assertAlmostEqual(
+                        r["m_sys"][h] + r["m_vis"][h] + r["m_txt"][h], 1.0, 5)
+                    self.assertAlmostEqual(sum(r["vis_map"][h]), r["m_vis"][h], 5)
+
+    def test_before_is_the_diagnose_statistic(self) -> None:
+        got = self.paired(mode="as_described", gamma=3.0, ratio=0.5)
+        ref = fox_diagnose(self.model, self.inputs,
+                           image_token_id=IMAGE_TOKEN_ID, tails=(1,))
+        for l, row in got["layers"].items():
+            for k in ("m_sys", "m_vis", "h_vis"):
+                for a, b in zip(row["before"][k], ref["layers"][l][f"{k}_t1"]):
+                    self.assertAlmostEqual(a, b, places=5)
+
+    def test_capturing_does_not_change_the_intervened_logits(self) -> None:
+        span = fox_diagnose(self.model, self.inputs, image_token_id=IMAGE_TOKEN_ID)
+        cfg = dict(enabled=True, mode="as_described", gamma=3.0, ratio=0.5,
+                   logit_dtype="native", softmax_dtype="fp32",
+                   img_start=span["img_start"], img_end=span["img_end"],
+                   eager_layers=frozenset(self.layers))
+        with torch.inference_mode():
+            with A.FOX.configured(**cfg):
+                plain = self.model(**self.inputs, use_cache=False).logits.clone()
+            with A.FOX.configured(capture_layers=frozenset(self.layers), **cfg):
+                seen = self.model(**self.inputs, use_cache=False).logits.clone()
+        A.FOX.reset_diagnostics()
+        self.assertTrue(torch.equal(plain, seen))
+
+    def test_a_uniform_shift_in_the_image_span_keeps_h_vis(self) -> None:
+        """Why Fig. 15's 'lower H_vis' cannot come from the described edit.
+
+        Subtracting one constant from every image key lowers the visual MASS
+        but leaves the distribution renormalised over the span unchanged, so
+        H_vis is unchanged; only unselected heads would be untouched too.
+        """
+        got = self.paired(mode="as_described", gamma=3.0, ratio=0.5)
+        saw_selected = False
+        for l, row in got["layers"].items():
+            for h, sel in enumerate(row["head_mask"]):
+                b, a = row["before"], row["after"]
+                if sel:
+                    saw_selected = True
+                    self.assertAlmostEqual(a["h_vis"][h], b["h_vis"][h], places=4)
+                    self.assertLess(a["m_vis"][h], b["m_vis"][h])
+                elif l == min(got["layers"]):
+                    # nothing upstream of the first captured layer was edited,
+                    # so an unselected head there must not move at all
+                    self.assertAlmostEqual(a["m_vis"][h], b["m_vis"][h], places=5)
+        self.assertTrue(saw_selected)
+
+    def test_as_implemented_is_a_noop_in_fp32(self) -> None:
+        """Shift over ALL keys cancels in the softmax; only rounding is left.
+
+        In fp32 and at gamma=3 that rounding is ~1e-7, so before == after. The
+        released arm differs from the untouched forward on LLaVA only because
+        fp16 logits near 1e4 are quantised to multiples of 8.
+        """
+        got = self.paired(mode="as_implemented", gamma=3.0, ratio=0.5)
+        for row in got["layers"].values():
+            for k in ("m_sys", "m_vis", "h_vis"):
+                for a, b in zip(row["after"][k], row["before"][k]):
+                    self.assertAlmostEqual(a, b, places=4)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
 
