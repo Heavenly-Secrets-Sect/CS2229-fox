@@ -2371,3 +2371,58 @@ fits the disk), then died on "no image token" because the repo's
 `processor_config.json` names `InstructBlipVideoProcessor` and `AutoProcessor`
 followed it. `load_backbone` now uses `InstructBlipProcessor` explicitly,
 checked offline to yield 32 image tokens.
+
+### Results, r27 — V18 holds, and V20's first band fails
+
+r27 reran everything that died of the autograd leak. All 22 jobs exited 0; the
+per-GPU memory log shows allocation flat after every sample.
+
+**V18 — CausalMM under its own harness (suffix, `top_p = 1`), 3 seeds.**
+Prediction: adversarial accuracy rises by at least 1.5 points. **Held, by far.**
+
+| split | shared protocol | own harness | paired difference | paper |
+|---|---|---|---|---|
+| adversarial | 77.86 | **83.31** | **+5.46** (+5.87, +5.43, +5.07) | 81.27 |
+| popular | 84.68 | 85.34 | +0.67 (+0.93, +0.70, +0.37) | 86.63 |
+
+The protocol difference explains the gap and overshoots it: adversarial goes
+from 3.41 below the paper to 2.04 above. The mechanism named in the
+pre-registration (a first token that is neither Yes nor No scored as "yes" by
+the released parser, which is a bias on the hardest split) is consistent with
+a gain concentrated on adversarial, but this run does not separate it from
+`top_p`; no further CausalMM arm is planned for it. With three seeds the
+bootstrap interval [+5.19, +5.72] is too narrow to trust (it cannot exceed the
+observed range); the t-interval [+4.78, +6.13] is the honest one and both are
+far from zero.
+
+**V20 — Table 11 predictions scored, 3 seeds.**
+
+| # | prediction | observed | verdict |
+|---|---|---|---|
+| 1 | MMBench Sampling overall in [60, 65] | **71.96** | **falsified** |
+| 2 | Fox − Sampling within [−1.0, +1.5] on overall, perception, reasoning | +0.36, +0.55, +0.02 | held |
+| 3 | \|VCD − Sampling\| < 1.5 overall | −0.28 | held |
+| 4 | MathVista Sampling in [25, 40] and not within 3 of 19.53 | 33.80 | held |
+| 5 | \|Fox − Sampling\| < 3.0 on MathVista, interval contains zero | −1.33, t-interval [−2.93, +0.26] | held on the t-interval; the bootstrap over three seed differences ([−1.93, −0.73]) would exclude zero, which at n = 3 is not trustworthy |
+| 6 | unparsed < 2% (MMBench), coverage > 90% (MathVista) | 0.0%, 98.2–99.6% | held |
+
+**Prediction 1 failed, and its own note says what that implies**: "a value
+outside the band means the prompt or the extractor is not doing what §3.17
+says". The extractor parses every answer (4377 exact, 1 lead), so the likelier
+reason is the protocol: MMBench's official score is CircularEval, which counts a
+question right only if every option rotation is right, and is much stricter than
+a single pass. LLaVA-1.5-7B's published dev score under it is in the low 60s.
+That is an explanation, not a result; it is tested by running CircularEval on
+one arm, which is not planned yet. Until then **only differences are comparable
+to Table 11**, and the differences reproduce in sign and are smaller:
+
+| | ours | paper |
+|---|---|---|
+| Fox − Sampling, overall | +0.36 | +0.7 |
+| Fox − Sampling, perception | +0.55 | +0.8 |
+| Fox − Sampling, reasoning | +0.02 | +0.3 |
+| VCD − Sampling, overall | −0.28 | −0.4 |
+| Fox − VCD, overall | +0.64 | +1.1 |
+
+MathVista runs the other way (−1.33 against the paper's +0.63) and is not
+resolved at this size.
