@@ -273,6 +273,93 @@ class TestGenerate(unittest.TestCase):
     def test_the_other_baselines_are_refused_not_ignored(self) -> None:
         with self.assertRaises(ValueError):
             self._gen(sid=True, use_m_sys=False)
+        with self.assertRaises(ValueError):
+            self._gen(cf_vision=True, use_m_sys=False)
+
+    def _spy_embeds(self) -> List[torch.Tensor]:
+        """Record every ``inputs_embeds`` the decoder is prefilled with."""
+        seen: List[torch.Tensor] = []
+        orig = self.model.language_model.forward
+
+        def spy(*a: Any, **kw: Any):
+            if kw.get("inputs_embeds") is not None:
+                seen.append(kw["inputs_embeds"].detach().clone())
+            return orig(*a, **kw)
+        self.model.language_model.forward = spy  # type: ignore[method-assign]
+        self.addCleanup(
+            lambda: setattr(self.model.language_model, "forward", orig))
+        return seen
+
+    def _contrastive(self, **kw: Any) -> Dict[str, Any]:
+        return A.fox_generate(
+            self.model, tiny_inputs(), max_new_tokens=4, seed=3, mode="off",
+            fusion="contrastive", greedy=True, use_m_sys=False,
+            eager_layers=frozenset(), **kw)
+
+    def test_vcd_noised_image_reaches_row_1_through_vit_and_qformer(self) -> None:
+        seen = self._spy_embeds()
+        # The toy ViT's patch embedding is near zero, so the image barely
+        # moves its output; scale it up so the test can see an image change.
+        w = self.model.vision_model.embeddings.patch_embedding.weight
+        saved = w.data.clone()
+        w.data.mul_(300.0)
+        self.addCleanup(lambda: w.data.copy_(saved))
+        px = tiny_inputs()["pixel_values"]
+        noised = px + 0.5 * torch.randn_like(px)
+        out = self._contrastive(pixel_values_do=noised)
+        pre = seen[0]  # the batched prefill: [2, L, d]
+        self.assertEqual(pre.shape[0], 2)
+        # The 32 Q-Former tokens differ between rows; text embeddings do not.
+        self.assertFalse(torch.allclose(pre[0, :32], pre[1, :32]))
+        self.assertTrue(torch.equal(pre[0, 32:], pre[1, 32:]))
+        self.assertEqual(out["image_span"], (0, 31))
+
+    def test_vcd_with_an_identical_negative_image_is_the_plain_sample(self) -> None:
+        """(1+a) z - a z = z: a wrongly wired row 1 would break this."""
+        px = tiny_inputs()["pixel_values"]
+        got = self._contrastive(pixel_values_do=px.clone())["token_ids"]
+        want = self._gen(single_branch=True, greedy=True)["token_ids"]
+        self.assertEqual(got, want)
+
+    def _neg_text(self) -> Dict[str, torch.Tensor]:
+        inp = tiny_inputs()
+        ids = inp["input_ids"].clone()
+        ids[0, 33:] = torch.tensor([11, 12, 13, 14, 15])[: ids.shape[1] - 33]
+        return {
+            "input_ids_do": ids,
+            "attn_mask_do": torch.ones_like(ids),
+            "qformer_input_ids_do": torch.tensor([[3, 9, 8, 7, 6]]),
+            "qformer_attn_mask_do": torch.ones(1, 5, dtype=torch.long),
+        }
+
+    def test_icd_negative_prompt_reaches_the_qformer_and_the_decoder(self) -> None:
+        seen = self._spy_embeds()
+        out = self._contrastive(**self._neg_text())
+        # Two separate prefills, one row each (split pass, two caches).
+        pre = [e for e in seen if e.shape[1] > 1]
+        self.assertEqual([e.shape[0] for e in pre], [1, 1])
+        # Same image, but the Q-Former read different text, so even the 32
+        # image tokens differ -- the negative prompt is not LLM-side only.
+        self.assertFalse(torch.allclose(pre[0][0, :32], pre[1][0, :32]))
+        self.assertGreater(out["n_gen_tokens"], 0)
+
+    def test_icd_with_an_identical_negative_prompt_is_the_plain_sample(self) -> None:
+        inp = tiny_inputs()
+        same = {
+            "input_ids_do": inp["input_ids"],
+            "attn_mask_do": inp["attention_mask"],
+            "qformer_input_ids_do": inp["qformer_input_ids"],
+            "qformer_attn_mask_do": inp["qformer_attention_mask"],
+        }
+        got = self._contrastive(**same)["token_ids"]
+        want = self._gen(single_branch=True, greedy=True)["token_ids"]
+        self.assertEqual(got, want)
+
+    def test_icd_without_qformer_text_is_refused(self) -> None:
+        neg = self._neg_text()
+        neg.pop("qformer_input_ids_do")
+        with self.assertRaisesRegex(ValueError, "Q-Former"):
+            self._contrastive(**neg)
 
     def test_m_sys_is_zero_and_the_masses_partition(self) -> None:
         inp = tiny_inputs()
@@ -304,7 +391,12 @@ class _FakeProcessor:
 
     def __call__(self, images: Any, text: str, return_tensors: str = "pt"):
         self.seen_text.append(text)
-        return tiny_inputs()
+        inp = tiny_inputs()
+        if "confused" in text:
+            inp["input_ids"][0, 33:] = torch.tensor([11, 12, 13, 14, 15])
+            inp["qformer_input_ids"] = torch.tensor([[3, 9, 8, 7, 6]])
+            inp["qformer_attention_mask"] = torch.ones(1, 5, dtype=torch.long)
+        return inp
 
 
 class TestMethods(unittest.TestCase):
@@ -401,6 +493,84 @@ class TestMethods(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+    def test_vcd_instructblip_is_its_own_method_with_llavas_vcd_values(self) -> None:
+        m, out = self._run("vcd_instructblip")
+        d = m.describe()
+        self.assertEqual(m.name, "vcd_instructblip")
+        self.assertEqual(d["backbone"], "instructblip")
+        r = d["resolved_hyperparameters"]
+        self.assertEqual((r["cd_alpha"], r["cd_beta"], r["noise_step"]),
+                         (1.0, 0.1, 500))
+        self.assertEqual(self.processor.seen_text,
+                         ["USER:  Is there a dog in the image? ASSISTANT:"])
+        self.assertEqual(out.extra["variant"], "vcd_instructblip")
+        self.assertGreater(out.n_gen_tokens, 0)
+
+    def test_vcd_instructblip_runs_two_rows(self) -> None:
+        rows: List[int] = []
+        orig = self.model.language_model.forward
+
+        def spy(*a: Any, **kw: Any):
+            e = kw.get("inputs_embeds")
+            if e is None:
+                e = kw["input_ids"]
+            rows.append(int(e.shape[0]))
+            return orig(*a, **kw)
+        self.model.language_model.forward = spy  # type: ignore[method-assign]
+        self._run("vcd_instructblip")
+        self.assertEqual(set(rows), {2})
+
+    def test_icd_negative_prompt_is_the_releases_without_user(self) -> None:
+        m = get_method("icd_instructblip")(self._cfg("icd_instructblip"))
+        self.assertEqual(
+            m.disturbed_prompt("Is there a dog in the image?"),
+            " You are a confused object detector. "
+            "Is there a dog in the image? ASSISTANT:")
+
+    def test_icd_instructblip_encodes_both_prompts_and_runs_one_row_each(self) -> None:
+        rows: List[int] = []
+        orig = self.model.language_model.forward
+
+        def spy(*a: Any, **kw: Any):
+            e = kw.get("inputs_embeds")
+            if e is None:
+                e = kw["input_ids"]
+            rows.append(int(e.shape[0]))
+            return orig(*a, **kw)
+        self.model.language_model.forward = spy  # type: ignore[method-assign]
+        m, out = self._run("icd_instructblip")
+        self.assertEqual(set(rows), {1})
+        self.assertEqual(len(self.processor.seen_text), 2)
+        self.assertIn("confused object detector", self.processor.seen_text[1])
+        self.assertNotIn("USER", self.processor.seen_text[1])
+        d = m.describe()
+        self.assertEqual(d["backbone"], "instructblip")
+        self.assertIn("no 'USER:'", d["negative_prompt_form"])
+        self.assertEqual(out.extra["variant"], "icd_instructblip")
+
+    def test_icd_negative_only_control_swaps_the_qformer_text_too(self) -> None:
+        got: List[torch.Tensor] = []
+        orig = self.model.forward
+
+        def spy(*a: Any, **kw: Any):
+            got.append(kw["qformer_input_ids"].clone())
+            return orig(*a, **kw)
+        self.model.forward = spy  # type: ignore[method-assign]
+        self._run("icd_instructblip", control="negative_only")
+        self.assertTrue(torch.equal(got[0], torch.tensor([[3, 9, 8, 7, 6]])))
+
+    def test_sid_and_causalmm_have_no_instructblip_method(self) -> None:
+        from foxrepro.bench.generate import list_methods
+        names = set(list_methods())
+        self.assertNotIn("sid_instructblip", names)
+        self.assertNotIn("causalmm_instructblip", names)
+        for name in ("sid", "causalmm"):
+            with self.subTest(name=name):
+                m = get_method(name)(self._cfg(name, system_prompt_id="llava_v1"))
+                m.load()  # stub load: returns the InstructBLIP model
+                with self.assertRaises(ValueError):
+                    m.generate(self.sample, self.sample.question)
 
 
 class TestTheProcessorIsTheImageOne(unittest.TestCase):

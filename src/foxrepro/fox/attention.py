@@ -1488,6 +1488,8 @@ def fox_generate(
     cf_edit: str = "shuffle",
     negative_only: bool = False,
     use_m_sys: bool = True,
+    qformer_input_ids_do: Optional[torch.Tensor] = None,
+    qformer_attn_mask_do: Optional[torch.Tensor] = None,
 ) -> Dict[str, Any]:
     """Generate with Fox: both branches batched, fused per token.
 
@@ -1555,6 +1557,11 @@ def fox_generate(
             image precedes BOS so there are no system keys and ``m_sys`` is
             identically 0.
 
+        qformer_input_ids_do, qformer_attn_mask_do: InstructBLIP only, and
+            required there with ``input_ids_do`` (ICD): the negative branch's
+            Q-Former reads the negative prompt too, as the release's
+            ``blip2_vicuna_instruct.generate`` does with ``prompt_cd``.
+
     Returns ``{"token_ids", "text"?, "n_prompt_tokens", "n_gen_tokens",
     "trace"?}``.
     """
@@ -1618,15 +1625,26 @@ def fox_generate(
 
     qformer_ids = qformer_mask = None
     if _is_instructblip(model):
-        if input_ids_do is not None or pixel_values_do is not None or sid \
-                or cf_vision:
+        if sid or cf_vision:
             raise ValueError(
-                "only plain sampling and Fox are ported to InstructBLIP; "
-                "VCD/ICD/SID/CausalMM need their own negative-branch plumbing "
-                "there and are out of scope"
+                "SID and CausalMM are not ported to InstructBLIP "
+                "(docs/DEVIATIONS.md 3.22): SID's rank=100 exceeds the 32 "
+                "Q-Former tokens and no InstructBLIP value is stated; "
+                "CausalMM has no released InstructBLIP code. Only sampling, "
+                "Fox, VCD and ICD run there"
             )
         qformer_ids = inputs["qformer_input_ids"].to(device)
         qformer_mask = inputs["qformer_attention_mask"].to(device)
+        if input_ids_do is not None and (
+                qformer_input_ids_do is None or qformer_attn_mask_do is None):
+            raise ValueError(
+                "ICD on InstructBLIP needs qformer_input_ids_do and "
+                "qformer_attn_mask_do: the negative prompt must reach the "
+                "Q-Former as well, or the negative branch is only half "
+                "disturbed"
+            )
+    elif qformer_input_ids_do is not None or qformer_attn_mask_do is not None:
+        raise ValueError("qformer_*_do apply to InstructBLIP only")
     if use_m_sys and img_start == 0 and not single_branch:
         # The image sits at key 0, so [0, img_start) is empty and m_sys is
         # identically 0: every head ties on the score and top-k becomes an
@@ -1678,6 +1696,10 @@ def fox_generate(
         mask_do = (attn_mask_do if attn_mask_do is not None
                    else torch.ones_like(ids_do)).to(device)
         px_do = pixel_values
+        qf_ids_do = qf_mask_do = None
+        if qformer_input_ids_do is not None:
+            qf_ids_do = qformer_input_ids_do.to(device)
+            qf_mask_do = qformer_attn_mask_do.to(device)
 
     out_ids: List[int] = []
     trace: List[Dict[str, float]] = []
@@ -1782,17 +1804,22 @@ def fox_generate(
                 # ICD: the negative branch has its own prompt, so its own
                 # pass and its own cache. The intervention is OFF for it --
                 # the perturbation IS the instruction, not an attention edit.
-                if step == 0:
+                if qf_ids_do is not None:
+                    out_do, cache_do = _instructblip_step(
+                        model, step, ids_do, mask_do, px_do, qf_ids_do,
+                        qf_mask_do, cache_do)
+                elif step == 0:
                     out_do = model(
                         input_ids=ids_do, attention_mask=mask_do,
                         pixel_values=px_do, use_cache=True,
                     )
+                    cache_do = out_do.past_key_values
                 else:
                     out_do = model(
                         input_ids=ids_do[:, -1:], attention_mask=mask_do,
                         past_key_values=cache_do, use_cache=True,
                     )
-                cache_do = out_do.past_key_values
+                    cache_do = out_do.past_key_values
                 z_do = out_do.logits[0, -1].float().unsqueeze(0)
 
             if single_branch:
