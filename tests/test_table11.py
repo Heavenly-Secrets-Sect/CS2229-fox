@@ -545,6 +545,7 @@ class TestPlanJobs(unittest.TestCase):
             if job["id"].startswith(("table11_mmbench", "table11_mathvista")):
                 self.assertTrue(
                     "--benchmark mmbench " in job["command"]
+                    or "--benchmark mmbench_circular " in job["command"]
                     or "--benchmark mathvista " in job["command"],
                     job["id"])
 

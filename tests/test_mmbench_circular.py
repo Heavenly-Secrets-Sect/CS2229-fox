@@ -386,9 +386,12 @@ class TestPlanJobs(unittest.TestCase):
     def test_frozen_session_plan_is_not_touched(self) -> None:
         plan = json.loads((Path(__file__).resolve().parent.parent
                            / "scripts" / "run_plan.json").read_text())
-        self.assertFalse(any("mmbench_circular" in str(j)
-                             for j in plan["jobs"]),
-                         "this branch must not freeze a round")
+        # r33 froze these (Sampling, Fox, VCD at seed 42). What must stay true
+        # is that a frozen job's command names the circular benchmark, so a
+        # session's data fetch sees it.
+        for job in plan["jobs"].values():
+            if "mmbench_circular" in job["id"]:
+                self.assertIn("--benchmark mmbench_circular ", job["command"])
 
 
 # --------------------------------------------------------------------------- #
