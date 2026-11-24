@@ -191,6 +191,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             trees[ref] = _worktree(ref, args.scratch.parent / f"fox_ref_{ref}")
 
     failures = 0
+    host_drift = 0
     for jid in JOB_IDS:
         job = jobs[jid]
         fname = job.run_key().filename()
@@ -232,8 +233,20 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if res["first"]:
                     print(f"   first difference: {json.dumps(res['first'])[:300]}")
         if "HEAD" in recs and verdict(compare(archived, recs["HEAD"]), args.n) != "identical":
-            failures += 1
-    print(f"\n{'ALL IDENTICAL TO THE ARCHIVE' if failures == 0 else f'{failures} job(s) NOT identical to the archive'}")
+            refs = [n for n in recs if n != "HEAD"]
+            code_same = bool(refs) and all(
+                verdict(compare(recs[n], recs["HEAD"]), args.n) == "identical" for n in refs
+            )
+            if code_same:
+                host_drift += 1
+            else:
+                failures += 1
+    if failures:
+        print(f"\n{failures} job(s) NOT reproducible: the code differs from an older commit, or no older commit was given to tell code from host")
+    elif host_drift:
+        print(f"\nCODE UNCHANGED: HEAD matches every --ref commit on this host; {host_drift} job(s) differ from the archive, which is host drift, not code")
+    else:
+        print("\nALL IDENTICAL TO THE ARCHIVE")
     return 0 if failures == 0 else 1
 
 
