@@ -736,6 +736,168 @@ next to the projections and the MLP. 1.7× high, in the safe direction — but
 this is the second hand-reasoned multiplier in that table to be wrong by more
 than half, after `BEAM_COST_S` at 2.2×. `COST_S` now carries the measurement.
 
+## Results, round 13 addendum — Figures 12 and 14 re-measured, Figure 15 not measurable yet
+
+No new run. The same 3000 per-head records behind Figures 3, 13 and 7, read
+two more ways with `scripts/analyse_figures_12_14.py` (numbers and plots in
+`results/reports/figures_12_14_r13.{json,md}`, `figure12_r13.png`,
+`figure14_r13.png`; the raw 234 MB stays in the r13 zip). **Not
+pre-registered**, like the rest of r13: measurement, not a bet.
+
+### How the samples were chosen (the paper does not say)
+
+The paper compares "1,000 Faithful and 1,000 Hallucinated" samples and never
+says how they were drawn. POPE-adversarial has 3000 questions and the greedy
+baseline answers **459** of them *yes* about an absent object, so 1000
+hallucinated samples do not exist here (DEVIATIONS 3.22). Used instead:
+hallucinated = all 459 false positives (the labelling of Results r13);
+faithful = pools reported side by side: `all_rest` (2541, what Fig. 3 used),
+`correct` (2372, TP + TN) and two matched controls, `tn` (1041, right "no":
+same ground truth as every hallucination, different *answer*) and `tp` (1331,
+right "yes": same *answer*, different truth). AUC is invariant to class
+balance; balanced 459 vs 459 draws (200) are reported and agree to the third
+decimal. Labels come from the same greedy file `analyse_diagnostics.py` uses;
+the 529-FP variant (`...greedy-657138b5`) was run as a sensitivity check and
+moves no verdict (AUCs change by at most 0.018).
+
+The matched controls matter because every hallucination is "said yes", and the
+statistics are read at the very query that produces the answer. Anything that
+predicts "about to say yes" will look like a hallucination detector against
+`tn`. Against `tp` it cannot.
+
+One more difference to say plainly: here `tail = 32` is the last 32 *prompt*
+tokens of one prefill (the question and `ASSISTANT:`), `tail = 1` is the
+answer-deciding query. The paper's tail-32 is over "recent post-image text
+queries" of its Text-Tail query set, which this project cannot reconstruct.
+
+### Figure 12 - m_V, mean over all layers and heads
+
+| tail | faithful pool | mean F | mean H | H - F | sd F / sd H | Cohen d | AUC, H positive [95 % CI] | KS D (p) | overlap |
+|---|---|---|---|---|---|---|---|---|---|
+| 32 | all_rest | 0.2264 | 0.2268 | +0.0005 | 0.0099 / 0.0097 | +0.05 | 0.503 [0.477, 0.531] | 0.047 (0.34) | 0.91 |
+| 32 | tn | 0.2246 | 0.2268 | +0.0023 | 0.0099 / 0.0097 | +0.23 | 0.555 | 0.093 (0.008) | 0.87 |
+| 32 | tp | 0.2278 | 0.2268 | -0.0010 | 0.0097 / 0.0097 | -0.10 | 0.463 | 0.075 (0.04) | 0.89 |
+| 1 | all_rest | 0.1053 | 0.1076 | +0.0022 | 0.0069 / 0.0066 | +0.32 | 0.592 [0.562, 0.617] | 0.139 (5e-7) | 0.84 |
+| 1 | tn | 0.1032 | 0.1076 | +0.0043 | 0.0066 / 0.0066 | +0.65 | 0.679 | 0.260 (2e-19) | 0.74 |
+| 1 | tp | 0.1070 | 0.1076 | +0.0006 | 0.0067 / 0.0066 | +0.09 | 0.526 [0.498, 0.555] | 0.055 (0.25) | 0.90 |
+
+(Paper, tail 32: 0.1653 +- 0.0086 vs 0.1666 +- 0.0072, +0.0013; tail 1: 0.1049
++- 0.0071 vs 0.1067 +- 0.0063, +0.0018.)
+
+- **The tail-1 numbers land on the paper's**: mean 0.1053 against 0.1049, sd
+  0.0069 against 0.0071, difference +0.0022 against +0.0018. That agreement
+  at three digits is the strongest cross-check in this section that the
+  statistic is the same one.
+- **Tail 32 does not**: 0.226 against 0.165. Cannot tell why (see the window
+  note above); the *relationship* between the two groups is what the figure
+  is about, and that is the same.
+- **The two groups overlap; hallucinated samples do not have less visual
+  mass.** Overlap 0.84-0.91 and AUC 0.50 (tail 32), 0.59 (tail 1). If anything
+  hallucinated samples have slightly *more*, as in the paper's own printed
+  differences.
+- **"Not statistically significant" does not reproduce at tail 1**: KS
+  p = 5e-7 at n = 459 vs 2541. But the effect is d = 0.32, and the paper's own
+  +0.0018 on sd 0.0066 is d of about 0.27, which is also significant at
+  n = 1000; the claim is about size, not significance, and the size is small.
+  **And it is the answer, not the hallucination:** against right-"yes" answers
+  (`tp`) the AUC is 0.526 (CI includes 0.5) and KS p = 0.25; against right-"no"
+  answers it is 0.68. The small tail-1 shift is "model is about to say yes".
+
+### Figure 14 - S = m_sys * H_vis at tail 1, Top-K projection (Eq. 18, 19)
+
+Per-head z-score from dataset statistics, dAUC with hallucination positive,
+Top-K by |dAUC|, `s_n = sum z * dAUC / sum |dAUC|`. The denominator is an
+absolute sum, so Eq. 19 does not have the sign problem Eq. 13 had (Results
+r13 above).
+
+| K | in-sample AUC | held-out AUC (10 random half-splits) |
+|---|---|---|
+| 1 | 0.7836 | 0.7815 +- 0.008 |
+| 4 | 0.8452 | 0.8417 +- 0.008 |
+| 8 | 0.8474 | 0.8461 +- 0.006 |
+| 16 | 0.8590 | 0.8549 +- 0.005 |
+| **32** | **0.8681** | **0.8657 +- 0.006** |
+| 64 | 0.8728 | 0.8660 +- 0.008 |
+| 128 | 0.8654 | 0.8612 +- 0.010 |
+| 256 | 0.8438 | 0.8360 +- 0.019 |
+| 512 | 0.8213 | 0.8083 +- 0.030 |
+| 1024 (all) | 0.8034 | 0.7918 +- 0.040 |
+
+- Top-32 **AP 0.477** in-sample, **0.471** held out, against a chance level
+  (= prevalence) of 0.153: 3.1x chance. The PR curve starts near precision
+  0.6 and falls steadily. The paper prints no AP, so there is nothing numeric
+  to compare with.
+- Selection is in-sample (1024 candidates, 459 positives): shuffling the
+  labels and re-picking the Top-32 gives AUC **0.578 on average, 0.598 at
+  most**, so about 0.08 of a naive in-sample AUC is selection. The held-out
+  figure removes that and stays at 0.866, so the signal is real.
+- The Top-32 heads carry 13.6 % of sum|dAUC| over 1024 heads (3.1 % if
+  uniform). They sit in layers 11-31; only 5 of the 32 are inside the released
+  window L2-15, none in L2-10. **18 of 32 have dAUC < 0**: in those heads
+  hallucination *lowers* S. This extends r13's finding for `m_sys` to the
+  joint score.
+- Matched controls (held-out Top-32 AUC): vs right-"yes" `tp` **0.878** (AP
+  0.660, prevalence 0.256); vs right-"no" `tn` **0.987** (AP 0.971). The second
+  is mostly the probe reading the answer; the first is not, and is as high as
+  the all-sample figure.
+
+### Figure 15 - cannot be measured from this data
+
+`fox_diagnose` runs **one un-intervened pass** (`enabled=False`) and stores
+four scalars per head per layer (`m_sys, m_vis, m_txt, H_vis`, tails 1 and 32)
+- **not the visual map** (the 576 attention weights over the image tokens).
+What Figure 15 needs and r13 lacks:
+
+1. the same prompt run **with** the intervention, capturing statistics of the
+   probabilities that were actually used (post-edit, rounding included);
+2. the **visual map** per head, before and after, not just its entropy;
+3. which heads the edit picked (the intervention's `head_mask`).
+
+Implemented, **not run**: `fox_diagnose_paired` in `src/foxrepro/fox/attention.py`
+(plus a read-only capture hook gated by `FOX.capture_layers`, empty by default,
+checked bit-identical on the intervened forward) does both passes and returns
+head mask, score, `m_sys/m_vis/m_txt/H_vis` and the map per head, before and
+after, at the last prefill query. For POPE the answer is one token, so that
+query *is* the decision-critical step. Tests (tiny model only, in
+`tests/test_diagnose.py`) pin the mechanics. **No bench method or job
+registers it**, because registering one edits `plan.py` and the Kaggle
+manifest, which this change does not touch. The GPU run it would need: a
+`diagnose_paired` method wrapping it, about 20-50 POPE samples (hallucinated
+and faithful, chosen by high-S heads), 2 prefills each, a few minutes on one
+T4, roughly 0.4 MB of JSON per sample at 5 decimals for the 14 released layers
+(an estimate, not measured).
+
+Two things follow from the code with no run at all (tested on the tiny model):
+under `as_implemented` the edit subtracts `gamma` from **every** key, which the
+softmax cancels exactly; only fp16 rounding of logits near 1e4 survives (the
+project's earlier finding). Under `as_described` it subtracts from the image
+keys only, which lowers visual mass but leaves the distribution renormalised
+over the span, hence **`H_vis` unchanged**. So Figure 15's "lower visual
+entropy and a more concentrated set of visual peaks" cannot come from the
+described edit, and from the released one only through rounding. This is a
+prediction to check with the paired run, not a result.
+
+### Verdicts
+
+| paper claim | verdict |
+|---|---|
+| Fig. 12: m_V of faithful and hallucinated samples largely overlap (tail 32 and tail 1) | **reproduces** (overlap 0.84-0.91, AUC 0.50 / 0.59) |
+| Fig. 12: hallucination is not a global *reduction* of visual attention | **reproduces**: H has slightly more mass, +0.0022 (paper +0.0018) |
+| Fig. 12: the difference is not statistically significant | **contradicts** at tail 1 (KS p = 5e-7), though it is small (d = 0.32) and vanishes at matched answer (AUC 0.526 vs `tp`) |
+| Fig. 12 absolute values | tail 1 **reproduces** (0.1053 vs 0.1049); tail 32 **does not** (0.226 vs 0.165), cause not determinable |
+| Fig. 14: Top-32 projection of S gives a strong sample-level probe (0.8180) | **reproduces**, higher: 0.868 in-sample, 0.866 held out |
+| Fig. 14: the signal is sparse and saturates quickly in K | **reproduces**: K = 4 already 0.845 (97 % of the 0.873 peak at K = 64), K = 1 alone 0.78 |
+| Fig. 14: using all heads (0.7852) is worse than Top-32 | **reproduces** with dAUC weights (0.803 < 0.868) and goes further: it falls monotonically past K = 64; the unweighted mean of all heads is at chance (0.522) |
+| Fig. 14: high joint risk marks the heads where the shortcut acts | **contradicts for most of the top heads**: 18 of 32 have hallucination *lower* S |
+| Fig. 14(a) precision-recall curve | **cannot tell** (no number in the paper); ours: AP 0.477 vs 0.153 chance |
+| Fig. 15: after the edit, system lock-on drops, `H_vis` drops, visual peaks sharpen | **cannot tell**: needs the paired run; the analysis above predicts no `H_vis` drop from the described edit |
+
+**What this does not show.** Nothing here concerns whether the *intervention*
+helps; Figure 12 is an observational comparison and the paper's "formal
+refutation" of the intensity account is an inference from it. The 459/1000
+shortfall and the single-prefill `tail = 32` mean these are the paper's
+analyses on a different sample, not on its sample.
+
 ## V6 — Does each rule change any decision? (no extra run)
 
 Recorded on **every** paired run: `n_diverged` and `diverged_frac`, the

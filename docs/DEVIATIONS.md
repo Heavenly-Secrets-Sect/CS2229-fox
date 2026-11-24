@@ -1458,6 +1458,27 @@ against `generate()` on a tiny model. The Qwen3-VL jobs and the InternVL3 Fox
 jobs of r29 need re-running; the InternVL3 Sampling jobs that completed need
 not be (their inputs and code path are unchanged).
 
+### 3.22 Figures 12 and 14: 459 hallucinated samples instead of 1,000, and a prefill `tail = 32`
+
+Added after the r13 data existed, so this is a record of choices made while
+reading it, not a pre-registered rule.
+
+| | paper | here |
+|---|---|---|
+| hallucinated set | 1,000 samples, selection unstated | all **459** false positives of the greedy POPE-adversarial baseline (1000 do not exist in 3000 questions) |
+| faithful set | 1,000, selection unstated | four pools reported side by side (all others 2541; correct 2372; right "no" 1041; right "yes" 1331) and 200 balanced 459 vs 459 draws |
+| `tail = 32` | last 32 post-image text queries of a "Text-Tail" query set | last 32 query rows of one prefill (question + `ASSISTANT:`) |
+| Top-K selection | in-sample, as written | in-sample **and** held out on random half-splits, plus a label-permutation null |
+| Eq. 19 z-score | "dataset-level statistics" | mean and sd over the analysed samples |
+
+Why it matters: the AUCs are invariant to class balance but the PR curve and
+AP are not (prevalence 0.153 here), and the pool changes the reading, since
+all hallucinations are answers of "yes". Nothing recorded in `results/runs/`
+was touched. **Not verified:** how the paper chose its sets; whether its
+tail-32 differs from ours only by window (our tail-32 mean is 0.226, theirs
+0.165). Figure 15 needs a run that does not exist (`fox_diagnose_paired` is
+implemented and tested on a tiny model only; no job registers it).
+
 ## 4. In the release, absent here
 
 | | Why |
