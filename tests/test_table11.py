@@ -487,7 +487,7 @@ class TestRegistries(unittest.TestCase):
 
     def test_self_contained_benchmarks(self) -> None:
         self.assertEqual(set(SELF_CONTAINED_BENCHMARKS),
-                         {"mme", "mmbench", "mathvista"})
+                         {"mme", "mmbench", "mmbench_circular", "mathvista"})
 
     def test_sample_counts(self) -> None:
         self.assertEqual(N_SAMPLES[("mmbench", "dev")], 4377)

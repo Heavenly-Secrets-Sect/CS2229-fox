@@ -289,6 +289,8 @@ CONTROL_ARMS: Dict[str, str] = {
 #: so both numbers are this repo's choice, recorded in docs/DEVIATIONS.md.
 MAX_NEW_TOKENS_DEFAULT: Dict[str, int] = {
     "pope": 1, "chair": 512, "mme": 1, "mmbench": 8, "mathvista": 64,
+    # Same prompt and answer shape as "mmbench"; only the option order varies.
+    "mmbench_circular": 8,
 }
 
 #: Benchmarks and their legal splits.
@@ -337,6 +339,13 @@ MMBENCH_REASONING_L2: tuple[str, ...] = (
 #: Rows in the released dev split. Checked by the fetcher AND by the scorer's
 #: ``complete`` flag, so a short download cannot pass as a result.
 MMBENCH_DEV_ROWS = 4377
+#: UPPER BOUND on the rows of the circular expansion: every one of the 4377
+#: questions at the maximum of four options (one row per rotation). The real
+#: count is the sum of the option counts of the 4377 questions, which is read
+#: from the manifest at load time and is NOT known here (no network when this
+#: was written). ``plan.N_SAMPLES`` uses this bound, so a cost estimate built
+#: from it is a ceiling, labelled as such.
+MMBENCH_CIRCULAR_ROWS_UPPER_BOUND = 4 * MMBENCH_DEV_ROWS
 
 #: MathVista's multiple-choice rows in ``testmini`` (``question_type ==
 #: "multi_choice"``; the dataset's value, not "multiple_choice"), and the
@@ -350,7 +359,8 @@ MATHVISTA_SUBSET_SEED = 2229
 #: Benchmarks that carry their own images (extracted from Hub parquet) and
 #: need nothing from COCO. ``fetch_images`` subtracts these before deciding
 #: what a session must download.
-SELF_CONTAINED_BENCHMARKS: tuple[str, ...] = ("mme", "mmbench", "mathvista")
+SELF_CONTAINED_BENCHMARKS: tuple[str, ...] = (
+    "mme", "mmbench", "mmbench_circular", "mathvista")
 
 BENCHMARK_SPLITS: Dict[str, tuple[str, ...]] = {
     "pope": ("random", "popular", "adversarial"),
@@ -358,6 +368,9 @@ BENCHMARK_SPLITS: Dict[str, tuple[str, ...]] = {
     "mme": ("test",),
     # `test` is deliberately absent: the Hub copy withholds its answers.
     "mmbench": ("dev",),
+    # The same questions as "mmbench", each asked once per cyclic rotation of
+    # its options (MMBench's CircularEval). Reads the same manifest.
+    "mmbench_circular": ("dev",),
     "mathvista": ("testmini_mc500",),
 }
 

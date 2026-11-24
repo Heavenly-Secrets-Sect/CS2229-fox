@@ -87,7 +87,8 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from foxrepro.storage import (
-    BENCHMARK_SPLITS, CHAIR_DRAWS, MAX_NEW_TOKENS_DEFAULT, RunKey, paths,
+    BENCHMARK_SPLITS, CHAIR_DRAWS, MAX_NEW_TOKENS_DEFAULT,
+    MMBENCH_CIRCULAR_ROWS_UPPER_BOUND, RunKey, paths,
 )
 from foxrepro.data.loaders import DEFAULT_TEMPLATE_IDS
 
@@ -139,6 +140,12 @@ COST_S: Dict[Tuple[str, str], float] = {
     ("mmbench", "single"): 0.68,
     ("mmbench", "dual"): 1.25,
     ("mmbench", "split"): 1.25,
+    # CircularEval is the same per-row work as the single pass (one prompt,
+    # a letter), so it inherits MMBench's per-ROW estimates; its cost differs
+    # only through the row count (N_SAMPLES).
+    ("mmbench_circular", "single"): 0.68,
+    ("mmbench_circular", "dual"): 1.25,
+    ("mmbench_circular", "split"): 1.25,
     ("mathvista", "single"): 1.2,
     ("mathvista", "dual"): 2.0,
     ("mathvista", "split"): 2.0,
@@ -200,6 +207,12 @@ N_SAMPLES: Dict[Tuple[str, str], int] = {
     # answers). MathVista is the multiple-choice subset only, a fixed random
     # 500 of its 540 testmini MC rows (storage.MATHVISTA_SUBSET_SEED).
     ("mmbench", "dev"): 4377,
+    # CircularEval rows: one per (question, rotation). UPPER BOUND, ESTIMATE:
+    # 4 x 4377, i.e. every question at four options. The true count is the
+    # sum of the questions' option counts and was not available when this was
+    # written (no network); the loader reads it from the manifest. The cost of
+    # these jobs is therefore a ceiling, not a measurement.
+    ("mmbench_circular", "dev"): MMBENCH_CIRCULAR_ROWS_UPPER_BOUND,
     ("mathvista", "testmini_mc500"): 500,
 }
 
@@ -1708,6 +1721,22 @@ def _build_plan() -> List[Job]:
             jobs.append(Job(
                 "table2_shikra", method, "chair", "val2014_500", seed=seed,
                 model_id=SHIKRA_MODEL_ID, note="Shikra CHAIR (T2)"))
+
+    # ---- Table 11, CircularEval: does the MMBench LEVEL move to ~63? ------ #
+    # NOT frozen into any round. V20 prediction 1 failed (Sampling 71.96
+    # against the paper's 63.1) and the leading explanation is that the
+    # paper's number is CircularEval, which this tests on one arm per method.
+    # Seed 42 ONLY: the question is whether the level moves about nine
+    # points, which one seed answers; the seed-to-seed spread of the single
+    # pass was a few tenths. Each question is asked once per cyclic rotation
+    # of its options, so the run is about 3-4x a single pass (ESTIMATE: at
+    # most 4 x 4377 rows; the real row count is the sum of the questions'
+    # option counts). Last in plan order so no existing round changes.
+    for method in ("sampling", "fox", "vcd"):
+        jobs.append(Job(
+            "table11_mmbench_circular", method, "mmbench_circular", "dev",
+            seed=42,
+            note=f"V20 CircularEval: MMBench dev, {method}, all rotations"))
 
     return jobs
 

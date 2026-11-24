@@ -2413,7 +2413,7 @@ reason is the protocol: MMBench's official score is CircularEval, which counts a
 question right only if every option rotation is right, and is much stricter than
 a single pass. LLaVA-1.5-7B's published dev score under it is in the low 60s.
 That is an explanation, not a result; it is tested by running CircularEval on
-one arm, which is not planned yet. Until then **only differences are comparable
+one arm per method (V20b below: implemented, not yet run). Until then **only differences are comparable
 to Table 11**, and the differences reproduce in sign and are smaller:
 
 | | ours | paper |
@@ -2426,3 +2426,64 @@ to Table 11**, and the differences reproduce in sign and are smaller:
 
 MathVista runs the other way (−1.33 against the paper's +0.63) and is not
 resolved at this size.
+
+## V20b — Table 11 under CircularEval: does the MMBench level move to ~63?
+
+Written before any run. **Implemented, not run, no round frozen.** Plan target
+`table11_mmbench_circular`: `sampling`, `fox` and `vcd` on `mmbench_circular`
+(MMBench dev, every question asked once per cyclic rotation of its options),
+**seed 42 only**. One seed is enough for the question asked, which is whether
+the *level* moves by about nine points; the single-pass seed-to-seed spread was
+a few tenths of a point. It does **not** resolve arm differences (see 4).
+
+**What the benchmark is** (`DEVIATIONS.md` §3.22). The Hub's
+`lmms-lab/MMBench_EN` dev rows are single-order (4377 rows, `index` unique per
+row, checked by `fetch_mmbench.py` on the real split), not pre-rotated, so the
+rotations are built here: a question with N options is asked N times, option
+list `new[j] = old[(j + k) % N]` relabelled A, B, C..., the gold letter
+following the answer's position. A question scores 1 only if all N rotations
+are answered correctly. The scorer raises on any question with a missing
+rotation, on an empty run and on an unknown category, and reports the circular
+score beside the single-pass accuracy of the same run (rotation 0 only, which
+is the single-pass question as asked) and the per-rotation accuracy.
+
+**Cost, ESTIMATE.** Rows = the sum of the questions' option counts, which was
+not known when this was written (no network). `plan.N_SAMPLES` uses the upper
+bound 4 x 4377 = 17508 rows, so the figures are ceilings: Sampling about
+17508 x 0.68 s = 3.3 GPU-h, Fox about 17508 x 1.25 s = 6.1 GPU-h, VCD like Fox,
+about 15.5 GPU-h in total at the bound. The per-row seconds are the unmeasured
+MMBench estimates of `plan.COST_S`; the true row count (and so the cost) is
+lower by the share of 2- and 3-option questions.
+
+### Pre-registered predictions
+
+Priors from published LLaVA-1.5 CircularEval numbers (low 60s) and from the
+size of the effect (circular is a conjunction of N answers), **not from any
+run of ours**. Each can be falsified by one number from the single-seed run.
+
+1. **Level.** `sampling` circular overall is in **[58.0, 68.0]**. This
+   is the test of the V20 explanation: held means the 9-point gap to Table 11's
+   63.1 is plausibly the protocol; above 68 or below 58 means CircularEval does
+   *not* by itself explain it, and the next suspects are the prompt (hints,
+   option formatting), the split (`dev` vs the server-scored `test`) and
+   sampling at T=1. A sharper reading, not the pre-registered band: within 3
+   of 63.1 is a close match, not just a plausible one.
+2. **The drop.** Single-pass accuracy of the same run (rotation 0) minus its
+   circular overall is in **[4.0, 14.0]** points. (The single-pass figure
+   should be near the 71.96 of V20, within its sampling noise; if it is not,
+   something differs from the V20 runs and nothing else here can be read.)
+3. **Perception vs reasoning.** Circular perception minus circular reasoning
+   is **positive** for `sampling` (single-pass: +11.7).
+4. **Differences, one seed.** `fox - sampling` circular overall in
+   **[-2.0, +2.5]** and `|vcd - sampling|` below **2.5**. One seed cannot
+   resolve the paper's +0.7 (a single circular run's standard error is
+   roughly 0.7-0.8 points over 4377 questions), so no sign is claimed and no
+   conclusion about Fox is drawn from this run; it bounds the arms only.
+5. **Extraction.** Unparsed rotations below **2%** for every arm. More means
+   the rules do not fit a rotated option order; change them and record it
+   before reading anything else.
+
+**What would change what we conclude.** Prediction 1 held: the level gap in
+`PAPER_AUDIT.md` is attributed to CircularEval (explained, with this run as
+evidence), and only then. Prediction 1 failed: the level stays unexplained, and
+the "differences only" reading of Table 11 stands.

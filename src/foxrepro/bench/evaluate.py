@@ -87,7 +87,7 @@ __all__ = [
     "parse_yes_no", "parse_yes_no_released", "POPE_PARSERS",
     "DEFAULT_POPE_PARSER", "read_run", "evaluate_pope", "evaluate_chair",
     "evaluate_run_file", "PopeOutcome", "evaluate_mmbench",
-    "evaluate_mathvista",
+    "evaluate_mathvista", "evaluate_mmbench_circular",
     "LEGACY_METHOD_NAMES", "canonical_method",
 ]
 
@@ -600,6 +600,130 @@ def evaluate_mmbench(
     return metrics, rows
 
 
+def evaluate_mmbench_circular(
+    records: Sequence[Dict[str, Any]],
+    confidence: float = 0.95,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """MMBench CircularEval: a question counts only if EVERY rotation is right.
+
+    Records are grouped by their persisted ``circ_index``. A question with N
+    options must carry exactly the rotations ``0 .. N-1`` (``circ_n`` says N,
+    and must equal the size of the record's option set); anything else RAISES
+    and nothing is scored: a partial set is not a harder or easier score, it
+    is a different question, and an incomplete group that were dropped (or
+    counted as right on its present rotations) would move the total without a
+    trace. A group whose rotations disagree on category, l2-category or on
+    the multiset of option texts is refused too.
+
+    Per-record parsing, the group map and the refusals for unknown
+    categories, a missing field or a gold outside the options are
+    :func:`evaluate_mmbench`'s, reused (not re-implemented) so the two cannot
+    drift. An unparsed answer is a wrong rotation.
+
+    Reports ``totals`` (circular overall / perception / reasoning), and, from
+    the SAME records, ``single_pass`` (rotation 0 only: the question as
+    asked, the single-pass benchmark's own item) and ``per_rotation`` (every
+    record counted once) for a direct comparison.
+    """
+    from foxrepro.storage import MMBENCH_DEV_ROWS
+
+    if not records:
+        raise ValueError("MMBench circular: no records; refusing to score an "
+                         "empty run (a zero would read as a measurement)")
+    # Validates every record (categories, gold, options) and parses answers.
+    _, rows = evaluate_mmbench(records, confidence=confidence)
+
+    groups: Dict[int, List[Tuple[Dict[str, Any], Dict[str, Any]]]] = {}
+    for rec, row in zip(records, rows):
+        sid = rec.get("sample_id")
+        for field in ("circ_index", "circ_rotation", "circ_n"):
+            if rec.get(field) is None:
+                raise ValueError(
+                    f"circular record {sid!r} carries no {field!r}; it "
+                    f"cannot be regrouped into its question. Re-run with a "
+                    f"generate.py that persists it.")
+        groups.setdefault(int(rec["circ_index"]), []).append((rec, row))
+
+    q_rows: List[Dict[str, Any]] = []
+    rot0: List[Dict[str, Any]] = []
+    for index in sorted(groups):
+        members = groups[index]
+        n_decl = {int(r["circ_n"]) for r, _ in members}
+        n_opts = {len(_mc_options(r)) for r, _ in members}
+        if len(n_decl) != 1 or n_decl != n_opts:
+            raise ValueError(
+                f"question {index}: circ_n {sorted(n_decl)} disagrees with "
+                f"its option counts {sorted(n_opts)}")
+        n = n_decl.pop()
+        have = sorted(int(r["circ_rotation"]) for r, _ in members)
+        if have != list(range(n)):
+            raise ValueError(
+                f"question {index} has rotations {have} but needs "
+                f"{list(range(n))}: a partial set is not scored (re-run the "
+                f"job to completion; resume fills the missing rows)")
+        for field in ("category", "l2_category"):
+            if len({str(r[field]) for r, _ in members}) != 1:
+                raise ValueError(
+                    f"question {index}: its rotations disagree on {field}")
+        if len({tuple(sorted(_mc_options(r).values()))
+                for r, _ in members}) != 1:
+            raise ValueError(
+                f"question {index}: its rotations do not offer the same "
+                f"option texts")
+        by_rot = {int(r["circ_rotation"]): row for r, row in members}
+        first = by_rot[0]
+        q_rows.append({
+            "sample_id": f"mmbench_circular/{index}", "index": index,
+            "n_options": n, "category": first["category"],
+            "l2_category": first["l2_category"], "group": first["group"],
+            "n_correct_rotations": sum(by_rot[k]["correct"] for k in range(n)),
+            "correct": int(all(by_rot[k]["correct"] for k in range(n))),
+            "rule": first["rule"], "parsed": all(
+                by_rot[k]["parsed"] for k in range(n)),
+        })
+        rot0.append(first)
+
+    def group(rs: Sequence[Dict[str, Any]], name: str):
+        return _acc([r for r in rs if r["group"] == name])
+
+    def totals(rs: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+        return {"overall": _acc(rs), "perception": group(rs, "perception"),
+                "reasoning": group(rs, "reasoning")}
+
+    per_l2 = {l2: _acc([r for r in q_rows if r["l2_category"] == l2])
+              for l2 in sorted({r["l2_category"] for r in q_rows})}
+    per_cat = {c: _acc([r for r in q_rows if r["category"] == c])
+               for c in sorted({r["category"] for r in q_rows})}
+    by_n = {str(n): _acc([r for r in q_rows if r["n_options"] == n])
+            for n in sorted({r["n_options"] for r in q_rows})}
+    # Expected score of a uniformly random guesser: right on a rotation with
+    # probability 1/N, on all N independently with N**-N.
+    chance = 100.0 * sum(r["n_options"] ** -r["n_options"]
+                         for r in q_rows) / len(q_rows)
+    overall = _acc(q_rows)
+    unparsed_rot = sum(1 for r in rows if not r["parsed"])
+    metrics: Dict[str, Any] = {
+        "benchmark": "mmbench_circular",
+        "n_samples": len(q_rows),                 # questions
+        "n_rotation_records": len(rows),
+        "n_expected": MMBENCH_DEV_ROWS,
+        "complete": len(q_rows) == MMBENCH_DEV_ROWS,
+        "totals": totals(q_rows),
+        "single_pass": totals(rot0),
+        "per_rotation": totals(rows),
+        "per_l2_category": per_l2,
+        "per_category": per_cat,
+        "by_n_options": by_n,
+        "circular_chance_random": round(chance, 4),
+        **_mc_tally(rows),
+    }
+    metrics["unparsed_fraction"] = round(unparsed_rot / len(rows), 6)
+    metrics["accuracy_ci"] = wilson_interval(
+        overall["n_right"], overall["n"], confidence=confidence,
+        name="mmbench_circular_accuracy").as_dict()
+    return metrics, q_rows
+
+
 def evaluate_mathvista(
     records: Sequence[Dict[str, Any]],
     confidence: float = 0.95,
@@ -934,6 +1058,8 @@ def evaluate_run_file(
         )
     elif benchmark == "mmbench":
         metrics, rows = evaluate_mmbench(records, confidence=confidence)
+    elif benchmark == "mmbench_circular":
+        metrics, rows = evaluate_mmbench_circular(records, confidence=confidence)
     elif benchmark == "mathvista":
         metrics, rows = evaluate_mathvista(records, confidence=confidence)
     else:
@@ -1003,7 +1129,7 @@ def _format_markdown(result: Dict[str, Any]) -> str:
             lines.append(
                 f"| subtasks missing | {', '.join(met['subtasks_missing'])} "
                 f"| - | - | - |")
-    elif met["benchmark"] in ("mmbench", "mathvista"):
+    elif met["benchmark"] in ("mmbench", "mmbench_circular", "mathvista"):
         def _cell(name: str, g: Any, ci: Any = None) -> str:
             # An empty group is "n/a", never a zero: nothing was measured.
             if g is None:
@@ -1013,7 +1139,18 @@ def _format_markdown(result: Dict[str, Any]) -> str:
             return (f"| {name} | {g['acc']:.2f} | {band} | "
                     f"{g['n_right']} | {g['n']} |")
         t = met["totals"]
-        if met["benchmark"] == "mmbench":
+        if met["benchmark"] == "mmbench_circular":
+            lines.append(_cell("circular overall", t["overall"],
+                               met.get("accuracy_ci")))
+            lines.append(_cell("circular perception", t["perception"]))
+            lines.append(_cell("circular reasoning", t["reasoning"]))
+            for label, key in (("single-pass (rotation 0) ", "single_pass"),
+                               ("per-rotation ", "per_rotation")):
+                for g in ("overall", "perception", "reasoning"):
+                    lines.append(_cell(label + g, met[key][g]))
+            lines.append(f"| random-guess circular chance | "
+                         f"{met['circular_chance_random']:.2f} | - | - | - |")
+        elif met["benchmark"] == "mmbench":
             lines.append(_cell("overall", t["overall"], met.get("accuracy_ci")))
             lines.append(_cell("perception", t["perception"]))
             lines.append(_cell("reasoning", t["reasoning"]))

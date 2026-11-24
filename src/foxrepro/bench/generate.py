@@ -584,6 +584,10 @@ class _NotImplementedMethod(Method):
 PERSISTED_SAMPLE_FIELDS = (
     "category", "image_file", "l2_category", "options", "answer_letters",
     "pid",
+    # MMBench CircularEval: which question a row belongs to, which rotation
+    # it is, and how many rotations the question has. The circular scorer
+    # RAISES without them (it cannot regroup rows from a sample id).
+    "circ_index", "circ_rotation", "circ_n",
 )
 
 
@@ -608,7 +612,7 @@ class EchoMethod(Method):
     def generate(self, sample: Sample, prompt: str) -> MethodOutput:
         """Yes/no for POPE (alternating, deterministic), a stock caption for CHAIR."""
         digest = sum(ord(c) for c in sample.sample_id)
-        if sample.benchmark in ("mmbench", "mathvista"):
+        if sample.benchmark in ("mmbench", "mmbench_circular", "mathvista"):
             # A deterministic letter from the options this question has, so
             # the dry run exercises the whole scorer path.
             letters = sorted(sample.extra["options"])

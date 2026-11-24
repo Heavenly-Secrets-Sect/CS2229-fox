@@ -29,7 +29,7 @@ import re
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 __all__ = [
     "PROMPT_TEMPLATES",
@@ -39,6 +39,8 @@ __all__ = [
     "load_pope",
     "load_mme",
     "load_mmbench",
+    "load_mmbench_circular",
+    "circular_rotations",
     "load_mathvista",
     "mathvista_subset_pids",
     "build_mmbench_question",
@@ -92,6 +94,12 @@ PROMPT_TEMPLATES: Dict[str, str] = {
     # C, D, at the end.\nQuestion: ...\nChoices:\n(A) ..."), which is what
     # the benchmark's own generation script sends. Used verbatim.
     "mathvista_v0_query": "{question}",
+    # CircularEval: the SAME wording as mmbench_v0_letter (asserted equal in
+    # tests), only the option order differs per rotation. A separate id so a
+    # circular run can never share a run file with a single-pass one.
+    "mmbench_circular_v0_letter":
+        "{question}\nAnswer with the option's letter from the given choices "
+        "directly.",
 }
 
 #: Which templates are legal for which benchmark (guards CLI typos).
@@ -103,6 +111,7 @@ _TEMPLATE_BENCHMARK = {
     "chair_v2_short": "chair",
     "mme_v0_raw": "mme",
     "mmbench_v0_letter": "mmbench",
+    "mmbench_circular_v0_letter": "mmbench_circular",
     "mathvista_v0_query": "mathvista",
 }
 
@@ -115,6 +124,7 @@ DEFAULT_TEMPLATE_IDS: Dict[str, str] = {
     "chair": "chair_v1",
     "mme": "mme_v0_raw",
     "mmbench": "mmbench_v0_letter",
+    "mmbench_circular": "mmbench_circular_v0_letter",
     "mathvista": "mathvista_v0_query",
 }
 
@@ -628,6 +638,88 @@ def load_mmbench(mmbench_dir: Path, split: str = "dev",
     return samples
 
 
+def circular_rotations(options: Dict[str, str], answer: str
+                       ) -> List[Tuple[int, Dict[str, str], str]]:
+    """MMBench CircularEval's expansion of one question, as ``(k, options, gold)``.
+
+    ``N`` options give ``N`` cyclic rotations ``k = 0 .. N-1``: rotation ``k``
+    lays the original option list out starting at position ``k``
+    (``new[j] = old[(j + k) % N]``) and relabels it A, B, C... in order. The
+    gold LETTER moves with the answer's POSITION, which is what "the answer
+    text moves, the letter follows" means; tracking the position rather than
+    matching text keeps it right when two options repeat the same text.
+    Rotation 0 is the question as asked, so it is exactly the single-pass
+    item.
+    """
+    letters = sorted(options)
+    n = len(letters)
+    if n < 2 or letters != list("ABCDEFGH"[:n]):
+        raise ValueError(f"options {letters} are not a prefix of A-H, "
+                         f">= 2 long")
+    if answer not in options:
+        raise ValueError(f"answer {answer!r} is not among options {letters}")
+    gold_pos = letters.index(answer)
+    out: List[Tuple[int, Dict[str, str], str]] = []
+    for k in range(n):
+        rotated = {letters[j]: options[letters[(j + k) % n]]
+                   for j in range(n)}
+        gold = letters[(gold_pos - k) % n]
+        # Self-check: the text under the new gold letter is the original
+        # answer text.
+        if rotated[gold] != options[answer]:
+            raise AssertionError("rotation moved the gold text")  # pragma: no cover
+        out.append((k, rotated, gold))
+    return out
+
+
+def load_mmbench_circular(mmbench_dir: Path, split: str = "dev",
+                          require_images: bool = True) -> List[Sample]:
+    """MMBench dev expanded into its CircularEval rotations.
+
+    Reads the SAME manifest as :func:`load_mmbench` (the Hub's
+    ``lmms-lab/MMBench_EN`` dev rows are single-order, one row per question
+    with a unique ``index``; they are NOT pre-rotated, so the rotations are
+    built here). Each question with N options yields N samples with
+    ``sample_id = mmbench_circular/<index>/r<k>``, unique per rotation, in
+    ``(index, k)`` order so that a ``--limit`` cut or a killed run loses at
+    most one question's tail. Everything the circular scorer needs is on
+    ``extra`` and is persisted: ``circ_index``, ``circ_rotation``,
+    ``circ_n``, besides the single-pass fields.
+    """
+    base = load_mmbench(mmbench_dir, split=split, require_images=require_images)
+    samples: List[Sample] = []
+    seen: set = set()
+    for s in base:
+        index = int(s.sample_id.split("/", 1)[1])
+        options = dict(s.extra["options"])  # type: ignore[arg-type]
+        rots = circular_rotations(options, str(s.label))
+        # load_mmbench folded the hint into the question text; keep the
+        # hint/question stem and rebuild only the option block per rotation.
+        text = s.question or ""
+        tail = "\n".join(f"{l}. {options[l]}" for l in sorted(options))
+        if not text.endswith(tail):
+            raise ValueError(f"{s.sample_id}: question does not end with its "
+                             f"option block; cannot rotate")
+        stem = text[: len(text) - len(tail)]
+        for k, rot_opts, gold in rots:
+            sid = f"mmbench_circular/{index}/r{k}"
+            if sid in seen:
+                raise ValueError(f"duplicate sample_id {sid!r}")
+            seen.add(sid)
+            extra = dict(s.extra)
+            extra.update({"options": rot_opts, "circ_index": index,
+                          "circ_rotation": k, "circ_n": len(rots)})
+            samples.append(Sample(
+                sample_id=sid, image_id=s.image_id, image_path=s.image_path,
+                benchmark="mmbench_circular", split=split,
+                question=stem + "\n".join(
+                    f"{l}. {rot_opts[l]}" for l in sorted(rot_opts)),
+                label=gold, extra=extra))
+    samples.sort(key=lambda s: (int(s.extra["circ_index"]),
+                                int(s.extra["circ_rotation"])))
+    return samples
+
+
 def load_mathvista(mathvista_dir: Path, split: str = "testmini_mc500",
                    require_images: bool = True) -> List[Sample]:
     """Load the MathVista multiple-choice subset ``fetch_mathvista.py`` wrote.
@@ -736,6 +828,12 @@ def load_benchmark(
             raise ValueError("mmbench_dir is required for benchmark='mmbench'")
         return load_mmbench(mmbench_dir, split=split,
                             require_images=require_images)
+    if benchmark == "mmbench_circular":
+        if mmbench_dir is None:
+            raise ValueError(
+                "mmbench_dir is required for benchmark='mmbench_circular'")
+        return load_mmbench_circular(mmbench_dir, split=split,
+                                     require_images=require_images)
     if benchmark == "mathvista":
         if mathvista_dir is None:
             raise ValueError(
