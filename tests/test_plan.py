@@ -1170,8 +1170,13 @@ class TestSeedReplication(unittest.TestCase):
         self.assertEqual(other.job_id(), "table1:fox:pope:adversarial:s43")
 
     def test_each_seed_gets_its_own_run_file(self) -> None:
-        names = {j.run_key().filename() for j in PLAN}
-        self.assertEqual(len(names), len(PLAN))
+        # A continuation chunk shares its first chunk's file on purpose.
+        owners = [j for j in PLAN if not j.is_continuation]
+        names = {j.run_key().filename() for j in owners}
+        self.assertEqual(len(names), len(owners))
+        for j in PLAN:
+            if j.is_continuation:
+                self.assertIn(j.run_key().filename(), names)
 
 
 class TestPriorityPartition(unittest.TestCase):
@@ -1240,8 +1245,11 @@ class TestPriorityPartition(unittest.TestCase):
             9.0, runs_root=runs, skip_done=True))
         rows = scan_progress(runs_root=runs)["rows"]
         n_done = sum(1 for r in rows if r["complete"])
+        # Chunks whose predecessors have not landed are held back too.
+        from foxrepro.bench.plan import pending_jobs
+        n_waiting = len(pending_jobs(PLAN, runs)[1])
         self.assertEqual(n_full, len(PLAN))
-        self.assertEqual(n_full - n_pruned, n_done)
+        self.assertEqual(n_full - n_pruned, n_done + n_waiting)
 
     def test_a_zero_budget_is_rejected(self) -> None:
         from foxrepro.bench.plan import partition_by_priority
@@ -1829,8 +1837,9 @@ class TestTheBackboneIsPartOfTheJob(unittest.TestCase):
         self.assertEqual({j.split for j in pope},
                          {"random", "popular", "adversarial"})
         self.assertEqual(len({j.job_id() for j in jobs}), len(jobs))
+        owners = [j for j in PLAN if not j.is_continuation]
         self.assertEqual(
-            len({j.run_key().filename() for j in PLAN}), len(PLAN))
+            len({j.run_key().filename() for j in owners}), len(owners))
 
     def test_they_carry_no_llava_system_prompt_and_no_overrides(self) -> None:
         for j in self._ib():

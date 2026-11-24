@@ -93,7 +93,7 @@ from foxrepro.data.loaders import DEFAULT_TEMPLATE_IDS
 
 __all__ = [
     "Job", "PLAN", "measured_cost", "scan_progress", "next_jobs", "render_plan",
-    "partition_jobs", "partition_by_priority", "pair_key",
+    "partition_jobs", "partition_by_priority", "pair_key", "pending_jobs",
     "ingest_runs", "archive_runs", "DUAL_BRANCH", "SPLIT_BRANCH",
     "BEAM_SEARCH", "method_from_filename",
 ]
@@ -315,6 +315,15 @@ BEAM_SEARCH = frozenset({"opera"})
 #: for, on top of the main one.
 OPERA_N_CANDIDATES = 5
 
+#: Samples per chunk of OPERA's CHAIR run. 100 x 291.8 s = 8.1 h at the
+#: 512-token upper bound, which leaves room in a 10 h session for the model
+#: load and the final pack; 125 (four chunks) would be 10.1 h and be deferred.
+OPERA_CHAIR_CHUNK = 100
+
+#: What docs/PAPER_AUDIT.md calls "40.5 GPU-hours": 500 captions, every one
+#: running the full 512 tokens. A bound, not a measurement.
+OPERA_CHAIR_UPPER_BOUND_H = 40.5
+
 
 @dataclass(frozen=True)
 class Job:
@@ -343,6 +352,17 @@ class Job:
     intervention_layers: Optional[str] = None
     seed: int = 42
     limit: Optional[int] = None
+    #: Chunked jobs: how many records of THIS job's run file earlier chunks
+    #: are expected to have written. ``limit`` is cumulative (``generate``
+    #: stops once the file holds ``limit`` records), the run file does not
+    #: depend on either, and resume is keyed on the file -- so a job too long
+    #: for one session is written as several jobs on the same file with
+    #: growing ``limit``, each with ``resume_from`` = the previous one's. It
+    #: only changes the COST (a chunk pays for ``limit - resume_from``
+    #: samples, not ``limit``) and READINESS (a chunk whose predecessors have
+    #: not landed is not scheduled: it would redo their work, cumulative
+    #: ``limit`` and all). See ``Job.chunk_samples`` and ``_ready_chunks``.
+    resume_from: int = 0
     #: Overrides the per-benchmark default. OPERA is the only user: its own
     #: harness generates 10 tokens on POPE where ours generates 1, and with
     #: beam search that is not a cosmetic difference -- the search optimises
@@ -426,6 +446,8 @@ class Job:
             bits.append(f"s{self.seed}")
         if self.limit:
             bits.append(f"n{self.limit}")
+        if self.resume_from:
+            bits.append(f"from{self.resume_from}")
         return ":".join(bits)
 
     @property
@@ -441,6 +463,27 @@ class Job:
                 f"add it to N_SAMPLES. Known: {sorted(N_SAMPLES)}"
             ) from None
         return min(n, self.limit) if self.limit else n
+
+    @property
+    def is_continuation(self) -> bool:
+        """A later chunk of a run file an earlier job already owns.
+
+        The one way two jobs may share a run file; tests that assert "one
+        file per job" are over the jobs for which this is False.
+        """
+        return self.resume_from > 0
+
+    @property
+    def chunk_samples(self) -> int:
+        """Samples THIS job is expected to generate: ``n_samples`` less what
+        earlier chunks of the same run file already wrote."""
+        if self.resume_from and not 0 < self.resume_from < self.n_samples:
+            raise ValueError(
+                f"{self.job_id()}: resume_from={self.resume_from} must lie "
+                f"inside (0, {self.n_samples}); a chunk that starts at or "
+                "past its own limit generates nothing"
+            )
+        return self.n_samples - self.resume_from
 
     @property
     def branches(self) -> str:
@@ -467,7 +510,7 @@ class Job:
                 BEAM_COST_S["prefill"]
                 + self.n_new_tokens() * n_fwd * BEAM_COST_S["forward"]
             )
-            return self.n_samples * per_sample
+            return self.chunk_samples * per_sample
         base = COST_S.get(
             (self.benchmark, self.branches), COST_S[("pope", "single")]
         )
@@ -477,7 +520,7 @@ class Job:
             base *= RECENT_BACKBONE_COST_FACTOR.get(self.benchmark, 1.0)
         elif self.method in SHIKRA_METHODS:
             base *= SHIKRA_COST_FACTOR.get(self.benchmark, 1.0)
-        return self.n_samples * base
+        return self.chunk_samples * base
 
     def n_new_tokens(self) -> int:
         """Generation length: the benchmark default unless overridden."""
@@ -1709,6 +1752,44 @@ def _build_plan() -> List[Job]:
                 "table2_shikra", method, "chair", "val2014_500", seed=seed,
                 model_id=SHIKRA_MODEL_ID, note="Shikra CHAIR (T2)"))
 
+    # ---- OPERA on CHAIR (Table 2's OPERA row, Table 9's OPERA CHAIR cell) -- #
+    # Needs the retrospection-rollback, which fox/opera.py now implements.
+    # Beam search is deterministic, so ONE run on val2014_500 is the whole arm
+    # (the paper prints identical numbers in Tables 2 and 9). Paper, LLaVA-1.5:
+    # CHAIR_S 49.00, CHAIR_I 13.52.
+    #
+    # COST, the part that decides how it is scheduled. Priced from BEAM_COST_S
+    # at the full 512 tokens: 500 x (0.547 + 512 x 6 x 0.0948) = 145 900 s =
+    # 40.5 GPU-hours, which is the figure docs/PAPER_AUDIT.md records. That is
+    # an UPPER bound -- beams finish at EOS, and a caption is typically ~100
+    # tokens, which would be ~8 h -- but it is also a bound that ignores two
+    # things that push the other way: the speculative forwards read a KV cache
+    # that grows with the response, and every rewind re-runs up to ~500 tokens
+    # of prefill. Nothing here has been measured on a GPU. Plan for 40 h until
+    # the first chunk's `_job_times.tsv` says otherwise.
+    #
+    # ONE JOB CANNOT BE ONE JOB. run_session DEFERs any job whose estimate is
+    # above the session's remaining budget, so a 40.5 h job in a 10 h session
+    # is deferred forever and the session runs empty. It is therefore written
+    # as chunks of OPERA_CHAIR_CHUNK samples on the SAME run file: `--limit` is
+    # cumulative and resume is keyed on the file, so chunk k asks for
+    # k * 100 records and generates only the ones not there yet. A chunk is
+    # scheduled only once the file holds its predecessors' records
+    # (`pending_jobs`), i.e. one chunk per round, after the previous round's
+    # zip has been ingested and archived. Five chunks, ~8.1 h each at the
+    # upper bound.
+    n_chair = N_SAMPLES[("chair", "val2014_500")]
+    for lo in range(0, n_chair, OPERA_CHAIR_CHUNK):
+        hi = min(lo + OPERA_CHAIR_CHUNK, n_chair)
+        jobs.append(Job(
+            "table2_opera", "opera", "chair", "val2014_500",
+            decoding="greedy",
+            limit=None if hi == n_chair else hi,
+            resume_from=lo,
+            note=(f"OPERA with rollback on CHAIR, samples {lo}-{hi - 1} of "
+                  f"{n_chair}; ~{OPERA_CHAIR_UPPER_BOUND_H:.0f} h in all"),
+        ))
+
     return jobs
 
 
@@ -1805,6 +1886,37 @@ def pilot_jobs(jobs: Iterable[Job] = ()) -> List[List[Job]]:
     return out
 
 
+def pending_jobs(
+    jobs: Sequence[Job], runs_root: Optional[Path] = None,
+) -> Tuple[List[Job], List[Job]]:
+    """Split ``jobs`` into (to schedule, chunks waiting on an earlier chunk).
+
+    A job is dropped when it is complete. It is HELD BACK, not dropped, when
+    it is a chunk (``resume_from > 0``) whose run file does not yet hold the
+    ``resume_from`` records its predecessors are expected to have written:
+    ``limit`` is cumulative, so running it now would redo that work and
+    overrun its own estimate. Which is why two chunks of one file are never
+    scheduled in the same round -- the second only becomes ready once the
+    first's session has been ingested and archived.
+
+    Completeness is per JOB, not per run file: chunks share a file, so
+    "this file is complete" would have dropped chunks 2..N the moment chunk 1
+    finished.
+    """
+    jobs = list(jobs)
+    rows = scan_progress(jobs, runs_root=runs_root)["rows"]
+    keep: List[Job] = []
+    waiting: List[Job] = []
+    for job, row in zip(jobs, rows):  # type: ignore[arg-type]
+        if row["complete"]:
+            continue
+        if int(row["done"]) < job.resume_from:
+            waiting.append(job)
+            continue
+        keep.append(job)
+    return keep, waiting
+
+
 def partition_jobs(n_sessions: int, jobs: Iterable[Job] = (),
                    pilot: bool = False, *,
                    runs_root: Optional[Path] = None,
@@ -1842,9 +1954,7 @@ def partition_jobs(n_sessions: int, jobs: Iterable[Job] = (),
     jobs = list(jobs) or PLAN
 
     if skip_done:
-        rows = scan_progress(jobs, runs_root=runs_root)["rows"]
-        finished = {r["file"] for r in rows if r["complete"]}
-        jobs = [j for j in jobs if j.run_key().filename() not in finished]
+        jobs, _ = pending_jobs(jobs, runs_root)
 
     pinned: List[List[Job]] = []
     if pilot:
@@ -1918,9 +2028,7 @@ def partition_by_priority(
     jobs = list(jobs) or PLAN
 
     if skip_done:
-        rows = scan_progress(jobs, runs_root=runs_root)["rows"]
-        finished = {r["file"] for r in rows if r["complete"]}
-        jobs = [j for j in jobs if j.run_key().filename() not in finished]
+        jobs, _ = pending_jobs(jobs, runs_root)
 
     # Group while preserving first-appearance order.
     groups: Dict[Tuple, List[Job]] = {}
@@ -2400,8 +2508,11 @@ def scan_progress(
             "benchmark": job.benchmark, "split": job.split,
             "note": job.note, "done": done, "total": total,
             "complete": total > 0 and done >= total,
+            "resume_from": job.resume_from,
+            # Per-sample cost, not est / total: a chunk's estimate covers
+            # only ``chunk_samples`` of its ``total``.
             "remaining_s": max(total - done, 0) * (
-                job.est_seconds() / total if total else 0
+                job.est_seconds() / job.chunk_samples if total else 0
             ),
             "file": key.filename(),
         })
@@ -2439,6 +2550,8 @@ def next_jobs(
     for row, job in zip(prog["rows"], all_jobs):  # type: ignore[arg-type]
         if row["complete"]:
             continue
+        if int(row["done"]) < job.resume_from:
+            continue          # a chunk whose predecessors have not landed
         hours = float(row["remaining_s"]) / 3600
         if chosen and spent + hours > budget_hours:
             continue
@@ -2626,6 +2739,12 @@ def freeze_plan(
         "n_calibrated": len(measured),
         # Recorded so a later reader can tell "not scheduled" from "done".
         "in_flight_excluded": sorted(in_flight),
+        # Chunks of a job too long for one session whose predecessors have
+        # not landed in the archive yet: NOT scheduled this round, and
+        # listed so their absence is a recorded decision rather than a gap.
+        "chunks_waiting": (
+            sorted(j.job_id() for j in pending_jobs(jobs, runs_root)[1])
+            if skip_done else []),
         "jobs": {},
         "sessions": [],
     }
@@ -2639,6 +2758,7 @@ def freeze_plan(
                 "command": job.command(), "est_s": round(est, 1),
                 "run_file": job.run_key().filename(),
                 "n_samples": job.n_samples,
+                "resume_from": job.resume_from,
                 "measured": jid in measured,
             }
             ids.append(jid)
@@ -2734,6 +2854,7 @@ def run_session(
                 break
             job = plan["jobs"][jid]
             run_file = runs_root / job["run_file"]
+            done = 0
             if run_file.is_file():
                 from foxrepro.bench.generate import scan_run_file
                 try:
@@ -2744,6 +2865,18 @@ def run_session(
                     print(f"[{time.strftime('%H:%M:%S')}] SKIP {jid} (complete)")
                     skipped += 1
                     continue
+            need = int(job.get("resume_from", 0))
+            if done < need:
+                # `--limit` is cumulative: starting this chunk now would redo
+                # the first `need` samples and run past its own estimate.
+                # Almost always a session that skipped `plan ingest
+                # results/runs`, so say so rather than burn the quota.
+                print(f"[{time.strftime('%H:%M:%S')}] SKIP {jid} (chunk not "
+                      f"ready: run file holds {done} of the {need} records "
+                      f"earlier chunks should have written -- was "
+                      f"`plan ingest results/runs` run?)", flush=True)
+                skipped += 1
+                continue
 
             left = budget - (time.time() - t0)
             if job["est_s"] > left:

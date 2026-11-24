@@ -896,8 +896,9 @@ class TestPlan(unittest.TestCase):
                          {"random", "popular", "adversarial"})
         self.assertEqual({j.split for j in chair}, {"val2014_500"})
         self.assertEqual(len({j.job_id() for j in jobs}), len(jobs))
-        self.assertEqual(len({j.run_key().filename() for j in self.P.PLAN}),
-                         len(self.P.PLAN))
+        owners = [j for j in self.P.PLAN if not j.is_continuation]
+        self.assertEqual(len({j.run_key().filename() for j in owners}),
+                         len(owners))
 
     def test_no_job_overrides_what_the_method_resolves(self) -> None:
         for j in self.jobs:
