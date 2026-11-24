@@ -13,11 +13,20 @@ a scratch directory (never the archive), then compares sample by sample:
 
     python3 scripts/verify_bitwise.py --n 300          # on a GPU host
     python3 scripts/verify_bitwise.py --dry-run        # print the commands
+    python3 scripts/verify_bitwise.py --ref 1e9901e    # also run an OLD commit
+
+Comparing to the archive alone mixes two causes: the code changed, and the host
+(torch, transformers, the Kaggle image) changed since the archive was made.
+``--ref`` runs the same jobs with an older commit's ``src`` in the SAME session
+and prints three comparisons: current vs archive, ref vs archive, current vs
+ref. Only the last one is the effect of the code, because host and hardware
+are held fixed.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -118,11 +127,43 @@ def command_for(job: Any, scratch: Path, n: int) -> List[str]:
     return out + ["--runs-dir", str(scratch), "--limit", str(n)]
 
 
+def _worktree(ref: str, where: Path) -> Path:
+    """Check ``ref`` out beside the repo, fetching it first if the clone lacks it."""
+    if where.exists():
+        return where
+    have = subprocess.run(["git", "cat-file", "-e", f"{ref}^{{commit}}"],
+                          cwd=str(REPO), capture_output=True).returncode == 0
+    if not have:
+        subprocess.run(["git", "fetch", "-q", "origin", ref], cwd=str(REPO),
+                       check=False)
+        subprocess.run(["git", "fetch", "-q", "--unshallow", "origin"],
+                       cwd=str(REPO), check=False)
+    subprocess.run(["git", "worktree", "add", "--detach", str(where), ref],
+                   cwd=str(REPO), check=True)
+    return where
+
+
+def run_job(cmd: List[str], cwd: Path, src: Optional[Path]) -> int:
+    env = dict(os.environ)
+    if src is not None:
+        env["PYTHONPATH"] = str(src) + os.pathsep + env.get("PYTHONPATH", "")
+    return subprocess.run(cmd, cwd=str(cwd), env=env).returncode
+
+
+def _line(label: str, res: Dict[str, Any], n: int) -> str:
+    v = verdict(res, n)
+    return (f"   {label:<22s} {v}: compared {res['compared']}, output differs "
+            f"{res['output_diff']}, float fields differ {res['float_diff']}")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--scratch", type=Path, default=Path("/tmp/fox_verify"))
     ap.add_argument("--archive", type=Path, default=REPO / "results" / "runs")
+    ap.add_argument("--ref", action="append", default=[],
+                    help="an older commit to run in the same session (repeatable)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -134,35 +175,55 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     args.scratch.mkdir(parents=True, exist_ok=True)
+    trees: Dict[str, Optional[Path]] = {"HEAD": None}
+    if not args.dry_run:
+        for ref in args.ref:
+            trees[ref] = _worktree(ref, args.scratch.parent / f"fox_ref_{ref}")
+
     failures = 0
     for jid in JOB_IDS:
         job = jobs[jid]
-        cmd = command_for(job, args.scratch, args.n)
         fname = job.run_key().filename()
-        print(f"\n== {jid}\n   {' '.join(cmd)}")
-        if args.dry_run:
-            continue
+        print(f"\n== {jid}")
+        recs: Dict[str, List[Dict[str, Any]]] = {}
         arch = args.archive / fname
-        if not arch.is_file():
+        if not args.dry_run and not arch.is_file():
             print(f"   archive file {fname} is missing: nothing to compare against")
             failures += 1
             continue
-        rc = subprocess.run(cmd, cwd=str(REPO)).returncode
-        new = args.scratch / fname
-        if rc != 0 or not new.is_file():
-            print(f"   generate exited {rc}, no rerun file")
-            failures += 1
+        for name, tree in trees.items():
+            out_dir = args.scratch / name
+            out_dir.mkdir(parents=True, exist_ok=True)
+            cmd = command_for(job, out_dir, args.n)
+            print(f"   [{name}] {' '.join(cmd)}")
+            if args.dry_run:
+                continue
+            rc = run_job(cmd, tree or REPO, (tree / "src") if tree else None)
+            new = out_dir / fname
+            if rc != 0 or not new.is_file():
+                print(f"   [{name}] generate exited {rc}, no rerun file")
+                failures += 1
+                continue
+            recs[name] = read_records(new, args.n)
+        if args.dry_run:
             continue
-        res = compare(read_records(arch, args.n), read_records(new, args.n))
-        v = verdict(res, args.n)
-        print(f"   {v}: compared {res['compared']}, missing {res['missing']}, "
-              f"output differs {res['output_diff']}, float fields differ "
-              f"{res['float_diff']}")
-        if res["first"]:
-            print(f"   first difference: {json.dumps(res['first'])[:400]}")
-        if v != "identical":
+        archived = read_records(arch, args.n)
+        for name in recs:
+            res = compare(archived, recs[name])
+            print(_line(f"{name} vs archive", res, args.n))
+            if res["first"] and name == "HEAD":
+                print(f"   first difference: {json.dumps(res['first'])[:300]}")
+        for name in recs:
+            if name == "HEAD":
+                continue
+            res = compare(recs[name], recs["HEAD"]) if "HEAD" in recs else None
+            if res is not None:
+                print(_line(f"HEAD vs {name} (code only)", res, args.n))
+                if res["first"]:
+                    print(f"   first difference: {json.dumps(res['first'])[:300]}")
+        if "HEAD" in recs and verdict(compare(archived, recs["HEAD"]), args.n) != "identical":
             failures += 1
-    print(f"\n{'ALL IDENTICAL' if failures == 0 else f'{failures} job(s) NOT identical'}")
+    print(f"\n{'ALL IDENTICAL TO THE ARCHIVE' if failures == 0 else f'{failures} job(s) NOT identical to the archive'}")
     return 0 if failures == 0 else 1
 
 

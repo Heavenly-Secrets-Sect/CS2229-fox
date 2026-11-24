@@ -42,7 +42,11 @@ if [ "$N" = "5" ]; then
   # Bit-for-bit check of greedy reruns against the archive (see the script).
   python3 -m foxrepro.data.fetch_images --what pope --workers 8 --progress-every 100 \
       > "$WORK/smoke_s${N}.log" 2>&1 || { echo "image fetch failed"; tail -n 20 "$WORK/smoke_s${N}.log"; exit 1; }
-  python3 scripts/verify_bitwise.py --n 300 --scratch "$WORK/verify" \
+  # Same session, three code versions: HEAD, r17's last commit, and the commit
+  # just before the InstructBLIP port. HEAD vs a ref is the effect of the code
+  # alone; either vs the archive also contains the host drift since it was made.
+  python3 scripts/verify_bitwise.py --n 200 --scratch "$WORK/verify" \
+      --ref 1e9901e --ref a8ac2e5 \
       > "$WORK/smoke_s${N}.json" 2>> "$WORK/smoke_s${N}.log"
   rc=$?
 else
