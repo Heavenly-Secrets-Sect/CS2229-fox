@@ -36,6 +36,7 @@ BENCH_NAMES = {
     "chair": "CHAIR",
     "mme": "MME",
     "mmbench": "MMBench",
+    "mmbench_circular": "MMBench CircularEval",
     "mathvista": "MathVista",
 }
 

@@ -120,7 +120,10 @@ fi
 needs_bench() {
   python3 -c 'import json,sys; p=json.load(open("scripts/run_plan.json")); n=int(sys.argv[1]); s=next((x for x in p["sessions"] if int(x["session"])==n), {}); print(int(any("--benchmark "+sys.argv[2]+" " in p["jobs"][j]["command"] for j in s.get("jobs", []))))' "$N" "$1"
 }
-if [ "$(needs_bench mmbench)" = "1" ]; then
+# mmbench_circular reads the SAME manifest as mmbench, so either one needs the
+# fetch. `needs_bench` matches "--benchmark <name> " with a trailing space and
+# so does not see the longer name from the shorter one.
+if [ "$(needs_bench mmbench)" = "1" ] || [ "$(needs_bench mmbench_circular)" = "1" ]; then
   echo "[mmbench] session $N has MMBench jobs; fetching dev"
   pip install -q datasets || { echo "datasets install failed"; exit 1; }
   python3 -m foxrepro.data.fetch_mmbench || { echo "MMBench fetch failed"; exit 1; }

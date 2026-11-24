@@ -1072,7 +1072,7 @@ are the rules the first run will be scored by, written down before it.
 | choice | what we do | why it can move a number |
 |---|---|---|
 | split | `dev` only. `test` withholds its answers (they are scored on the organisers' server) | the paper's MMBench number may have come from the server on `test`; ours cannot |
-| protocol | **single pass**, accuracy over questions as asked. NOT MMBench's CircularEval, which re-asks each question under rotated options and counts it right only if every rotation is | CircularEval scores are systematically lower than single-pass ones; Table 11's 63.1 is in the range of single-pass LLaVA-1.5 results, but the paper does not say |
+| protocol | **single pass**, accuracy over questions as asked. NOT MMBench's CircularEval, which re-asks each question under rotated options and counts it right only if every rotation is. CircularEval is implemented as the separate benchmark `mmbench_circular` (§3.22, V20b), not yet run | CircularEval scores are systematically lower than single-pass ones; Table 11's 63.1 is in the range of single-pass LLaVA-1.5 results, but the paper does not say |
 | prompt | LLaVA's own MMBench script: `<hint>\n<question>\nA. ..\nB. ..\nAnswer with the option's letter from the given choices directly.`; hint omitted when absent; the dataset stores an absent hint or option as the string `"nan"`, which the fetcher turns into "absent" | the wording is the largest known lever on MMBench for LLaVA |
 | `max_new_tokens` | 8 (letter, EOS; room for "The answer is B") | no released value to match |
 | decoding | the project's default for every table, sampling at `top_p=0.9`, `T=1` (the paper's row is called "Sampling"); not greedy | a sampled first token on a 4-way question is noisier than greedy |
@@ -1457,6 +1457,35 @@ Qwen3-VL result under 4.57 vs 5.x with the mask omitted is checked only
 against `generate()` on a tiny model. The Qwen3-VL jobs and the InternVL3 Fox
 jobs of r29 need re-running; the InternVL3 Sampling jobs that completed need
 not be (their inputs and code path are unchanged).
+
+### 3.22 MMBench CircularEval: a second benchmark name, added after Table 11's level failed
+
+Added after V20's first band failed (Sampling 71.96 against the paper's 63.1)
+and before any circular run. The single-pass `mmbench` benchmark of §3.17 is
+**unchanged**; this is a separate benchmark name, `mmbench_circular`, so a
+circular run can never share a run file, a template id or a metrics file with a
+single-pass one.
+
+| choice | what we do | why it can move a number |
+|---|---|---|
+| expansion | each dev question with N options (2 to 4) is asked N times, rotation `k` = `new[j] = old[(j + k) % N]`, relabelled A, B, C... The gold letter follows the answer's **position** (not its text, so repeated option texts stay right). Rotation 0 is the question as asked | this is MMBench's published CircularEval rule; the order of rotations does not matter to the score |
+| source rows | the Hub's `lmms-lab/MMBench_EN` dev rows are **single-order** (4377 rows, `index` unique per row; read from the real split by `fetch_mmbench.py`), not pre-rotated like the official TSV, so the rotations are built by `loaders.circular_rotations`. The same manifest is read; nothing is re-fetched | not verified again here (no network): the 4377-unique-`index` fact is the fetcher's own assertion |
+| score | a question is right only if **all** its rotations are; perception and reasoning by the same `l2-category` partition. Reported with the single-pass accuracy of the same records (rotation 0) and the per-rotation accuracy | |
+| sample ids | `mmbench_circular/<index>/r<k>`, unique per rotation; `circ_index`, `circ_rotation`, `circ_n` are persisted in every record (`PERSISTED_SAMPLE_FIELDS`) | the scorer raises without them |
+| incomplete runs | **not scored**: a question with a missing rotation raises, an empty run raises, an unknown category raises. A run killed mid-question is resumed, not read. Whole missing questions are reported through `complete` (n questions vs 4377), as in the single pass | a partial set would be a different question, not a lower score |
+| prompt, length, decoding, extraction | identical to §3.17: same wording (`mmbench_circular_v0_letter` is the same string, asserted in tests), 8 new tokens, sampling at `top_p=0.9`, the same rules | |
+| answer extraction | the same rule-based extractor; MMBench's official pipeline falls back to an LLM and VLMEvalKit stops a question at its first wrong rotation (same score, less compute); we ask every rotation | an unparsed rotation counts wrong, as in §3.17 |
+| plan | target `table11_mmbench_circular`: `sampling`, `fox`, `vcd`, **seed 42 only**, not frozen into any round. `N_SAMPLES` is the **upper bound** 4 x 4377 rows, so the cost is a ceiling and an **estimate** (about 3.3 / 6.1 / 6.1 GPU-h at the bound) | the true row count is the sum of the option counts, not known when this was written |
+
+A planned change to the plan and criteria, recorded before a result exists:
+V20b in `VALIDATION.md` carries the pre-registered prediction (Sampling
+circular overall in [58, 68]).
+
+**Not verified.** Nothing here has run on a GPU or against the real dataset;
+the tests use fixtures shaped like the split. In particular the real row count
+of the expansion, the real 2/3/4-option mix, and whether the `lmms-lab` dev
+rows are exactly the official 4377 questions in the order the official TSV
+rotates them are not checked.
 
 ## 4. In the release, absent here
 
