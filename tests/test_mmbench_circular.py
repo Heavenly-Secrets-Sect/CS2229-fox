@@ -364,8 +364,10 @@ class TestPlanJobs(unittest.TestCase):
     def test_ids_unique_and_no_collision_with_single_pass(self) -> None:
         ids = [j.job_id() for j in PLAN]
         self.assertEqual(len(ids), len(set(ids)))
-        keys = {j.run_key().filename() for j in PLAN}
-        self.assertEqual(len(keys), len(PLAN))
+        # A continuation chunk shares its first chunk's file on purpose.
+        owners = [j for j in PLAN if not j.is_continuation]
+        keys = {j.run_key().filename() for j in owners}
+        self.assertEqual(len(keys), len(owners))
 
     def test_cost_is_a_ceiling_from_the_upper_bound(self) -> None:
         self.assertEqual(N_SAMPLES[("mmbench_circular", "dev")],

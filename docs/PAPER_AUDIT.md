@@ -38,19 +38,33 @@ OPERA needs one run per split because greedy is deterministic; seeds do not
 apply. Backbones beyond LLaVA-1.5 are a separate axis and remain out of
 reach; see the loader note at the end.
 
-### Table 2 — CHAIR, 7 methods — **6 of 7; OPERA's row deliberately not run**
+### Table 2 — CHAIR, 7 methods — **6 of 7; OPERA's row built, planned, not yet run**
 
 `sampling` and `fox` at 10 seeds; VCD, ICD, SID and CausalMM at 3. Measured
 but unresolved: the gap moves 5.20 points across five image draws, so the
 single-draw interval understates it (§3.8.1).
 
-**OPERA's CHAIR row is a deliberate omission, not an oversight.** Beam-5 over
-512 tokens on 500 images costs **40.5 GPU-hours** for one deterministic run —
-more than any round this project has launched — and it would buy one more
-baseline number on the benchmark whose absolute values the image-set drift
-already makes uninterpretable. The comparison that row would support is
-exactly the one §3.8.1 says cannot be made. Recorded here so the gap is a
-decision with a price attached rather than something nobody got to.
+**OPERA's CHAIR row: the rollback is now implemented, the run is not done.**
+This was a deliberate omission, priced at **40.5 GPU-hours** (beam-5 over 512
+tokens on 500 images, one deterministic run — more than any round this
+project has launched), on the argument that it would buy one more number on
+the benchmark whose absolute values the image-set drift already makes
+uninterpretable. That argument still stands for what the number can *mean*
+(§3.8.1), but the row is cheap to want and the blocker that made it
+impossible, the rollback, is gone: `fox/opera.py` implements it
+(`DEVIATIONS.md` §3.13), verified on stubs against a from-scratch
+transcription of the release's loop. Paper, LLaVA-1.5: CHAIR_S 49.00,
+CHAIR_I 13.52 (Table 2, and the same cell of Table 9).
+
+It is planned as `table2_opera`: five chunks of 100 captions on one run file,
+~8.1 GPU-h each at the 512-token upper bound, one chunk per round (a single
+40.5 h job would be deferred forever by `run_session`; see
+`DEVIATIONS.md` §3.13, "OPERA on CHAIR: running and resuming"). **40.5 h is an
+upper bound, not a forecast, and nothing here has run on a GPU**: it prices
+every caption at the full 512 tokens, while beams stop at EOS (a caption is
+typically ~100 tokens, which would be nearer 8 h) and ignores that the
+speculative forwards read a growing cache and that each rewind re-runs up to
+~500 tokens. The first chunk's `_job_times.tsv` replaces the guess.
 
 ### Table 8 — POPE **F1** on 3 splits x 3 backbones — **DONE for our rows**
 
@@ -74,7 +88,9 @@ The *ratio* can, and it reproduces:
 | ours (T4) | 538 ms | 1092 ms | **2.03x** |
 
 Taken from `latency_ms`, recorded in every run record. OPERA's row is blank in
-the paper for 1-token generation and would need OPERA implemented.
+the paper for 1-token generation and would need OPERA implemented. (OPERA is
+implemented now, including its rollback; its latency is not measured, and at
+CHAIR length it is dominated by six forwards per step.)
 
 ---
 
@@ -451,8 +467,9 @@ records, and real VCD with the subtractive fusion runs beside it.
 
 Beam search with an over-trust penalty and rollback. Needed its own decode
 loop (`fox/opera.py`), and the paper evaluates it under `num_beams=5`, outside
-the shared sampling protocol. Built, with the rollback deliberately left out
-(`DEVIATIONS.md` §3.13). V5 then decomposed it: at OPERA's own 10-token
+the shared sampling protocol. Built — the rollback first left out, since added for
+CHAIR-length runs (`DEVIATIONS.md` §3.13); at <= 10 tokens the code path is
+unchanged. V5 then decomposed it: at OPERA's own 10-token
 protocol the penalty, the restriction and plain beam search all score 81.47,
 p = 1.0 — **the POPE gain is the beam search**.
 
@@ -513,7 +530,6 @@ find is protocol differences that had never been run:
 | VCD random split (−2.88) | what Fox's harness feeds the noiser is not visible; a one-line variant (`min` in the cutoff) exists only in the dead branch, and its effect would be unattributable |
 | Table 13 and Figure 3/13, Eq. 13 | the paper's own quantities are inconsistent (the three `m` do not sum to 1 under Eq. 11; Eq. 13's denominator is negative as written) |
 | Table 5, Figure 6 | the GPT-4V instrument cannot be reproduced; measured with `gpt-4.1-2025-04-14` instead, a different instrument declared in DEVIATIONS 3.18. Result: no detectable Fox effect, and a first-position bias larger than any effect. LLaVA-1.5 only, so the across-backbone trend of Figure 6 is not drawn |
-| Table 2, OPERA CHAIR row | needs the rollback this project audited but never built, plus 40.5 GPU-hours; deferred, not declined |
 
 **Code-limited, now in progress.** Backbones: Qwen3-VL-8B and InternVL3-8B
 (Tables 3 and 10, Table 15 rows) wait only on the smoke session;

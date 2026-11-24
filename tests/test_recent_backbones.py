@@ -536,7 +536,9 @@ class TestPlan(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertIn("table10_qwen3vl:fox_qwen3vl:pope:adversarial:q3vl:spnone",
                       ids)
-        keys = [j.run_key().filename() for j in self.P.PLAN]
+        # A continuation chunk shares its first chunk's file on purpose.
+        keys = [j.run_key().filename() for j in self.P.PLAN
+                if not j.is_continuation]
         self.assertEqual(len(keys), len(set(keys)))
 
     def test_fox_is_dual_branch_and_cost_is_labelled_a_guess(self) -> None:

@@ -873,7 +873,7 @@ src/foxrepro/
   fox/reference.py    chép nguyên văn từ release — oracle số học
   fox/kernel.py       port sạch, test khẳng định trùng bit với trên
   fox/attention.py    FoxState, đăng ký attention, vòng giải mã hai nhánh
-  fox/opera.py        beam search của OPERA (không có rollback — xem DEVIATIONS)
+  fox/opera.py        beam search của OPERA (rollback chỉ chạy khi sinh > 10 token; xem DEVIATIONS 3.13)
   bench/methods.py    mỗi phương pháp là một class, kèm các control arm
   bench/plan.py       ma trận mục tiêu, theo dõi tiến độ, chia session theo budget
   bench/generate.py   CLI chạy một job

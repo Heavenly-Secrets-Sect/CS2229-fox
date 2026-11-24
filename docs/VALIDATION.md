@@ -2396,9 +2396,14 @@ from the interval, not from these bands.
 * **That a method helps.** These arms check that each method is the thing
   its paper describes. Whether that thing improves POPE or CHAIR is what the
   `table1_methods` / `table2_methods` rows are for.
-* **Anything about OPERA on CHAIR.** Its rollback is not implemented, for
-  the reasons in `DEVIATIONS.md` §3.13 — including an fp16 saturation in the
-  trigger that can drive every candidate to `-inf`.
+* **Anything about OPERA on CHAIR.** Its rollback is implemented now
+  (`DEVIATIONS.md` §3.13, "The rollback, built") and checked on stubs against
+  a transcription of the release, but it has not run on a GPU, and it is
+  released with an fp16 saturation in the trigger that can drive every
+  candidate to `-inf`. A CHAIR run reports `n_nonfinite_steps` per caption:
+  if any is non-zero the fp16 arm is measuring its own arithmetic, and the
+  fp32 control (`score_precision="fp32"`) has to run before the number is
+  read as OPERA's.
 
 ## Order of operations
 
