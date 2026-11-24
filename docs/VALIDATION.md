@@ -2654,3 +2654,16 @@ run of ours**. Each can be falsified by one number from the single-seed run.
 `PAPER_AUDIT.md` is attributed to CircularEval (explained, with this run as
 evidence), and only then. Prediction 1 failed: the level stays unexplained, and
 the "differences only" reading of Table 11 stands.
+
+## V21. verify-r31: code của repo không làm đổi kết quả đã lưu; chênh lệch đến từ host (2026-11-25)
+
+Phiên `verify-r31` (zip `fox_smoke_ab8e62d_s5.zip`) chạy lại 4 job greedy POPE-adversarial (200 mẫu) ở HEAD và ở hai commit cũ (`1e9901e`, `a8ac2e5`) trong cùng một session, rồi so từng bit với record đã lưu trong `results/runs`.
+
+| Job | HEAD vs lưu trữ (số output khác / 200) | HEAD vs commit cũ |
+|---|---|---|
+| Sampling | 2 | giống hệt |
+| Fox | 6 (d_t_max đổi ở 200/200 mẫu) | giống hệt |
+| VCD | 10 | giống hệt |
+| SID | 1 | giống hệt |
+
+Kết luận: cả ba commit cho cùng một kết quả trên cùng một host, nên các sửa đổi code (autograd, mask, cache_position, last-row-only) không đổi kết quả greedy. Phần khác với bản lưu là do host (phiên bản transformers/torch và số học fp16 của image Kaggle hiện tại). Mức lệch là 0.5–5% số output (1–10/200), lớn nhất ở VCD. Kết quả r24 (SID α=1.0, Table 9 VCD/SID) vẫn dùng được, kèm ghi chú nhiễu host cỡ vài điểm phần trăm trên 200 mẫu. Session báo `failed` vì script thoát khác 0 khi có job không giống bản lưu, không phải vì crash.
