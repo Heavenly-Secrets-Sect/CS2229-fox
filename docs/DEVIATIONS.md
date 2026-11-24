@@ -754,9 +754,10 @@ whole arm, and `decoding="sampling"` is refused.
 `pope_eval.py` passes. With beam search the length is not cosmetic: the
 search scores whole sequences, so the first token depends on how many follow
 it. Both lengths are below the rollback threshold, so both are rollback-free,
-but only 10 is OPERA's protocol. `opera_generate` refuses any length at
-which rollback would become reachable rather than running OPERA with half its
-method missing under OPERA's name.
+but only 10 is OPERA's protocol. (Superseded: `opera_generate` now runs the
+rollback above 10 tokens instead of refusing, and refuses only
+`rollback=False` there. See "The rollback, built" below, including the
+correction that 11-15 tokens are not equivalent to POPE.)
 
 **The measurement that decides whether the penalty does anything.** The bonus
 is added in logit space, so what matters is its spread across the five
@@ -811,7 +812,7 @@ reorders candidates that the beam recovers from anyway, which is a different
 claim from "the penalty cannot act" and the only one the 10-token data
 supports.
 
-#### The rollback, audited but not built
+#### The rollback, audited (it is built now: see the next sections)
 
 CHAIR needs it, and three findings say it should not be ported literally.
 
@@ -863,6 +864,175 @@ this project already uses for `fox` vs `ulp_control`. If they agree, the
 saturation does not matter; if they disagree, "OPERA's rollback trigger is an
 fp16 artefact" is a finding of the same kind as the γ result, not a bug we
 have to pick a side on.
+
+#### The rollback, built (2026-11-25) — what it does and where it departs
+
+The audit above said the rollback should not be ported literally and named
+three findings. It is built now, for Table 2's OPERA row and Table 9's OPERA
+CHAIR cell (paper, LLaVA-1.5: CHAIR_S 49.00, CHAIR_I 13.52). **Nothing below
+has run on a GPU**; the verification is stubs (tiny random LLaVA) and a
+transcription of the release.
+
+**What it is.** At <= 10 response tokens `opera_generate` takes the original
+rollback-free path, statement for statement (POPE; shown unchanged, below).
+Above 10 it runs the release's full loop:
+
+* it keeps, per beam, the last layer's max-over-heads attention rows of the
+  *response* tokens only (an `[R, R]` block and each row's full-row sum, which
+  is all of the release's `attn_previous` that is ever used, since
+  `attn_local` starts at `response_start`), reordered by the previous step's
+  beam choice and extended by the main forward's row of the token just
+  emitted (so the main forward is captured too from step 1; it was not
+  before);
+* per candidate it forms `attn_local = scale_factor * row-normalised block`
+  and scores column *j* by `1e-7 * prod(attn_local[j:, j])` in an **fp16
+  buffer, as released** (the saturation described above is kept: this is the
+  OPERA row, not an improved one). `rollback_loc` is the modal argmax column,
+  over candidates then over beams;
+* from the 11th response token the candidate penalty is that score instead of
+  the image attention (`penalty_scores = -attn_scores if cur_response_lens <=
+  10 else rollback_scores`);
+* when more than `threshold` (15) history columns of **every** beam equal
+  `rollback_loc`, and it is >= 10, the search rewinds to `rollback_loc + 1`
+  response tokens: ids, beam scorer and beam scores restored from the snapshot
+  taken at the top of that step, the KV cache rebuilt, and that position
+  re-decoded from the **full vocabulary** (no candidate cap, no penalty) with
+  the five (beam, token) choices already made there set to the reject floor.
+  A position can be rewound to at most `num_attn_candidates` times, then the
+  rewind shifts one position earlier, then stops.
+
+**Departures from the release, all deliberate.**
+
+1. *Cache rebuild.* The release re-prefills the restored hypotheses from
+   scratch (5 rows, ~600 tokens). That does not fit a T4. Every beam row's
+   first `n_prompt` cache entries are copies of the one prefilled prompt row,
+   so the cache is cropped to the prompt (`crop_cache_to`, the negative
+   spelling) and only the restored response tokens are re-run, 64 at a time.
+   Mathematically the cache the release builds; numerically not bit-identical
+   to one full-length prefill (different kernel shapes). Checked on stubs: the
+   rebuilt KV equals a fresh prefill of the restored ids to 1e-4 in fp32, and
+   chunk sizes 1 and 64 give identical outputs. On a real fp16 model it is
+   exactly the kind of last-bits difference this project has seen move a
+   number (§3.15), so **a CHAIR_S gap to the paper cannot be attributed to
+   the rollback alone**.
+2. *The score's inputs.* The release builds `attn_previous` incrementally in
+   the model's dtype and sums each row inside a larger zero-padded matrix; we
+   keep the response block and each row's sum separately. Same values; the
+   fp16 row sums can differ from the release's in the last bit.
+3. *Where the release's `try/except` would swallow an `IndexError` after
+   mutating state* (a rewind position at the 512 window's edge) we return "no
+   rewind" before mutating. Unreachable below ~510 tokens.
+4. *Kept on purpose although it looks wrong:* `reject_token_pos_gather` is
+   cleared from the tail of the list (`[-1]`, `[-2]`, ...) rather than at the
+   popped positions, and the restored beam scorer is the stored object itself,
+   so the replayed `process` mutates the snapshot a later rewind to the same
+   position restores. "Faithful" here means the same decisions, not the tidier
+   ones; both are asserted in `tests/test_opera_rollback.py`.
+
+**The 11-15 token correction.** `rollback_is_reachable(n)` ("can a rewind
+FIRE") is false up to 15 tokens, and the earlier text here and in the module
+treated 11-15 as equivalent to POPE. They are not: the penalty already
+switches to the rollback score at the 11th token, so a rollback-free run of
+11-15 tokens is not OPERA. Nothing in `results/runs` used that range (POPE is
+1 or 10), so no record is affected; `opera_generate(rollback=False)` is now
+refused above 10 tokens, not above 15.
+
+**fp16 saturation: decision.** The audit proposed two arms (fp16 as released,
+and the product as fp32 log-space). The implementation supports both
+(`score_precision="fp16" | "fp32"`; the fp32 form is
+`exp(log(1e-7) + sum(log x))` with no fp16 buffer), and every record carries
+`n_nonfinite_steps`, the count of steps on which some candidate score went
+NaN/inf after the penalty. **Only the released fp16 arm is planned** (it is
+the OPERA row); exposing the fp32 control as a method arm needs a
+`storage.CONTROL_ARMS` entry and up to 40 more GPU-hours, and is a decision
+for after the first chunk shows whether `n_nonfinite_steps` is ever non-zero.
+If it is, the fp16 arm is reporting an artefact of its own arithmetic and the
+second arm becomes mandatory.
+
+**How it is checked, and what that does not cover.**
+
+* `tests/test_opera_rollback.py::TestDecisionBlockMatchesRelease` checks the
+  decision bookkeeping against a literal transcription of lines 3441-3550 of
+  the vendored `utils.py`, step for step over 150 random scenarios (which
+  rewind often enough to exhaust a position's allowance), comparing the
+  decision, the rewind position, the restored state, the ban list, the history
+  lengths, `max_rollback_time` and every slot of `reject_token_pos_gather`.
+* `TestLoopMatchesRecomputedRelease` checks the whole loop against a
+  transcription of `opera_beam_search` that recomputes every forward from
+  scratch (no KV cache; the attention square taken from a fresh eager
+  forward; the rewind's re-prefill a fresh forward), on a real tiny LLaVA:
+  same beam choices at every iteration, same tokens, same rewinds, and
+  `attn_local` equal to 1e-5 at every call. It uses a *scripted* score
+  function, because on a random stub the real score's argmax is column 0 at
+  every step and nothing ever rewinds; a second test runs the real score (no
+  rewind) to cover the regime switch. Mutating the implementation (no beam
+  reorder of the carried attention, no ban, wrong row sum, scores not
+  restored, cache one token short) makes these fail.
+* `tests/test_opera.py::TestShortPathIsUnchangedByTheRollbackWork` pins token
+  ids and per-step scores at 1, 3 and 10 tokens (and the two V5 controls) to
+  what the code produced before this change, and the 10-token output is the
+  same with `rollback=True` and `False`. The ids and the whole `trace` dict
+  were also compared byte for byte (`cmp` on the JSON) against the
+  pre-change code when this was written.
+
+**Not verified:** anything on a GPU; fp16 numerics of the score (the stub is
+fp32, so saturation is exercised only on `column_product_scores` directly);
+the cache rebuild's memory on a T4 (chunked to bound it, never run there);
+wall time (the column loop is the release's, ~500 small kernels per step, an
+estimated few percent of a step); and, above all, whether the numbers come out
+at 49.00 / 13.52 -- they might not, for the image-set reason of §3.8.1 alone.
+
+#### OPERA on CHAIR: running and resuming
+
+The estimate is `500 x (0.547 + 512 x 6 x 0.0948)` s = **40.5 h** from
+`BEAM_COST_S`, matching `PAPER_AUDIT.md`. It is an upper bound (every caption
+at 512 tokens; beams stop at EOS) that also ignores the growing KV cache and
+the rewinds, and **no GPU measurement exists**: take the first chunk's
+`_job_times.tsv` as the real number.
+
+**A single 40 h job cannot be scheduled.** `run_session` DEFERs any job whose
+frozen estimate exceeds the budget still left, and `freeze_plan` freezes the
+*full* estimate, so a job longer than a session is deferred in every session
+and the session runs empty
+(`test_the_whole_40_hour_job_would_have_been_deferred`). It is therefore five
+jobs on one run file, target `table2_opera`:
+
+| job id suffix | `--limit` | `resume_from` | est (upper bound) |
+|---|---|---|---|
+| `n100` | 100 | 0 | 8.1 h |
+| `n200:from100` | 200 | 100 | 8.1 h |
+| `n300:from200` | 300 | 200 | 8.1 h |
+| `n400:from300` | 400 | 300 | 8.1 h |
+| `from400` | (none) | 400 | 8.1 h |
+
+All five write `m-opera__b-chair__s-val2014_500__seed-42__dt-fp16__v-greedy-*.jsonl`
+(the limit is not in the run key). `generate` stops when the file holds
+`limit` records and resumes from whatever is there, so each chunk generates
+only what is missing, and a chunk cut by the wall (exit code 7) is resumed by
+the next invocation. Because `--limit` is cumulative, a chunk run in a session
+that lacks its predecessors' records would redo them, hence:
+
+* `plan.pending_jobs` holds a chunk back until the run file in the archive
+  holds its `resume_from` records, so **a round schedules one chunk**; the
+  freeze records the rest as `chunks_waiting`;
+* `run_session` re-checks at run time and SKIPs (with a message naming
+  `plan ingest results/runs`) rather than burn a session on redoing work;
+* completeness is per job, not per file (the old file-keyed filter would have
+  dropped chunks 2-5 as soon as chunk 1 finished).
+
+**Operating it, per round (nothing here has been run, and a freeze or a
+release is the owner's call):** `plan ingest results/runs` on the host
+(already in `run_kaggle_fox.sh`), run the one scheduled chunk, then locally
+`plan ingest` the zip, `plan archive`, and commit the partial run file (a
+legitimate record set of 100/200/... records, not a corrupt file); the next
+freeze schedules the next chunk. Five rounds, sequential: chunks cannot run in
+parallel on different accounts because each needs its predecessors' records.
+Sharding by image index would allow that but needs per-shard run files and a
+merge in the CHAIR scorer; not done. If the real run lands near the ~8 h
+guess, the five chunks collapse into one or two sessions and
+`OPERA_CHAIR_CHUNK` should be raised rather than the scheme changed. The
+partial file is scored only when complete (500 records); `scan_progress`
+reports it as done/total meanwhile.
 
 ### 3.14 Validating what we ported
 

@@ -1073,13 +1073,14 @@ def _build_plan() -> List[Job]:
     # (sampling) and Table 9 (greedy), because there is no sampling variant to
     # print. Hence `decoding="greedy"` and no seeds.
     #
-    # No CHAIR row. OPERA's second mechanism, retrospection-reallocation,
+    # No CHAIR row in THIS block. OPERA's second mechanism, retrospection-reallocation,
     # cannot fire below 16 response tokens (two independent gates; see
     # docs/DEVIATIONS.md Sec 3.13), so POPE at 10 tokens exercises exactly the
     # half of OPERA that the published POPE numbers came from, and CHAIR at
-    # 512 would need the rollback this project has audited but not yet built.
-    # `opera_generate` refuses the long length rather than quietly running
-    # OPERA with half its method missing.
+    # 512 needs the rollback, which fox/opera.py implements since this
+    # comment was written: see the `table2_opera` chunks at the end of the
+    # plan. `opera_generate` runs the rollback above 10 tokens and refuses
+    # `rollback=False` there.
     #
     # TWO lengths, because the three forks disagree and for a beam search the
     # disagreement is load-bearing: it scores whole sequences, so the first
