@@ -1621,6 +1621,23 @@ def _build_plan() -> List[Job]:
                     model_id=model_id, system_prompt_id="none",
                     note=f"Table 10 {tag} CHAIR"))
 
+    # Shikra on POPE at 10 generated tokens. r31 measured Sampling at 64.7 /
+    # 64.1 / 64.6 against the paper's 81.6 / 80.2 / 75.6, with 21% of answers a
+    # sentence ("There is no ...") cut to one token ("There"), which the
+    # released parser scores as "yes": LLaVA answers Yes/No at once, Shikra does
+    # not. The harness generates ONE token for POPE, so a truncated negation is
+    # read as an affirmation. This reruns Sampling and Fox at 10 tokens (the
+    # length OPERA's harness uses, which reproduced OPERA's row to the digit)
+    # to test that explanation; it is a diagnostic arm, not a replacement for
+    # the 1-token rows, which are the Fox harness.
+    for seed in SEEDS_BREADTH:
+        for method in ("sampling_shikra", "fox_shikra"):
+            for split in _pope_splits():
+                jobs.append(Job(
+                    "table1_shikra_len10", method, "pope", split, seed=seed,
+                    model_id=SHIKRA_MODEL_ID, max_new_tokens=10,
+                    note="Shikra POPE at 10 tokens: is the gap truncation?"))
+
     # ---- Table 11: MMBench and MathVista-MC (V20) ----------------------
     # Not frozen into any round yet. LLaVA-1.5, sampling, three seeds. The
     # paper's rows are Sampling, VCD and Fox on MMBench and Sampling and Fox

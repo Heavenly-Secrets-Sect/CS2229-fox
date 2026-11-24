@@ -876,7 +876,10 @@ class TestPlan(unittest.TestCase):
         self.jobs = [j for j in P.PLAN if j.model_id == P.SHIKRA_MODEL_ID]
 
     def test_the_jobs_are_exactly_tables_1_and_2(self) -> None:
-        jobs = self.jobs
+        # The 10-token POPE diagnostic is a separate target on purpose (r31's
+        # 1-token rows are the Fox harness; the 10-token rows test whether the
+        # gap is truncated sentences), so the main tables are checked without it.
+        jobs = [j for j in self.jobs if j.target != "table1_shikra_len10"]
         self.assertEqual({j.target for j in jobs},
                          {"table1_shikra", "table2_shikra"})
         self.assertEqual({j.method for j in jobs},
@@ -884,6 +887,10 @@ class TestPlan(unittest.TestCase):
         pope = [j for j in jobs if j.benchmark == "pope"]
         chair = [j for j in jobs if j.benchmark == "chair"]
         self.assertEqual((len(pope), len(chair)), (18, 6))
+        diag = [j for j in self.jobs if j.target == "table1_shikra_len10"]
+        self.assertEqual(len(diag), 18)
+        self.assertTrue(all(j.max_new_tokens == 10 and j.benchmark == "pope"
+                            for j in diag))
         self.assertEqual({j.seed for j in jobs}, {42, 43, 44})
         self.assertEqual({j.split for j in pope},
                          {"random", "popular", "adversarial"})

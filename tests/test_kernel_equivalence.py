@@ -505,6 +505,15 @@ class TestHarnessMatchesTheReleasedHarness(unittest.TestCase):
                 got = job.run_key().variant_fields["max_new_tokens"]
                 if got == want[job.benchmark]:
                     continue
+                if job.target == "table1_shikra_len10":
+                    # A diagnostic, declared in plan.py: Shikra answers in
+                    # sentences, so the 1-token Fox harness truncates "There
+                    # is no X" to "There". It runs at the length OPERA's
+                    # harness uses, only for Shikra, only on POPE.
+                    self.assertTrue(job.method.endswith("_shikra"))
+                    self.assertEqual(job.benchmark, "pope")
+                    self.assertEqual(got, OPERA_POPE_MAX_NEW_TOKENS)
+                    continue
                 overrides.append(job)
                 self.assertNotIn(
                     job.benchmark, ("mme", "mmbench", "mathvista"),
