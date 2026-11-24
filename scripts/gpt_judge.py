@@ -38,6 +38,13 @@ def main(argv=None, client=None) -> int:
     ap.add_argument("--detail", default="auto", choices=["auto", "low", "high"])
     ap.add_argument("--price-in", type=float, help="USD per 1M input tokens")
     ap.add_argument("--price-out", type=float, help="USD per 1M output tokens")
+    ap.add_argument("--sampling-run", help="run file name of the baseline arm")
+    ap.add_argument("--fox-run", help="run file name of the Fox arm")
+    ap.add_argument("--sampling-method", default=None)
+    ap.add_argument("--fox-method", default=None)
+    ap.add_argument("--tag", default="",
+                    help="suffix for the output files, so another backbone "
+                         "does not overwrite LLaVA's")
     ap.add_argument("--confidence", type=float, default=0.90)
     ap.add_argument("--n-boot", type=int, default=10000)
     a = ap.parse_args(argv)
@@ -57,6 +64,14 @@ def main(argv=None, client=None) -> int:
     if not a.model:
         ap.error("--model is required")
 
+    if a.sampling_run:
+        gj.SAMPLING_RUN = a.sampling_run
+    if a.fox_run:
+        gj.FOX_RUN = a.fox_run
+    if a.sampling_method:
+        gj.SAMPLING_METHOD = a.sampling_method
+    if a.fox_method:
+        gj.FOX_METHOD = a.fox_method
     samp, fox = gj.load_captions(a.runs_dir)
     ids = gj.select_images(sorted(set(samp) & set(fox)), a.n_images)
     calls = gj.plan_calls(ids, samp, fox)
@@ -98,7 +113,7 @@ def main(argv=None, client=None) -> int:
     tok_in = sum(r["usage"].get("prompt_tokens", 0) for r in recs)
     tok_out = sum(r["usage"].get("completion_tokens", 0) for r in recs)
     tag = "" if a.n_images == gj.N_IMAGES else f"_n{a.n_images}"
-    stem = a.out_dir / f"gpt_judge_{a.model}{tag}"
+    stem = a.out_dir / f"gpt_judge_{a.model}{a.tag}{tag}"
     a.out_dir.mkdir(parents=True, exist_ok=True)
     summary, err = None, None
     try:

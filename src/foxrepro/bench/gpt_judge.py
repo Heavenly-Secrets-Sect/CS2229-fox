@@ -187,6 +187,12 @@ def select_images(image_ids: Sequence[int], n: int = N_IMAGES) -> List[int]:
     return ids[:n]
 
 
+#: Method names of the two arms, overridable so the same judge can read another
+#: backbone's captions (``sampling_instructblip`` / ``fox_instructblip``).
+SAMPLING_METHOD = "sampling"
+FOX_METHOD = "fox"
+
+
 def _read_run(path: Path, method: str) -> Dict[int, str]:
     out: Dict[int, str] = {}
     with open(path) as f:
@@ -204,8 +210,8 @@ def _read_run(path: Path, method: str) -> Dict[int, str]:
 def load_captions(runs_dir: Path) -> Tuple[Dict[int, str], Dict[int, str]]:
     """(sampling captions, fox captions) keyed by image_id. Read-only."""
     runs_dir = Path(runs_dir)
-    return (_read_run(runs_dir / SAMPLING_RUN, "sampling"),
-            _read_run(runs_dir / FOX_RUN, "fox"))
+    return (_read_run(runs_dir / SAMPLING_RUN, SAMPLING_METHOD),
+            _read_run(runs_dir / FOX_RUN, FOX_METHOD))
 
 
 @dataclass(frozen=True)
