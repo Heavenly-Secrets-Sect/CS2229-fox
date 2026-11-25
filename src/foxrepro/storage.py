@@ -346,6 +346,11 @@ MMBENCH_DEV_ROWS = 4377
 #: was written). ``plan.N_SAMPLES`` uses this bound, so a cost estimate built
 #: from it is a ceiling, labelled as such.
 MMBENCH_CIRCULAR_ROWS_UPPER_BOUND = 4 * MMBENCH_DEV_ROWS
+#: The real count, read off the r33 run: 16864 rows (the 4377 questions have
+#: 3.85 options on average). ``plan.N_SAMPLES`` uses THIS, not the bound: with
+#: the bound a finished 16864-row file looked 656 rows short, so the planner
+#: scheduled Sampling again.
+MMBENCH_CIRCULAR_ROWS = 16864
 
 #: MathVista's multiple-choice rows in ``testmini`` (``question_type ==
 #: "multi_choice"``; the dataset's value, not "multiple_choice"), and the

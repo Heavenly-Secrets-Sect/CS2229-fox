@@ -88,7 +88,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from foxrepro.storage import (
     BENCHMARK_SPLITS, CHAIR_DRAWS, MAX_NEW_TOKENS_DEFAULT,
-    MMBENCH_CIRCULAR_ROWS_UPPER_BOUND, RunKey, paths,
+    MMBENCH_CIRCULAR_ROWS, RunKey, paths,
 )
 from foxrepro.data.loaders import DEFAULT_TEMPLATE_IDS
 
@@ -215,7 +215,7 @@ N_SAMPLES: Dict[Tuple[str, str], int] = {
     # sum of the questions' option counts and was not available when this was
     # written (no network); the loader reads it from the manifest. The cost of
     # these jobs is therefore a ceiling, not a measurement.
-    ("mmbench_circular", "dev"): MMBENCH_CIRCULAR_ROWS_UPPER_BOUND,
+    ("mmbench_circular", "dev"): MMBENCH_CIRCULAR_ROWS,
     ("mathvista", "testmini_mc500"): 500,
 }
 

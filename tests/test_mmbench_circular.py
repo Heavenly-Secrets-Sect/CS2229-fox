@@ -32,7 +32,8 @@ from foxrepro.data.loaders import (
     load_mmbench, load_mmbench_circular, template_benchmark,
 )
 from foxrepro.storage import (
-    BENCHMARK_SPLITS, MMBENCH_CIRCULAR_ROWS_UPPER_BOUND, MMBENCH_DEV_ROWS,
+    BENCHMARK_SPLITS, MMBENCH_CIRCULAR_ROWS, MMBENCH_CIRCULAR_ROWS_UPPER_BOUND,
+    MMBENCH_DEV_ROWS,
 )
 import tests.test_table11 as t11
 from tests.test_table11 import mm_rec, mmbench_rows
@@ -370,8 +371,12 @@ class TestPlanJobs(unittest.TestCase):
         self.assertEqual(len(keys), len(owners))
 
     def test_cost_is_a_ceiling_from_the_upper_bound(self) -> None:
+        # The measured count (r33), not the bound: the bound made a finished
+        # file look incomplete.
         self.assertEqual(N_SAMPLES[("mmbench_circular", "dev")],
-                         4 * MMBENCH_DEV_ROWS)
+                         MMBENCH_CIRCULAR_ROWS)
+        self.assertLessEqual(MMBENCH_CIRCULAR_ROWS,
+                             MMBENCH_CIRCULAR_ROWS_UPPER_BOUND)
         s = Job("t", "sampling", "mmbench_circular", "dev").est_seconds()
         f = Job("t", "fox", "mmbench_circular", "dev").est_seconds()
         single = Job("t", "sampling", "mmbench", "dev").est_seconds()
@@ -379,7 +384,8 @@ class TestPlanJobs(unittest.TestCase):
         # (which is why it is no longer MMBench's estimate).
         per_row = (COST_S[("mmbench_circular", "single")]
                    / COST_S[("mmbench", "single")])
-        self.assertAlmostEqual(s / single, 4.0 * per_row)
+        self.assertAlmostEqual(
+            s / single, MMBENCH_CIRCULAR_ROWS / MMBENCH_DEV_ROWS * per_row)
         self.assertGreater(f, s)
 
     def test_command_and_run_key(self) -> None:
