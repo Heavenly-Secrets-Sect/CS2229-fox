@@ -142,10 +142,13 @@ COST_S: Dict[Tuple[str, str], float] = {
     ("mmbench", "split"): 1.25,
     # CircularEval is the same per-row work as the single pass (one prompt,
     # a letter), so it inherits MMBench's per-ROW estimates; its cost differs
-    # only through the row count (N_SAMPLES).
-    ("mmbench_circular", "single"): 0.68,
-    ("mmbench_circular", "dual"): 1.25,
-    ("mmbench_circular", "split"): 1.25,
+    # only through the row count (N_SAMPLES). MEASURED in r33 over 16864 rows
+    # on a T4: Sampling 206 min = 0.73 s/row, Fox 1.47 s/row (the log's
+    # 0.68 samples/s). The MMBench estimate above (1.25 dual) under-priced Fox
+    # by 15% and the 6.9 h job was cut by the ~9.8 h session limit.
+    ("mmbench_circular", "single"): 0.73,
+    ("mmbench_circular", "dual"): 1.47,
+    ("mmbench_circular", "split"): 1.47,
     ("mathvista", "single"): 1.2,
     ("mathvista", "dual"): 2.0,
     ("mathvista", "split"): 2.0,

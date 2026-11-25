@@ -25,7 +25,7 @@ from foxrepro.bench.evaluate import (
     evaluate_run_file,
 )
 from foxrepro.bench.generate import PERSISTED_SAMPLE_FIELDS
-from foxrepro.bench.plan import N_SAMPLES, PLAN, Job
+from foxrepro.bench.plan import COST_S, N_SAMPLES, PLAN, Job
 from foxrepro.data import fetch_mmbench
 from foxrepro.data.loaders import (
     DEFAULT_TEMPLATE_IDS, PROMPT_TEMPLATES, circular_rotations, load_benchmark,
@@ -375,7 +375,11 @@ class TestPlanJobs(unittest.TestCase):
         s = Job("t", "sampling", "mmbench_circular", "dev").est_seconds()
         f = Job("t", "fox", "mmbench_circular", "dev").est_seconds()
         single = Job("t", "sampling", "mmbench", "dev").est_seconds()
-        self.assertAlmostEqual(s / single, 4.0)
+        # Four rows per question, each at the per-row cost measured in r33
+        # (which is why it is no longer MMBench's estimate).
+        per_row = (COST_S[("mmbench_circular", "single")]
+                   / COST_S[("mmbench", "single")])
+        self.assertAlmostEqual(s / single, 4.0 * per_row)
         self.assertGreater(f, s)
 
     def test_command_and_run_key(self) -> None:
