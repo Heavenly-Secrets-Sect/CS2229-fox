@@ -436,6 +436,13 @@ class TestMethods(unittest.TestCase):
         m.load()
         return m, m.generate(self.sample, self.sample.question)
 
+    def test_vcd_and_icd_never_ask_for_m_sys(self) -> None:
+        # r33 ran every VCD/ICD InstructBLIP job into fox_generate's guard:
+        # use_m_sys defaults to True and the image span starts at key 0.
+        for name in ("vcd_instructblip", "icd_instructblip"):
+            m = get_method(name)(self._cfg(name))
+            self.assertIs(m._decode_kwargs()["use_m_sys"], False, name)
+
     def test_the_prompt_is_the_releases_with_two_spaces_and_no_system(self) -> None:
         self._run("sampling_instructblip")
         self.assertEqual(

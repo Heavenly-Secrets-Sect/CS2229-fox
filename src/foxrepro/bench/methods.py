@@ -1537,6 +1537,13 @@ class InstructBlipVCDMethod(_InstructBlipMixin, VCDMethod):
 
     name = "vcd_instructblip"
 
+    def _decode_kwargs(self) -> Dict[str, Any]:
+        # The Fox edit is off here, but fox_generate still refuses use_m_sys=True
+        # when the image span starts at key 0 (InstructBLIP), and True is its default.
+        kw = dict(super()._decode_kwargs())
+        kw["use_m_sys"] = False
+        return kw
+
 
 @register_method
 class InstructBlipICDMethod(_InstructBlipMixin, ICDMethod):
@@ -1555,6 +1562,13 @@ class InstructBlipICDMethod(_InstructBlipMixin, ICDMethod):
     """
 
     name = "icd_instructblip"
+
+    def _decode_kwargs(self) -> Dict[str, Any]:
+        # The Fox edit is off here, but fox_generate still refuses use_m_sys=True
+        # when the image span starts at key 0 (InstructBLIP), and True is its default.
+        kw = dict(super()._decode_kwargs())
+        kw["use_m_sys"] = False
+        return kw
 
     #: The template the release formats the question into.
     RELEASE_TEMPLATE: ClassVar[str] = "USER: <ImageHere> <question> ASSISTANT:"

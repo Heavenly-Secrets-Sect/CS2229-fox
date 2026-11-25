@@ -2042,6 +2042,13 @@ class TestTheSweepsAndWindows(unittest.TestCase):
                          {("fox_shikra", "3-11"), ("fox_internvl3", "3-12")})
         self.assertEqual({j.seed for j in jobs}, {42, 43, 44})
 
+    def test_internvl3_windows_use_its_own_template(self) -> None:
+        # r33 ran these with llava_v1 and every one died at once: the backbone
+        # refuses any system prompt but "none".
+        for j in self._t("table15_other"):
+            if j.method == "fox_internvl3":
+                self.assertEqual(j.system_prompt_id, "none", j.job_id)
+
     def test_mathvista_ten_seeds_do_not_collide_with_the_three(self) -> None:
         jobs = self._t("table11_mathvista_10seeds")
         self.assertEqual(len(jobs), 21)

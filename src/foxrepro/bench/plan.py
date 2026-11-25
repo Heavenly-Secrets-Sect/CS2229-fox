@@ -1849,6 +1849,7 @@ def _build_plan() -> List[Job]:
         jobs.append(Job(
             "table15_other", "fox_internvl3", "pope", "adversarial", seed=seed,
             model_id=INTERNVL3_MODEL_ID, intervention_layers="3-12",
+            system_prompt_id="none",
             note="Table 15: InternVL3 automatic window 3-12"))
 
     # ---- MathVista MC500 at ten seeds -------------------------------------- #
