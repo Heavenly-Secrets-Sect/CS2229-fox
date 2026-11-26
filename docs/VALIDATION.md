@@ -2667,3 +2667,38 @@ Phiên `verify-r31` (zip `fox_smoke_ab8e62d_s5.zip`) chạy lại 4 job greedy P
 | SID | 1 | giống hệt |
 
 Kết luận: cả ba commit cho cùng một kết quả trên cùng một host, nên các sửa đổi code (autograd, mask, cache_position, last-row-only) không đổi kết quả greedy. Phần khác với bản lưu là do host (phiên bản transformers/torch và số học fp16 của image Kaggle hiện tại). Mức lệch là 0.5–5% số output (1–10/200), lớn nhất ở VCD. Kết quả r24 (SID α=1.0, Table 9 VCD/SID) vẫn dùng được, kèm ghi chú nhiễu host cỡ vài điểm phần trăm trên 200 mẫu. Session báo `failed` vì script thoát khác 0 khi có job không giống bản lưu, không phải vì crash.
+
+### V20b result (r33, 2026-11-26): Sampling and VCD scored, Fox not finished
+
+`sampling` and `vcd` on `mmbench_circular` ran to the full 16864 rotation rows
+(4377 questions), seed 42. `fox` stopped at 15442 of 16864 rows when its
+session hit the ~9.8 h limit (the 1422 left are in a later round), so the
+Fox-dependent parts of prediction 4 are **not scored**.
+
+| | Sampling | VCD | paper (Table 11) |
+|---|---|---|---|
+| circular overall | **58.05** | 59.24 | 63.1 (Sampling) |
+| circular perception / reasoning | 63.17 / 48.92 | 64.24 / 50.32 | |
+| single-pass (rotation 0) overall | 71.01 | 71.26 | |
+| per-rotation accuracy overall | 71.42 | 71.71 | |
+| unparsed rotations | 1 (0.006 %) | 1 | |
+
+1. **Level in [58.0, 68.0]: held, at the very edge.** 58.05 is 0.05 above the
+   lower bound and 5.05 below the paper's 63.1, so it is *not* the "within 3 of
+   63.1" close match. CircularEval moves our level the right way and
+   overshoots: the paper's 63.1 sits between our single-pass 71.0 and our
+   circular 58.1.
+2. **Drop in [4.0, 14.0]: held.** 71.01 - 58.05 = **12.95**, near the upper
+   end. Single-pass 71.01 is 0.95 under V20's 71.96 (within the sampling noise
+   the prediction allowed).
+3. **Perception - reasoning positive: held.** +14.25 circular (+11.7 single-pass).
+4. **Differences, VCD half only:** |VCD - Sampling| = 1.19, under 2.5: held.
+   Fox - Sampling: not scored.
+5. **Unparsed below 2 %: held** (0.006 %).
+
+What this does and does not settle. Under the rule written above, prediction 1
+held, so the level gap is attributed to the protocol (CircularEval) **in part**:
+the direction and rough size are right, the landing point is 5 points low. What
+is left unexplained is therefore a gap of the opposite sign (ours below the
+paper's), which points at the prompt, option formatting or sampling at T=1 for
+this arm, not at CircularEval. We make no claim about which.
