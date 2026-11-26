@@ -541,7 +541,7 @@ class TestPlan(unittest.TestCase):
                 if not j.is_continuation]
         self.assertEqual(len(keys), len(set(keys)))
 
-    def test_fox_is_dual_branch_and_cost_is_labelled_a_guess(self) -> None:
+    def test_fox_is_dual_branch_and_cost_carries_the_measured_factor(self) -> None:
         P = self.P
         self.assertIn("fox_qwen3vl", P.DUAL_BRANCH)
         self.assertIn("fox_internvl3", P.FOX_METHODS)
@@ -549,8 +549,13 @@ class TestPlan(unittest.TestCase):
         j = P.Job("t", "fox_qwen3vl", "pope", "adversarial",
                   model_id=P.QWEN3VL_MODEL_ID)
         llava = P.Job("t", "fox", "pope", "adversarial")
-        self.assertEqual(j.est_seconds(), llava.est_seconds())
-        self.assertIn("GUESS", Path(P.__file__).read_text(encoding="utf-8"))
+        # Qwen3-VL Fox POPE was measured at 0.73x the LLaVA price (r32).
+        self.assertAlmostEqual(
+            j.est_seconds(),
+            llava.est_seconds()
+            * P.RECENT_BACKBONE_METHOD_COST_FACTOR[("fox_qwen3vl", "pope")])
+        # The unmeasured InternVL3 rows are still labelled as guesses.
+        self.assertIn("a guess", Path(P.__file__).read_text(encoding="utf-8"))
 
     def test_commands_round_trip_to_the_same_run_file(self) -> None:
         from tests.test_plan import cfg_from_command

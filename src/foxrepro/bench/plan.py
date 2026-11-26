@@ -298,6 +298,25 @@ FOX_METHODS = frozenset({"fox", "fox_instructblip", "fox_qwen3vl",
 #: apart from LLaVA.
 RECENT_BACKBONE_COST_FACTOR: Dict[str, float] = {"pope": 1.0, "chair": 1.0}
 
+#: MEASURED in r32-r35 on a T4x2 (actual / the LLaVA-priced estimate): the
+#: guess above was 3-6x too low, and a 9.7 h session limit cut the jobs it
+#: mispriced. Qwen3-VL POPE: Sampling 25.4 min vs 27.5, Fox 40.1 vs 55.0.
+#: Qwen3-VL CHAIR: Sampling 254.9 vs 68.3 (3.7x), Fox 263.5 / 315.5 vs 90.8
+#: (3.2x). InternVL3 POPE Fox: 335 min vs 55 (6.1x; 0.15 samples/s, tiles).
+#: InternVL3 Sampling POPE and InternVL3 CHAIR have NO measurement yet and take
+#: the factor of their nearest measured neighbour (a guess, so over- rather
+#: than under-priced).
+RECENT_BACKBONE_METHOD_COST_FACTOR: Dict[Tuple[str, str], float] = {
+    ("sampling_qwen3vl", "pope"): 0.92,
+    ("fox_qwen3vl", "pope"): 0.73,
+    ("sampling_qwen3vl", "chair"): 3.73,
+    ("fox_qwen3vl", "chair"): 3.19,
+    ("sampling_internvl3", "pope"): 6.1,
+    ("fox_internvl3", "pope"): 6.1,
+    ("sampling_internvl3", "chair"): 3.7,
+    ("fox_internvl3", "chair"): 3.2,
+}
+
 #: ESTIMATES, NOT MEASUREMENTS. Multipliers on LLaVA's per-sample cost for the
 #: same (benchmark, branches), to be replaced by ``--calibrate`` once an
 #: InstructBLIP run exists (``measured_cost`` buckets InstructBLIP apart from
@@ -536,7 +555,9 @@ class Job:
         if self.method in INSTRUCTBLIP_METHODS:
             base *= INSTRUCTBLIP_COST_FACTOR.get(self.benchmark, 1.0)
         if self.method in RECENT_BACKBONE_METHODS:
-            base *= RECENT_BACKBONE_COST_FACTOR.get(self.benchmark, 1.0)
+            base *= RECENT_BACKBONE_METHOD_COST_FACTOR.get(
+                (self.method, self.benchmark),
+                RECENT_BACKBONE_COST_FACTOR.get(self.benchmark, 1.0))
         elif self.method in SHIKRA_METHODS:
             base *= SHIKRA_COST_FACTOR.get(self.benchmark, 1.0)
         return self.chunk_samples * base
