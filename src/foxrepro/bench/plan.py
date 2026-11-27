@@ -1723,6 +1723,22 @@ def _build_plan() -> List[Job]:
                     model_id=model_id, system_prompt_id="none",
                     note=f"Table 10 {tag} CHAIR"))
 
+    # Table 10, Qwen3-VL POPE with the one-word suffix. r32-r37 measured Qwen3-VL
+    # Sampling at 67.8 against the paper's 86.43, with 902 of 3000 answers
+    # (30%) the single token "Based" (the start of "Based on the image ..."):
+    # POPE generates one token, and the released parser scores any answer
+    # without a negation as "yes". The paper states no prompt for these
+    # backbones. This arm appends "Please answer this question with one
+    # word." (the template CausalMM's own harness uses, V18) and nothing else;
+    # it is a labelled variant, NOT a replacement for the table-10 rows above.
+    for seed in SEEDS_BREADTH:
+        for method in ("sampling_qwen3vl", "fox_qwen3vl"):
+            jobs.append(Job(
+                "table10_qwen3vl_oneword", method, "pope", "adversarial",
+                seed=seed, model_id=QWEN3VL_MODEL_ID, system_prompt_id="none",
+                prompt_template_id="pope_causalmm",
+                note="Table 10 Qwen3-VL POPE-Adversarial, one-word suffix"))
+
     # Shikra on POPE at 10 generated tokens. r31 measured Sampling at 64.7 /
     # 64.1 / 64.6 against the paper's 81.6 / 80.2 / 75.6, with 21% of answers a
     # sentence ("There is no ...") cut to one token ("There"), which the

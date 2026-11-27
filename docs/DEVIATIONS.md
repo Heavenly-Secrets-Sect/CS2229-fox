@@ -1796,6 +1796,24 @@ tail-32 differs from ours only by window (our tail-32 mean is 0.226, theirs
 0.165). Figure 15 needs a run that does not exist (`fox_diagnose_paired` is
 implemented and tested on a tiny model only; no job registers it).
 
+### 3.25 Table 10, Qwen3-VL POPE: a one-word-suffix variant (added 2026-11-28, after r32-r37)
+
+With the bare POPE question and the harness's single generated token, Qwen3-VL
+Sampling scores 67.8 on POPE-Adversarial against the paper's 86.43. The raw
+outputs show why: 902 of 3000 answers (30%) are the token "Based" (the start of
+"Based on the image ..."), which the released parser, treating any answer
+without a negation as "yes", counts as yes. Recall is 96% and precision 61%.
+InternVL3 has the same problem to a lesser degree (about 6%: "There", "The",
+"Based", "I"). The paper states no prompt for these backbones.
+
+Target `table10_qwen3vl_oneword` (6 jobs: Sampling and Fox, seeds 42-44) appends
+"Please answer this question with one word." (`pope_causalmm`, the template of
+CausalMM's own harness, V18) and changes nothing else. It is a **labelled
+variant**, reported beside the Table 10 rows and never in place of them: the
+suffix is our choice, not the paper's. Added after results existed, because the
+gap was explained by reading outputs, not by tuning toward the paper's number.
+InternVL3 is not included (its Fox POPE run costs about 5.5 h per seed).
+
 ## 4. In the release, absent here
 
 | | Why |

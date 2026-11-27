@@ -504,7 +504,8 @@ class TestPlan(unittest.TestCase):
     def setUp(self) -> None:
         from foxrepro.bench import plan as P
         self.P = P
-        self.jobs = [j for j in P.PLAN if j.target.startswith("table10_")]
+        self.jobs = [j for j in P.PLAN if j.target.startswith("table10_")
+                     and j.target != "table10_qwen3vl_oneword"]
 
     def test_the_jobs_are_exactly_table10(self) -> None:
         P = self.P
@@ -530,6 +531,22 @@ class TestPlan(unittest.TestCase):
                 self.assertIsNone(j.k)
                 self.assertIsNone(j.tau_js)
                 self.assertIsNone(j.intervention_layers)
+
+    def test_the_one_word_arm_changes_only_the_prompt(self) -> None:
+        # Qwen3-VL answers 30% of POPE questions with "Based" under the bare
+        # question; this labelled variant adds the one-word suffix and nothing
+        # else, and is a separate target so the Table 10 rows are untouched.
+        js = [j for j in self.P.PLAN if j.target == "table10_qwen3vl_oneword"]
+        self.assertEqual(len(js), 6)
+        self.assertEqual({j.method for j in js},
+                         {"sampling_qwen3vl", "fox_qwen3vl"})
+        self.assertEqual({j.seed for j in js}, {42, 43, 44})
+        for j in js:
+            self.assertEqual(j.prompt_template_id, "pope_causalmm")
+            self.assertEqual((j.benchmark, j.split), ("pope", "adversarial"))
+            self.assertEqual(j.model_id, self.P.QWEN3VL_MODEL_ID)
+            self.assertIsNone(j.k)
+            self.assertIsNone(j.tau_js)
 
     def test_ids_are_unique_and_no_existing_job_changed(self) -> None:
         ids = [j.job_id() for j in self.P.PLAN]
