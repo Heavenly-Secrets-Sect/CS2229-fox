@@ -1,117 +1,90 @@
 {
-  "round": "r38",
+  "round": "r39",
   "order": "priority",
   "n_sessions": 2,
   "budget_hours": 9.0,
   "n_calibrated": 0,
-  "in_flight_excluded": [
-    "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone",
-    "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:off:s45",
-    "table2_shikra:fox_shikra:chair:val2014_500:sk:s43"
-  ],
+  "in_flight_excluded": [],
   "chunks_waiting": [
     "table2_opera:opera:chair:val2014_500:greedy:from400",
-    "table2_opera:opera:chair:val2014_500:greedy:n300:from200",
     "table2_opera:opera:chair:val2014_500:greedy:n400:from300"
   ],
   "jobs": {
-    "table1_shikra_len10:sampling_shikra:pope:popular:sk:s44": {
-      "id": "table1_shikra_len10:sampling_shikra:pope:popular:sk:s44",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method sampling_shikra --benchmark pope --split popular --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --max-new-tokens 10",
-      "est_s": 990.0,
-      "run_file": "m-sampling_shikra__b-pope__s-popular__seed-44__dt-fp16__v-sampling-776f9d73.jsonl",
+    "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm": {
+      "id": "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm",
+      "target": "table10_qwen3vl_oneword",
+      "note": "Table 10 Qwen3-VL POPE-Adversarial, one-word suffix",
+      "command": "python -m foxrepro.bench.generate --method sampling_qwen3vl --benchmark pope --split adversarial --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_causalmm",
+      "est_s": 1518.0,
+      "run_file": "m-sampling_qwen3vl__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-66c3ff38.jsonl",
       "n_samples": 3000,
       "resume_from": 0,
       "measured": false
     },
-    "table1_shikra_len10:fox_shikra:pope:popular:sk:s44": {
-      "id": "table1_shikra_len10:fox_shikra:pope:popular:sk:s44",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method fox_shikra --benchmark pope --split popular --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --max-new-tokens 10",
-      "est_s": 1980.0,
-      "run_file": "m-fox_shikra__b-pope__s-popular__seed-44__dt-fp16__v-sampling-776f9d73.jsonl",
+    "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm": {
+      "id": "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm",
+      "target": "table10_qwen3vl_oneword",
+      "note": "Table 10 Qwen3-VL POPE-Adversarial, one-word suffix",
+      "command": "python -m foxrepro.bench.generate --method fox_qwen3vl --benchmark pope --split adversarial --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_causalmm --mode as_implemented --logit-dtype native",
+      "est_s": 2409.0,
+      "run_file": "m-fox_qwen3vl__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-66c3ff38.jsonl",
       "n_samples": 3000,
       "resume_from": 0,
       "measured": false
     },
-    "table1_shikra_len10:sampling_shikra:pope:adversarial:sk:s44": {
-      "id": "table1_shikra_len10:sampling_shikra:pope:adversarial:sk:s44",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method sampling_shikra --benchmark pope --split adversarial --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --max-new-tokens 10",
-      "est_s": 990.0,
-      "run_file": "m-sampling_shikra__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-776f9d73.jsonl",
+    "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s43": {
+      "id": "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s43",
+      "target": "table10_qwen3vl_oneword",
+      "note": "Table 10 Qwen3-VL POPE-Adversarial, one-word suffix",
+      "command": "python -m foxrepro.bench.generate --method sampling_qwen3vl --benchmark pope --split adversarial --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_causalmm",
+      "est_s": 1518.0,
+      "run_file": "m-sampling_qwen3vl__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-66c3ff38.jsonl",
       "n_samples": 3000,
       "resume_from": 0,
       "measured": false
     },
-    "table1_shikra_len10:fox_shikra:pope:adversarial:sk:s44": {
-      "id": "table1_shikra_len10:fox_shikra:pope:adversarial:sk:s44",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method fox_shikra --benchmark pope --split adversarial --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --max-new-tokens 10",
-      "est_s": 1980.0,
-      "run_file": "m-fox_shikra__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-776f9d73.jsonl",
+    "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s43": {
+      "id": "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s43",
+      "target": "table10_qwen3vl_oneword",
+      "note": "Table 10 Qwen3-VL POPE-Adversarial, one-word suffix",
+      "command": "python -m foxrepro.bench.generate --method fox_qwen3vl --benchmark pope --split adversarial --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_causalmm --mode as_implemented --logit-dtype native",
+      "est_s": 2409.0,
+      "run_file": "m-fox_qwen3vl__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-66c3ff38.jsonl",
       "n_samples": 3000,
       "resume_from": 0,
       "measured": false
     },
-    "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12": {
-      "id": "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12",
-      "target": "table15_other",
-      "note": "Table 15: InternVL3 automatic window 3-12",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark pope --split adversarial --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3-12",
-      "est_s": 20130.0,
-      "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-50741d9c.jsonl",
+    "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s44": {
+      "id": "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s44",
+      "target": "table10_qwen3vl_oneword",
+      "note": "Table 10 Qwen3-VL POPE-Adversarial, one-word suffix",
+      "command": "python -m foxrepro.bench.generate --method sampling_qwen3vl --benchmark pope --split adversarial --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_causalmm",
+      "est_s": 1518.0,
+      "run_file": "m-sampling_qwen3vl__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-66c3ff38.jsonl",
       "n_samples": 3000,
       "resume_from": 0,
       "measured": false
     },
-    "table11_mathvista_10seeds:sampling:mathvista:testmini_mc500:s48": {
-      "id": "table11_mathvista_10seeds:sampling:mathvista:testmini_mc500:s48",
-      "target": "table11_mathvista_10seeds",
-      "note": "MathVista MC500 seeds 45-51: sampling as_implemented",
-      "command": "python -m foxrepro.bench.generate --method sampling --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query",
-      "est_s": 600.0,
-      "run_file": "m-sampling__b-mathvista__s-testmini_mc500__seed-48__dt-fp16__v-sampling-c18a15f5.jsonl",
-      "n_samples": 500,
+    "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s44": {
+      "id": "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s44",
+      "target": "table10_qwen3vl_oneword",
+      "note": "Table 10 Qwen3-VL POPE-Adversarial, one-word suffix",
+      "command": "python -m foxrepro.bench.generate --method fox_qwen3vl --benchmark pope --split adversarial --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_causalmm --mode as_implemented --logit-dtype native",
+      "est_s": 2409.0,
+      "run_file": "m-fox_qwen3vl__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-66c3ff38.jsonl",
+      "n_samples": 3000,
       "resume_from": 0,
       "measured": false
     },
-    "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s48": {
-      "id": "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s48",
-      "target": "table11_mathvista_10seeds",
-      "note": "MathVista MC500 seeds 45-51: fox as_implemented",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 48 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode as_implemented --logit-dtype native",
-      "est_s": 1000.0,
-      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-48__dt-fp16__v-sampling-c18a15f5.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s50": {
-      "id": "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s50",
-      "target": "table11_mathvista_10seeds",
-      "note": "MathVista MC500 seeds 45-51: fox as_implemented",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 50 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode as_implemented --logit-dtype native",
-      "est_s": 1000.0,
-      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-50__dt-fp16__v-sampling-c18a15f5.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table2_opera:opera:chair:val2014_500:greedy:n200:from100": {
-      "id": "table2_opera:opera:chair:val2014_500:greedy:n200:from100",
+    "table2_opera:opera:chair:val2014_500:greedy:n300:from200": {
+      "id": "table2_opera:opera:chair:val2014_500:greedy:n300:from200",
       "target": "table2_opera",
-      "note": "OPERA with rollback on CHAIR, samples 100-199 of 500; ~40 h in all",
-      "command": "python -m foxrepro.bench.generate --method opera --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --limit 200",
+      "note": "OPERA with rollback on CHAIR, samples 200-299 of 500; ~40 h in all",
+      "command": "python -m foxrepro.bench.generate --method opera --benchmark chair --split val2014_500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding greedy --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --limit 300",
       "est_s": 29177.3,
       "run_file": "m-opera__b-chair__s-val2014_500__seed-42__dt-fp16__v-greedy-4a534adb.jsonl",
-      "n_samples": 200,
-      "resume_from": 100,
+      "n_samples": 300,
+      "resume_from": 200,
       "measured": false
     }
   },
@@ -119,21 +92,19 @@
     {
       "session": 1,
       "jobs": [
-        "table1_shikra_len10:sampling_shikra:pope:popular:sk:s44",
-        "table1_shikra_len10:fox_shikra:pope:popular:sk:s44",
-        "table1_shikra_len10:sampling_shikra:pope:adversarial:sk:s44",
-        "table1_shikra_len10:fox_shikra:pope:adversarial:sk:s44",
-        "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12",
-        "table11_mathvista_10seeds:sampling:mathvista:testmini_mc500:s48",
-        "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s48",
-        "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s50"
+        "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm",
+        "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm",
+        "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s43",
+        "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s43",
+        "table10_qwen3vl_oneword:sampling_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s44",
+        "table10_qwen3vl_oneword:fox_qwen3vl:pope:adversarial:q3vl:spnone:pope_causalmm:s44"
       ],
-      "est_hours": 7.96
+      "est_hours": 3.27
     },
     {
       "session": 2,
       "jobs": [
-        "table2_opera:opera:chair:val2014_500:greedy:n200:from100"
+        "table2_opera:opera:chair:val2014_500:greedy:n300:from200"
       ],
       "est_hours": 8.1
     }
