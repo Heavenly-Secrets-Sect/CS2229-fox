@@ -1,25 +1,13 @@
 {
-  "round": "r37",
+  "round": "r38",
   "order": "priority",
-  "n_sessions": 12,
+  "n_sessions": 2,
   "budget_hours": 9.0,
   "n_calibrated": 0,
   "in_flight_excluded": [
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:k0.5:t0.2",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:k0.6:t0.2",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:t0.1",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:t0.15",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:t0.25",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:t0.2:b0.05",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:t0.2:b0.2",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:t0.2:b0.3",
-    "fig16_instructblip:fox_instructblip:chair:val2014_500:ib:spnone:t0.3",
-    "fig17_shikra:fox_shikra:chair:val2014_500:sk:k0.2",
-    "fig17_shikra:fox_shikra:chair:val2014_500:sk:k0.3",
-    "fig17_shikra:fox_shikra:chair:val2014_500:sk:k0.5",
-    "fig17_shikra:fox_shikra:chair:val2014_500:sk:k0.6",
-    "fig17_shikra:fox_shikra:chair:val2014_500:sk:t0.1",
-    "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:off:s46"
+    "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone",
+    "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:off:s45",
+    "table2_shikra:fox_shikra:chair:val2014_500:sk:s43"
   ],
   "chunks_waiting": [
     "table2_opera:opera:chair:val2014_500:greedy:from400",
@@ -27,61 +15,6 @@
     "table2_opera:opera:chair:val2014_500:greedy:n400:from300"
   ],
   "jobs": {
-    "table10_qwen3vl:fox_qwen3vl:chair:val2014_500:q3vl:spnone": {
-      "id": "table10_qwen3vl:fox_qwen3vl:chair:val2014_500:q3vl:spnone",
-      "target": "table10_qwen3vl",
-      "note": "Table 10 qwen3vl CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox_qwen3vl --benchmark chair --split val2014_500 --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native",
-      "est_s": 17385.5,
-      "run_file": "m-fox_qwen3vl__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-a04ac26a.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table1_shikra_len10:sampling_shikra:pope:adversarial:sk:s43": {
-      "id": "table1_shikra_len10:sampling_shikra:pope:adversarial:sk:s43",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method sampling_shikra --benchmark pope --split adversarial --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --max-new-tokens 10",
-      "est_s": 990.0,
-      "run_file": "m-sampling_shikra__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-776f9d73.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table1_shikra_len10:fox_shikra:pope:adversarial:sk:s43": {
-      "id": "table1_shikra_len10:fox_shikra:pope:adversarial:sk:s43",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method fox_shikra --benchmark pope --split adversarial --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --max-new-tokens 10",
-      "est_s": 1980.0,
-      "run_file": "m-fox_shikra__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-776f9d73.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table1_shikra_len10:sampling_shikra:pope:random:sk:s44": {
-      "id": "table1_shikra_len10:sampling_shikra:pope:random:sk:s44",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method sampling_shikra --benchmark pope --split random --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --max-new-tokens 10",
-      "est_s": 990.0,
-      "run_file": "m-sampling_shikra__b-pope__s-random__seed-44__dt-fp16__v-sampling-776f9d73.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table1_shikra_len10:fox_shikra:pope:random:sk:s44": {
-      "id": "table1_shikra_len10:fox_shikra:pope:random:sk:s44",
-      "target": "table1_shikra_len10",
-      "note": "Shikra POPE at 10 tokens: is the gap truncation?",
-      "command": "python -m foxrepro.bench.generate --method fox_shikra --benchmark pope --split random --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --max-new-tokens 10",
-      "est_s": 1980.0,
-      "run_file": "m-fox_shikra__b-pope__s-random__seed-44__dt-fp16__v-sampling-776f9d73.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
     "table1_shikra_len10:sampling_shikra:pope:popular:sk:s44": {
       "id": "table1_shikra_len10:sampling_shikra:pope:popular:sk:s44",
       "target": "table1_shikra_len10",
@@ -126,6 +59,17 @@
       "resume_from": 0,
       "measured": false
     },
+    "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12": {
+      "id": "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12",
+      "target": "table15_other",
+      "note": "Table 15: InternVL3 automatic window 3-12",
+      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark pope --split adversarial --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3-12",
+      "est_s": 20130.0,
+      "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-50741d9c.jsonl",
+      "n_samples": 3000,
+      "resume_from": 0,
+      "measured": false
+    },
     "table11_mathvista_10seeds:sampling:mathvista:testmini_mc500:s48": {
       "id": "table11_mathvista_10seeds:sampling:mathvista:testmini_mc500:s48",
       "target": "table11_mathvista_10seeds",
@@ -159,149 +103,6 @@
       "resume_from": 0,
       "measured": false
     },
-    "table10_qwen3vl:sampling_qwen3vl:chair:val2014_500:q3vl:spnone:s43": {
-      "id": "table10_qwen3vl:sampling_qwen3vl:chair:val2014_500:q3vl:spnone:s43",
-      "target": "table10_qwen3vl",
-      "note": "Table 10 qwen3vl CHAIR",
-      "command": "python -m foxrepro.bench.generate --method sampling_qwen3vl --benchmark chair --split val2014_500 --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt none --wrapper released --prompt-template-id chair_v1",
-      "est_s": 15293.0,
-      "run_file": "m-sampling_qwen3vl__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-a04ac26a.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table10_qwen3vl:fox_qwen3vl:chair:val2014_500:q3vl:spnone:s43": {
-      "id": "table10_qwen3vl:fox_qwen3vl:chair:val2014_500:q3vl:spnone:s43",
-      "target": "table10_qwen3vl",
-      "note": "Table 10 qwen3vl CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox_qwen3vl --benchmark chair --split val2014_500 --model-id Qwen/Qwen3-VL-8B-Instruct --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt none --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native",
-      "est_s": 17385.5,
-      "run_file": "m-fox_qwen3vl__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-a04ac26a.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone": {
-      "id": "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone",
-      "target": "table10_internvl3",
-      "note": "Table 10 internvl3 POPE-Adversarial",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark pope --split adversarial --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native",
-      "est_s": 20130.0,
-      "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-a9aa72be.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table2_shikra:fox_shikra:chair:val2014_500:sk:s43": {
-      "id": "table2_shikra:fox_shikra:chair:val2014_500:sk:s43",
-      "target": "table2_shikra",
-      "note": "Shikra CHAIR (T2)",
-      "command": "python -m foxrepro.bench.generate --method fox_shikra --benchmark chair --split val2014_500 --model-id shikras/shikra-7b-delta-v1-0708 --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native",
-      "est_s": 5177.5,
-      "run_file": "m-fox_shikra__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-c3ad69ac.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:off:s45": {
-      "id": "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:off:s45",
-      "target": "table11_mathvista_10seeds",
-      "note": "MathVista MC500 seeds 45-51: fox off",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark mathvista --split testmini_mc500 --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 45 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mathvista_v0_query --mode off --logit-dtype native",
-      "est_s": 1000.0,
-      "run_file": "m-fox__b-mathvista__s-testmini_mc500__seed-45__dt-fp16__v-sampling-18b4b90b.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone": {
-      "id": "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone",
-      "target": "table10_internvl3",
-      "note": "Table 10 internvl3 CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark chair --split val2014_500 --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native",
-      "est_s": 17440.0,
-      "run_file": "m-fox_internvl3__b-chair__s-val2014_500__seed-42__dt-fp16__v-sampling-934c5f8a.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s43": {
-      "id": "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s43",
-      "target": "table10_internvl3",
-      "note": "Table 10 internvl3 POPE-Adversarial",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark pope --split adversarial --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native",
-      "est_s": 20130.0,
-      "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-43__dt-fp16__v-sampling-a9aa72be.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone:s43": {
-      "id": "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone:s43",
-      "target": "table10_internvl3",
-      "note": "Table 10 internvl3 CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark chair --split val2014_500 --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 43 --decoding sampling --system-prompt none --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native",
-      "est_s": 17440.0,
-      "run_file": "m-fox_internvl3__b-chair__s-val2014_500__seed-43__dt-fp16__v-sampling-934c5f8a.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s44": {
-      "id": "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s44",
-      "target": "table10_internvl3",
-      "note": "Table 10 internvl3 POPE-Adversarial",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark pope --split adversarial --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native",
-      "est_s": 20130.0,
-      "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-a9aa72be.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone:s44": {
-      "id": "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone:s44",
-      "target": "table10_internvl3",
-      "note": "Table 10 internvl3 CHAIR",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark chair --split val2014_500 --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt none --wrapper released --prompt-template-id chair_v1 --mode as_implemented --logit-dtype native",
-      "est_s": 17440.0,
-      "run_file": "m-fox_internvl3__b-chair__s-val2014_500__seed-44__dt-fp16__v-sampling-934c5f8a.jsonl",
-      "n_samples": 500,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table11_mmbench_circular:fox:mmbench_circular:dev": {
-      "id": "table11_mmbench_circular:fox:mmbench_circular:dev",
-      "target": "table11_mmbench_circular",
-      "note": "V20 CircularEval: MMBench dev, fox, all rotations",
-      "command": "python -m foxrepro.bench.generate --method fox --benchmark mmbench_circular --split dev --model-id llava-hf/llava-1.5-7b-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt llava_v1 --wrapper released --prompt-template-id mmbench_circular_v0_letter --mode as_implemented --logit-dtype native",
-      "est_s": 24790.1,
-      "run_file": "m-fox__b-mmbench_circular__s-dev__seed-42__dt-fp16__v-sampling-05f6b0da.jsonl",
-      "n_samples": 16864,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12": {
-      "id": "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12",
-      "target": "table15_other",
-      "note": "Table 15: InternVL3 automatic window 3-12",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark pope --split adversarial --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 42 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3-12",
-      "est_s": 20130.0,
-      "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-42__dt-fp16__v-sampling-50741d9c.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
-    "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12:s44": {
-      "id": "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12:s44",
-      "target": "table15_other",
-      "note": "Table 15: InternVL3 automatic window 3-12",
-      "command": "python -m foxrepro.bench.generate --method fox_internvl3 --benchmark pope --split adversarial --model-id OpenGVLab/InternVL3-8B-hf --dtype fp16 --device-map auto --seed 44 --decoding sampling --system-prompt none --wrapper released --prompt-template-id pope_v0_raw --mode as_implemented --logit-dtype native --intervention-layers 3-12",
-      "est_s": 20130.0,
-      "run_file": "m-fox_internvl3__b-pope__s-adversarial__seed-44__dt-fp16__v-sampling-50741d9c.jsonl",
-      "n_samples": 3000,
-      "resume_from": 0,
-      "measured": false
-    },
     "table2_opera:opera:chair:val2014_500:greedy:n200:from100": {
       "id": "table2_opera:opera:chair:val2014_500:greedy:n200:from100",
       "target": "table2_opera",
@@ -318,96 +119,19 @@
     {
       "session": 1,
       "jobs": [
-        "table10_qwen3vl:fox_qwen3vl:chair:val2014_500:q3vl:spnone",
-        "table1_shikra_len10:sampling_shikra:pope:adversarial:sk:s43",
-        "table1_shikra_len10:fox_shikra:pope:adversarial:sk:s43",
-        "table1_shikra_len10:sampling_shikra:pope:random:sk:s44",
-        "table1_shikra_len10:fox_shikra:pope:random:sk:s44",
         "table1_shikra_len10:sampling_shikra:pope:popular:sk:s44",
         "table1_shikra_len10:fox_shikra:pope:popular:sk:s44",
         "table1_shikra_len10:sampling_shikra:pope:adversarial:sk:s44",
         "table1_shikra_len10:fox_shikra:pope:adversarial:sk:s44",
+        "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12",
         "table11_mathvista_10seeds:sampling:mathvista:testmini_mc500:s48",
         "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s48",
         "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:s50"
       ],
-      "est_hours": 8.85
+      "est_hours": 7.96
     },
     {
       "session": 2,
-      "jobs": [
-        "table10_qwen3vl:sampling_qwen3vl:chair:val2014_500:q3vl:spnone:s43",
-        "table10_qwen3vl:fox_qwen3vl:chair:val2014_500:q3vl:spnone:s43"
-      ],
-      "est_hours": 9.08
-    },
-    {
-      "session": 3,
-      "jobs": [
-        "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone",
-        "table2_shikra:fox_shikra:chair:val2014_500:sk:s43",
-        "table11_mathvista_10seeds:fox:mathvista:testmini_mc500:off:s45"
-      ],
-      "est_hours": 7.31
-    },
-    {
-      "session": 4,
-      "jobs": [
-        "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone"
-      ],
-      "est_hours": 4.84
-    },
-    {
-      "session": 5,
-      "jobs": [
-        "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s43"
-      ],
-      "est_hours": 5.59
-    },
-    {
-      "session": 6,
-      "jobs": [
-        "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone:s43"
-      ],
-      "est_hours": 4.84
-    },
-    {
-      "session": 7,
-      "jobs": [
-        "table10_internvl3:fox_internvl3:pope:adversarial:ivl3:spnone:s44"
-      ],
-      "est_hours": 5.59
-    },
-    {
-      "session": 8,
-      "jobs": [
-        "table10_internvl3:fox_internvl3:chair:val2014_500:ivl3:spnone:s44"
-      ],
-      "est_hours": 4.84
-    },
-    {
-      "session": 9,
-      "jobs": [
-        "table11_mmbench_circular:fox:mmbench_circular:dev"
-      ],
-      "est_hours": 6.89
-    },
-    {
-      "session": 10,
-      "jobs": [
-        "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12"
-      ],
-      "est_hours": 5.59
-    },
-    {
-      "session": 11,
-      "jobs": [
-        "table15_other:fox_internvl3:pope:adversarial:ivl3:spnone:L3-12:s44"
-      ],
-      "est_hours": 5.59
-    },
-    {
-      "session": 12,
       "jobs": [
         "table2_opera:opera:chair:val2014_500:greedy:n200:from100"
       ],
