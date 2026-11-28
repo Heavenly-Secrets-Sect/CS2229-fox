@@ -77,6 +77,44 @@ class TestDue(unittest.TestCase):
         self.assertEqual(z, [])
 
 
+class TestWatch(unittest.TestCase):
+    def _run(self, docs_seq):
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        calls = iter(docs_seq)
+
+        def fake_docs():
+            d = next(calls)
+            if isinstance(d, Exception):
+                raise d
+            return d
+
+        buf = io.StringIO()
+        with mock.patch.object(RC, "_docs", fake_docs), \
+                mock.patch.object(RC, "_handled", lambda: set()), \
+                mock.patch.object(RC.time, "sleep", lambda s: None), \
+                mock.patch.object(RC.time, "time", lambda: NOW / 1000), \
+                redirect_stdout(buf):
+            rc = RC.watch(0)
+        return rc, buf.getvalue().splitlines()
+
+    def test_it_waits_silently_then_reports_the_due_round(self):
+        rc, out = self._run([[doc("r40", ["running"])], [doc("r40", ["running"])],
+                             [doc("r40", ["done", "failed"])]])
+        self.assertEqual((rc, out), (0, ["DUE r40"]))
+
+    def test_a_zombie_is_reported_once_and_a_blip_does_not_kill_it(self):
+        rc, out = self._run([[doc("r40", ["running"], age_h=20)], RuntimeError("db down"),
+                             RuntimeError("db down"), [doc("r40", ["running"], age_h=20)],
+                             [doc("r40", ["done"])]])
+        self.assertEqual(rc, 0)
+        self.assertEqual(sum(l.startswith("ZOMBIE") for l in out), 1)
+        self.assertEqual(sum(l.startswith("watch error") for l in out), 1)
+        self.assertEqual(out[-1], "DUE r40")
+
+
 class TestScalars(unittest.TestCase):
     def test_reads_the_real_manifest(self):
         m = RC.scalars(REPO / "kaggle-run.yml")

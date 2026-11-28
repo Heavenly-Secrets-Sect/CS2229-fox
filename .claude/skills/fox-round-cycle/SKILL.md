@@ -25,6 +25,16 @@ still running). A `ZOMBIE` line is a session `running` past 14 h that cannot be
 cancelled with our tokens; **ask the user** before marking it stale in MongoDB
 (see memory `kaggle-zombie-sessions`), never mark it yourself.
 
+To be woken instead of polling, run this under a persistent Monitor in the session
+that owns the context (planning must stay in the session that remembers the project):
+
+```bash
+python3 scripts/round_cycle.py watch --interval 300
+```
+
+It prints nothing while rounds run, `DUE rNN` when one is ready (then exits), and
+`ZOMBIE ...` once per stuck session. Re-arm it after step 7.
+
 ## 1. Fetch and read the round
 
 ```bash
@@ -114,6 +124,8 @@ sessions as the plan has. Paste those log lines in your report.
 ```bash
 python3 scripts/round_cycle.py mark-handled rNN
 ```
+
+Then re-arm the watcher (`round_cycle.py watch`) under a Monitor.
 
 Then tell the user, in their language (Vietnamese): what finished, what failed and
 why (with log evidence), what was released and its GPU-hours, and what you could not

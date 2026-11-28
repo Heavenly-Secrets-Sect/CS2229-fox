@@ -13,6 +13,8 @@ test a machine can run instead of a sentence an agent has to remember.
                     OPERA chunk found no predecessor because this was skipped).
     preflight       archive-check plus the manifest, the git state, the tag and a
                     recorded green test run for HEAD. Exit 0 means "safe to release".
+    watch           block until a round is due, then print `DUE rNN` and exit 0; run it
+                    under a Monitor so a session is woken only when there is work.
     test            run the suite and, only if green, stamp HEAD as tested.
     verify-landed   after a release: the log line proving the tag guard ran,
                     `already` empty, and the bot's session count equal to the plan.
@@ -227,6 +229,30 @@ def _docs() -> List[dict]:
     return F.rounds(F.load_env())
 
 
+def watch(interval: float) -> int:
+    """Block until a round is due, printing one line per new event; for a Monitor.
+
+    Prints `ZOMBIE ...` once per session and `DUE rNN ...` then exits 0, which is
+    the Monitor's wake-up. A database or network error is printed once per distinct
+    message and retried: a watcher that dies on a blip is a watcher nobody notices
+    is gone. Silent while nothing happens, so waiting costs no tokens.
+    """
+    seen: Set[str] = set()
+    while True:
+        try:
+            ready, _, zombies = due_rounds(_docs(), _handled(), time.time() * 1000)
+            events = [f"ZOMBIE {z}" for z in zombies] + ([f"DUE {' '.join(ready)}"] if ready else [])
+        except Exception as e:                                  # noqa: BLE001
+            events = [f"watch error (retrying): {type(e).__name__}: {str(e)[:120]}"]
+        for ev in events:
+            if ev not in seen:
+                print(ev, flush=True)
+                seen.add(ev)
+        if any(ev.startswith("DUE") for ev in events):
+            return 0
+        time.sleep(interval)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -235,6 +261,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     pf = sub.add_parser("preflight")
     pf.add_argument("--plan", type=Path, default=REPO / "scripts" / "run_plan.json")
     pf.add_argument("--run-tests", action="store_true")
+    wp = sub.add_parser("watch")
+    wp.add_argument("--interval", type=float, default=300.0, help="seconds between checks")
     sub.add_parser("test")
     lp = sub.add_parser("verify-landed")
     lp.add_argument("tag")
@@ -252,6 +280,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
         print("not due: " + (f"still running: {' '.join(waiting)}" if waiting else "nothing unhandled"))
         return 1
+    if args.cmd == "watch":
+        return watch(args.interval)
     if args.cmd == "archive-check":
         bad = archive_problems()
     elif args.cmd == "preflight":
