@@ -6,6 +6,7 @@ Tái lập và kiểm toán cơ chế của **Fox** (ICML 2026, "Dismantling Pat
 - Test (stdlib unittest, pytest chỉ là runner tùy chọn): `PYTHONPATH=src python3 -m unittest discover -s tests -t .` (khoảng 400 test; phải xanh trước mọi commit).
 - Lập kế hoạch round: `python3 -m foxrepro.bench.plan plan --budget-hours 10 --round <rN>`; nhận kết quả từ `runs_inbox/`: `python3 -m foxrepro.bench.plan ingest`.
 - Một session trên Kaggle: `bash run_kaggle_fox.sh <N>` (N từ 1 đến số session); `DRY=1` chỉ in lệnh.
+- Vòng xử lý một round (skill `fox-round-cycle`, `.claude/skills/`): `python3 scripts/round_cycle.py due | archive-check | test | preflight | verify-landed <rNN> | mark-handled <rNN>`. Hook `scripts/hooks/guard_bash.py` (đăng ký trong `.claude/settings.json`) chặn `gh release create rNN` khi `preflight` chưa pass, và `git add` secrets/zip/PDF. Một session Kaggle tối đa **12 h** (`budget_hours: 12`; watchdog dừng job ở budget − 0.25 h); lập plan ở 11.5 h, chia nhiều session song song, không dồn vào một.
 - Chạy trên Kaggle qua CI: publish một release; `kaggle-run.yml` khai báo (notebook `ml-fox-ci`). Round do bot `message-talisman` điều phối. Tải zip kết quả về `runs_inbox/`: note KB `70_Van-hanh/kaggle-tai-ket-qua.md`.
 
 ## Quy tắc cứng

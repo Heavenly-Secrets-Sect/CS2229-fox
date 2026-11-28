@@ -11,8 +11,11 @@ test a machine can run instead of a sentence an agent has to remember.
     archive-check   exit 0 only if the committed archive holds everything in the
                     live run directory (r37 re-ran 6 GPU-hours of MMBench and its
                     OPERA chunk found no predecessor because this was skipped).
-    preflight       archive-check plus the manifest, the git state and the tag, all
-                    before a release. Exit 0 means "safe to release", nothing more.
+    preflight       archive-check plus the manifest, the git state, the tag and a
+                    recorded green test run for HEAD. Exit 0 means "safe to release".
+    test            run the suite and, only if green, stamp HEAD as tested.
+    verify-landed   after a release: the log line proving the tag guard ran,
+                    `already` empty, and the bot's session count equal to the plan.
     mark-handled    record a round as processed, so `due` stops reporting it.
 
 Nothing here writes to MongoDB, GitHub or the archive.
@@ -117,6 +120,48 @@ def due_rounds(docs: Iterable[dict], handled: Set[str], now_ms: float,
 # checks that touch the machine
 # --------------------------------------------------------------------------- #
 
+STAMPS = Path.home() / ".cache" / "fox-repro" / "tests_green"
+
+
+def head_sha() -> str:
+    return _run(["git", "rev-parse", "HEAD"])[1].strip()
+
+
+def tests_green_for_head() -> bool:
+    """A stamp written only by `round_cycle.py test`, named by the commit it ran on."""
+    return (STAMPS / head_sha()).is_file()
+
+
+def run_tests_and_stamp() -> int:
+    rc, out = _run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."],)
+    tail = out.splitlines()[-1] if out else "no output"
+    if rc == 0:
+        STAMPS.mkdir(parents=True, exist_ok=True)
+        (STAMPS / head_sha()).write_text(tail + "\n")
+    print(("GREEN " if rc == 0 else "RED ") + head_sha()[:7] + ": " + tail)
+    return rc
+
+
+def landed_problems(tag: str, sha: str, expected_sessions: int) -> List[str]:
+    """After a release: the log line proving the tag guard ran, and the sessions the bot registered."""
+    rc, out = _run(["gh", "run", "list", "--workflow", "kaggle-run.yml", "-L", "10",
+                    "--json", "databaseId,headSha,status,conclusion"])
+    runs = [r for r in json.loads(out) if r["headSha"] == sha] if rc == 0 else []
+    if not runs:
+        return [f"no kaggle-run.yml workflow run for {sha[:7]} yet (wait, then retry)"]
+    rc, log = _run(["gh", "run", "view", str(runs[0]["databaseId"]), "--log"])
+    bad: List[str] = []
+    if not re.search(rf"tag '{re.escape(tag)}' khớp round '{re.escape(tag)}'", log):
+        bad.append(f"log lacks the line \"tag '{tag}' khớp round '{tag}'\": the tag guard did not run")
+    if not re.search(r'"already":\s*\[\s*\]', log):
+        bad.append('log shows a non-empty "already": the bot registered nothing new (same sha as a round)')
+    docs = [d for d in _docs() if d.get("tag") == tag and d.get("sha") == sha]
+    n = len(docs[0].get("sessions") or {}) if docs else 0
+    if n != expected_sessions:
+        bad.append(f"the bot registered {n} session(s) for {tag}@{sha[:7]}, the plan has {expected_sessions}")
+    return bad
+
+
 def _run(cmd: Sequence[str]) -> Tuple[int, str]:
     p = subprocess.run(list(cmd), cwd=REPO, capture_output=True, text=True)
     return p.returncode, (p.stdout + p.stderr).strip()
@@ -141,14 +186,18 @@ def archive_problems() -> List[str]:
     return bad
 
 
-def preflight_problems(plan_path: Path, run_tests: bool) -> List[str]:
+def preflight_problems(plan_path: Path, run_tests: bool, tag: Optional[str] = None) -> List[str]:
     bad = archive_problems()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     bad += check_manifest(scalars(REPO / "kaggle-run.yml"), plan)
-    tag = str(plan.get("round") or "")
-    if not ROUND_TAG.match(tag):
-        bad.append(f"plan round {tag!r} is not rNN, so the tag guard cannot match it")
-    else:
+    plan_round = str(plan.get("round") or "")
+    if not ROUND_TAG.match(plan_round):
+        bad.append(f"plan round {plan_round!r} is not rNN, so the tag guard cannot match it")
+    if tag is not None and tag != plan_round:
+        bad.append(f"releasing {tag} but the frozen plan is {plan_round}: the workflow's tag guard "
+                   f"would fail, and the zips would be named for the wrong round")
+    tag = tag or plan_round
+    if ROUND_TAG.match(tag):
         rc, _ = _run(["gh", "release", "view", tag])
         if rc == 0:
             bad.append(f"release {tag} already exists")
@@ -160,9 +209,10 @@ def preflight_problems(plan_path: Path, run_tests: bool) -> List[str]:
     if out:
         bad.append(f"{len(out.splitlines())} tracked file(s) modified: commit before releasing")
     if run_tests:
-        rc, out = _run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."])
-        if rc != 0:
-            bad.append("test suite is not green: " + (out.splitlines()[-1] if out else "no output"))
+        run_tests_and_stamp()
+    if not tests_green_for_head():
+        bad.append(f"no green test run is recorded for HEAD {head_sha()[:7]}: run "
+                   f"`python3 scripts/round_cycle.py test` after the last commit")
     return bad
 
 
@@ -185,6 +235,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     pf = sub.add_parser("preflight")
     pf.add_argument("--plan", type=Path, default=REPO / "scripts" / "run_plan.json")
     pf.add_argument("--run-tests", action="store_true")
+    sub.add_parser("test")
+    lp = sub.add_parser("verify-landed")
+    lp.add_argument("tag")
+    lp.add_argument("--plan", type=Path, default=REPO / "scripts" / "run_plan.json")
     mh = sub.add_parser("mark-handled")
     mh.add_argument("round")
     args = ap.parse_args(argv)
@@ -202,6 +256,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         bad = archive_problems()
     elif args.cmd == "preflight":
         bad = preflight_problems(args.plan, args.run_tests)
+    elif args.cmd == "test":
+        return run_tests_and_stamp()
+    elif args.cmd == "verify-landed":
+        plan = json.loads(args.plan.read_text(encoding="utf-8"))
+        bad = landed_problems(args.tag, head_sha(), len(plan["sessions"]))
     else:
         HANDLED.parent.mkdir(parents=True, exist_ok=True)
         with HANDLED.open("a") as fh:

@@ -47,3 +47,6 @@ archives/
 runs_inbox/*.zip
 runs_inbox/*/
 scan_counts.json
+
+# agent worktrees
+.claude/worktrees/
