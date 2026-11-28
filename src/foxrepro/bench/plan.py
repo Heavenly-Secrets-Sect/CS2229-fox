@@ -77,6 +77,7 @@ scaled from that single number and will drift.
 from __future__ import annotations
 
 import argparse
+import filecmp
 import json
 import sys
 import tempfile
@@ -2404,6 +2405,14 @@ def ingest_runs(
                 report["skipped"] = int(report["skipped"]) + 1
                 continue
             target = dest / src.name
+            # Byte-identical to what is already here: nothing to merge, and
+            # nothing to validate that the earlier ingest did not. Every
+            # session zip carries the whole seeded archive (~620 files, ~2 GB
+            # unpacked), so without this each ingest re-parsed every record of
+            # every file and took 30-60 min to add a handful of lines.
+            if target.exists() and filecmp.cmp(src, target, shallow=False):
+                report["skipped"] = int(report["skipped"]) + 1  # type: ignore[arg-type]
+                continue
             why = _mislabelled(src, _records(src))
             if why is not None:
                 report["rejected"] = int(report.get("rejected", 0)) + 1

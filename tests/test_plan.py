@@ -486,6 +486,23 @@ class TestIngest(unittest.TestCase):
             self.assertIn(sid, text)
         self.assertEqual(text.count('"x2"'), 1, "duplicate record")
 
+    def test_a_byte_identical_file_is_skipped_without_parsing(self) -> None:
+        """Every session zip carries the whole seeded archive; re-ingesting it
+        must not re-parse ~2 GB of records to find that nothing changed."""
+        from unittest import mock
+
+        import foxrepro.bench.plan as P
+
+        s1, s2, dest = self.tmp / "s1", self.tmp / "s2", self.tmp / "dest"
+        self._write(s1, "a.jsonl", ["x1", "x2"])
+        self._write(s2, "a.jsonl", ["x1", "x2"])
+        P.ingest_runs([s1], dest)
+        with mock.patch.object(P.json, "loads",
+                               side_effect=AssertionError("parsed")):
+            rep = P.ingest_runs([s2], dest)
+        self.assertEqual(rep["skipped"], 1)
+        self.assertEqual(rep["copied"], 0)
+
     def test_nothing_new_is_skipped_not_duplicated(self) -> None:
         from foxrepro.bench.plan import ingest_runs
 
