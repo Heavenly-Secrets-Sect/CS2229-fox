@@ -1700,7 +1700,11 @@ class TestTheKaggleCiManifest(unittest.TestCase):
 
     def test_budget_fits_the_session_wall(self) -> None:
         budget = float(self.manifest["budget_hours"])
-        self.assertLessEqual(budget, TestSessionBudget.WALL_HOURS)
+        # Kaggle's own cap (docs/CATCHUP.md). The 10 h in TestSessionBudget is
+        # a planning convention, not the platform's limit: r32-r37 sessions
+        # were stopped at 9.75 h by OUR watchdog (budget 10 minus 15 min), and
+        # that was misread as a platform wall.
+        self.assertLessEqual(budget, 12.0)
         for sess in self.frozen["sessions"]:
             with self.subTest(session=sess["session"]):
                 self.assertLessEqual(float(sess["est_hours"]), budget)

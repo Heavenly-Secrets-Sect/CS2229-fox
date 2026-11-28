@@ -10,7 +10,7 @@ notebook: ml-fox-ci
 sessions: 2
 accelerator: gpu
 internet: true
-budget_hours: 10
+budget_hours: 12
 est_hours: 11.37
 
 # Rỗng có chủ ý. run_kaggle_fox.sh tự `pip install -e .`, chặn host không có
